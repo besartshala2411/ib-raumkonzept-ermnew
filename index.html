@@ -3682,19 +3682,47 @@ function exportSchluesselPDF(){
 /* =========================================================
    MODULE: VORLAGEN (ausfüllbare Formulare, Briefkopf-Design)
 ========================================================= */
-const VORLAGEN_DEFS = [
-  {id:"bedenken", name:"Bedenken- und Hinweismitteilung", felder:[{label:"Betreff",typ:"text"},{label:"Beschreibung des Bedenkens",typ:"textarea"},{label:"Datum",typ:"date"}]},
-  {id:"abnahme", name:"Abnahmeprotokoll", felder:[{label:"Gewerk",typ:"text"},{label:"Mängel",typ:"textarea"},{label:"Abnahmedatum",typ:"date"},{label:"Abgenommen ohne Vorbehalt",typ:"text"}]},
-  {id:"materialanforderung", name:"Materialanforderung", felder:[{label:"Material",typ:"textarea"},{label:"Benötigt bis",typ:"date"}]},
-  {id:"regie", name:"Regieschein / Nachtragsauftrag", felder:[{label:"Leistungsbeschreibung",typ:"textarea"},{label:"Stunden",typ:"text"},{label:"Materialkosten",typ:"text"}]},
+const VORLAGEN_KATEGORIE_BADGE = {Kommunikation:"blue", Baustelle:"amber", Personal:"green", Sicherheit:"red", Übergabe:"gray"};
+var VORLAGEN_DEFS = [
+  {id:"maengelruege", name:"Mängelrüge", icon:"⚠️", kategorie:"Kommunikation",
+    felder:[{label:"Betreff",typ:"text"},{label:"Mängelbeschreibung",typ:"textarea"},{label:"Frist zur Behebung",typ:"date"}]},
+  {id:"auftragsbestaetigung", name:"Auftragsbestätigung", icon:"✅", kategorie:"Kommunikation",
+    felder:[{label:"Auftragsbeschreibung",typ:"textarea"},{label:"Betrag (ca.)",typ:"text"}]},
+  {id:"materialbestellliste", name:"Materialbestellliste", icon:"📦", kategorie:"Baustelle",
+    felder:[{label:"Bestellt von",typ:"text"},{label:"Material (eine Zeile je Artikel)",typ:"textarea"}]},
+  {id:"uebergabe_mietobjekt", name:"Übergabeprotokoll Mietobjekt", icon:"🔑", kategorie:"Übergabe",
+    felder:[{label:"Objekt",typ:"text"},{label:"Uhrzeit",typ:"text"},{label:"Zählerstände / Zustand",typ:"textarea"},{label:"Schlüssel übergeben",typ:"checkbox"},{label:"Mängelfrei übergeben",typ:"checkbox"}]},
+  {id:"statusmail", name:"Statusmail an Kunden", icon:"✉️", kategorie:"Kommunikation",
+    felder:[{label:"Betreff",typ:"text"},{label:"Statusbericht",typ:"textarea"}]},
+  {id:"sicherheitsunterweisung", name:"Sicherheitsunterweisung", icon:"🦺", kategorie:"Sicherheit",
+    felder:[{label:"Teilnehmer (ein Name je Zeile)",typ:"textarea"},{label:"PSA ausgegeben",typ:"checkbox"},{label:"Erste-Hilfe-Kasten geprüft",typ:"checkbox"},{label:"Fluchtwege erklärt",typ:"checkbox"}]},
+  {id:"stundennachweis", name:"Stundennachweis", icon:"👤", kategorie:"Personal",
+    felder:[{label:"Mitarbeiter",typ:"text"},{label:"Monat",typ:"text"},{label:"Anmerkungen",typ:"textarea"}]},
+  {id:"wartungsprotokoll", name:"Wartungsprotokoll", icon:"🔧", kategorie:"Baustelle",
+    felder:[{label:"Anlage / Gerät",typ:"text"},{label:"Durchgeführte Arbeiten",typ:"textarea"},{label:"Mängel festgestellt",typ:"checkbox"}]},
+  {id:"bautagebuch_vorlage", name:"Bautagebuch", icon:"📔", kategorie:"Baustelle",
+    felder:[{label:"Wetter",typ:"text"},{label:"Tagesbericht",typ:"textarea"}]},
+  {id:"abnahme", name:"Abnahmeprotokoll", icon:"📋", kategorie:"Übergabe",
+    felder:[{label:"Gewerk",typ:"text"},{label:"Mängel",typ:"textarea"},{label:"Abgenommen ohne Vorbehalt",typ:"checkbox"},{label:"Abgenommen mit Vorbehalt",typ:"checkbox"}]},
+  {id:"schluesseluebergabe_vorlage", name:"Schlüsselübergabeprotokoll", icon:"🗝️", kategorie:"Übergabe",
+    felder:[{label:"Schlüsselbezeichnung",typ:"text"},{label:"Anzahl",typ:"text"},{label:"Übergeben an",typ:"textarea"}]},
 ];
 function renderVorlagen(view){
   view.innerHTML = `
     <div class="pageHead">
-      <div><div class="pageTitle">Vorlagen</div><div class="pageSub">Ausfüllbare Formulare im Briefkopf-Design</div></div>
+      <div><div class="pageTitle">Vorlagen</div><div class="pageSub">Ausfüllbare Formulare im Briefkopf-Design – auf dem Tablet in Sekunden ausgefüllt</div></div>
     </div>
-    <div class="grid cols-4" style="margin-bottom:20px;">
-      ${VORLAGEN_DEFS.map(d=>`<div class="quickTile" onclick="openVorlageForm('${d.id}')"><div class="qIcon">📄</div><div class="qLabel">${escHtml(d.name)}</div></div>`).join("")}
+    <div class="grid cols-3" style="margin-bottom:20px;">
+      ${VORLAGEN_DEFS.map(d=>`
+        <div class="card" style="cursor:pointer;" onclick="openVorlageForm('${d.id}')">
+          <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+            <div style="font-size:22px;">${d.icon}</div>
+            <span class="badge ${VORLAGEN_KATEGORIE_BADGE[d.kategorie]||"gray"}">${escHtml(d.kategorie)}</span>
+          </div>
+          <div style="font-weight:700; font-size:14px; margin-top:8px;">${escHtml(d.name)}</div>
+          <div class="pageSub" style="margin-top:4px;">${d.felder.length} Felder · inkl. Unterschrift</div>
+        </div>
+      `).join("")}
     </div>
     <div class="card">
       <b>Ausgefüllte Vorlagen (${S.vorlagen.length})</b>
@@ -3715,43 +3743,32 @@ function renderVorlagen(view){
 function vorlagenDefName(defId){ const d=VORLAGEN_DEFS.find(x=>x.id===defId); return d?d.name:"Vorlage"; }
 function openVorlageForm(defId){
   const def = VORLAGEN_DEFS.find(x=>x.id===defId);
+  const f = S.firma;
   window._vorlageDraft = {id:uid(), defId, projektId:"", werte:{}, unterschrift:"", datum:todayISO()};
   openModal(`
-    <div class="modalHead"><div class="modalTitle">${escHtml(def.name)}</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
+    <div class="modalHead"><div class="modalTitle">${def.icon||"📄"} ${escHtml(def.name)}</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
+    <div style="background:var(--card2); border-radius:10px; padding:10px 14px; font-size:12px; color:var(--text-dim); margin-bottom:16px;">
+      ${escHtml(f.name)} · ${escHtml([f.strasse,[f.plz,f.ort].filter(Boolean).join(" ")].filter(Boolean).join(", "))} ${f.tel?"· Tel: "+escHtml(f.tel):""}<br>${fmtDate(todayISO())}
+    </div>
     <div class="formRow"><label>Projekt (optional, zum Speichern in Projekt-Dokumente)</label>
       <select id="voProjekt" onchange="window._vorlageDraft.projektId=this.value"><option value="">–</option>${S.projekte.map(p=>`<option value="${escAttr(p.id)}">${escHtml(p.name)}</option>`).join("")}</select>
     </div>
-    ${def.felder.map((f,i)=>`
-      <div class="formRow"><label>${escHtml(f.label)}</label>
-        ${f.typ==="textarea"?`<div class="micWrap"><textarea id="voFeld${i}" oninput="window._vorlageDraft.werte['${escAttr(f.label)}']=this.value"></textarea>${fieldMic("voFeld"+i)}</div>`
-        : f.typ==="date" ? `<input id="voFeld${i}" type="date" value="${todayISO()}" oninput="window._vorlageDraft.werte['${escAttr(f.label)}']=this.value">`
-        : `<div class="micWrap"><input id="voFeld${i}" type="text" oninput="window._vorlageDraft.werte['${escAttr(f.label)}']=this.value">${fieldMic("voFeld"+i)}</div>`}
-      </div>
+    ${def.felder.map((fd,i)=>`
+      ${fd.typ==="checkbox" ? `
+        <label style="display:flex; align-items:center; gap:10px; background:var(--card2); padding:12px 14px; border-radius:10px; margin-bottom:10px; cursor:pointer;">
+          <input type="checkbox" style="width:20px; height:20px;" onchange="window._vorlageDraft.werte['${escAttr(fd.label)}']=this.checked?'Ja':'Nein'">
+          <span style="font-size:13.5px;">${escHtml(fd.label)}</span>
+        </label>`
+      : `<div class="formRow"><label>${escHtml(fd.label)}</label>
+        ${fd.typ==="textarea"?`<div class="micWrap"><textarea id="voFeld${i}" style="min-height:110px;" oninput="window._vorlageDraft.werte['${escAttr(fd.label)}']=this.value" placeholder="Notizblock – frei eintragen..."></textarea>${fieldMic("voFeld"+i)}</div>`
+        : fd.typ==="date" ? `<input id="voFeld${i}" type="date" value="${todayISO()}" oninput="window._vorlageDraft.werte['${escAttr(fd.label)}']=this.value">`
+        : `<div class="micWrap"><input id="voFeld${i}" type="text" oninput="window._vorlageDraft.werte['${escAttr(fd.label)}']=this.value">${fieldMic("voFeld"+i)}</div>`}
+      </div>`}
     `).join("")}
-    <div class="formRow"><label>Unterschrift</label>
-      <canvas id="voSig" width="280" height="120" style="background:#fff; border-radius:8px; width:100%; touch-action:none;"></canvas>
-      <button class="btn sm" style="margin-top:6px;" onclick="clearVoSig()">Löschen</button>
-    </div>
+    ${sigPadHTML("voSig", "Unterschrift")}
     <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="saveVorlageInstanz()">Speichern</button></div>
   `, true);
-  setupSigCanvasGeneric("voSig", v=>window._vorlageDraft.unterschrift=v);
-}
-function setupSigCanvasGeneric(canvasId, onChange){
-  const canvas = document.getElementById(canvasId);
-  const ctx = canvas.getContext("2d");
-  ctx.fillStyle="#fff"; ctx.fillRect(0,0,canvas.width,canvas.height);
-  let drawing=false;
-  const pos = e=>{ const rect=canvas.getBoundingClientRect(); const cx=(e.touches?e.touches[0].clientX:e.clientX)-rect.left; const cy=(e.touches?e.touches[0].clientY:e.clientY)-rect.top; return {x:cx*canvas.width/rect.width, y:cy*canvas.height/rect.height}; };
-  const start = e=>{ drawing=true; const p=pos(e); ctx.beginPath(); ctx.moveTo(p.x,p.y); e.preventDefault(); };
-  const move = e=>{ if(!drawing) return; const p=pos(e); ctx.lineTo(p.x,p.y); ctx.strokeStyle="#111"; ctx.lineWidth=2; ctx.lineCap="round"; ctx.stroke(); e.preventDefault(); };
-  const end = ()=>{ drawing=false; onChange(canvas.toDataURL("image/png")); };
-  canvas.addEventListener("mousedown", start); canvas.addEventListener("mousemove", move); window.addEventListener("mouseup", end);
-  canvas.addEventListener("touchstart", start); canvas.addEventListener("touchmove", move); canvas.addEventListener("touchend", end);
-}
-function clearVoSig(){
-  const canvas = document.getElementById("voSig"); const ctx = canvas.getContext("2d");
-  ctx.fillStyle="#fff"; ctx.fillRect(0,0,canvas.width,canvas.height);
-  window._vorlageDraft.unterschrift = "";
+  initSigPad("voSig", "", v=>window._vorlageDraft.unterschrift=v);
 }
 function saveVorlageInstanz(){
   const v = window._vorlageDraft;
@@ -3771,21 +3788,31 @@ function exportVorlagePDF(id){
   const v = S.vorlagen.find(x=>x.id===id);
   const def = VORLAGEN_DEFS.find(x=>x.id===v.defId);
   const doc = pdfNewDoc();
-  let y = pdfHeader(doc, def.name);
+  let y = pdfHeader(doc, (def?def.name:"Vorlage"));
   doc.setFontSize(10);
   if(v.projektId) { doc.text("Projekt: "+projektName(v.projektId), 15, y); y+=8; }
-  def.felder.forEach(f=>{
-    doc.setFont(undefined,"bold"); doc.text(f.label+":", 15, y); doc.setFont(undefined,"normal");
-    const val = v.werte[f.label]||"";
-    const lines = doc.splitTextToSize(String(val), 130);
-    doc.text(lines, 65, y);
-    y += Math.max(6, lines.length*5) + 3;
-    if(y>250){ doc.addPage(); y=20; }
+  (def?def.felder:[]).forEach(f=>{
+    if(y>260){ doc.addPage(); y=20; }
+    const val = v.werte[f.label]||(f.typ==="checkbox"?"Nein":"");
+    if(f.typ==="checkbox"){
+      doc.text((val==="Ja"?"☑ ":"☐ ")+f.label, 15, y);
+      y += 7;
+    }else{
+      doc.setFont(undefined,"bold"); doc.text(f.label+":", 15, y); doc.setFont(undefined,"normal");
+      const lines = doc.splitTextToSize(String(val), 130);
+      doc.text(lines, 65, y);
+      y += Math.max(6, lines.length*5) + 3;
+    }
   });
   y += 10;
-  if(v.unterschrift){ doc.addImage(v.unterschrift,"PNG",15,y,60,26); doc.text("Unterschrift", 15, y+32); }
+  if(v.unterschrift){
+    if(y>230){ doc.addPage(); y=20; }
+    try{ doc.addImage(v.unterschrift,"PNG",15,y,60,26); }catch(e){}
+    y+=28; doc.line(15,y,80,y); y+=5;
+    doc.setFontSize(9); doc.text("Unterschrift", 15, y);
+  }
   pdfFooter(doc);
-  doc.save(def.name.replace(/[^a-z0-9]+/gi,"_")+"_"+v.datum+".pdf");
+  doc.save((def?def.name:"Vorlage").replace(/[^a-z0-9]+/gi,"_")+"_"+v.datum+".pdf");
 }
 
 reg("dokumente","Dokumente","📁","Verwaltung",renderDokumente);

@@ -313,6 +313,29 @@ async function main() {
   assert(window.document.getElementById("modalOverlay").innerHTML.includes("rSig"), "Rechnungs-Formular enthält Unterschrift-Canvas");
   window.closeModal();
 
+  console.log("\n== Vorlagen-Katalog (11 Kategorien-Vorlagen, Checkbox-Felder, PDF) ==");
+  assert(window.VORLAGEN_DEFS.length === 11, "Vorlagen-Katalog enthält 11 Vorlagen (" + window.VORLAGEN_DEFS.length + ")");
+  window.document.getElementById("view").innerHTML = "";
+  window.renderVorlagen(window.document.getElementById("view"));
+  const vorlagenHtml = window.document.getElementById("view").innerHTML;
+  window.VORLAGEN_DEFS.forEach((d) => {
+    assert(vorlagenHtml.includes(window.escHtml(d.name)), "Vorlagen-Übersicht zeigt Karte für '" + d.name + "'");
+  });
+  const uebergabeDef = window.VORLAGEN_DEFS.find((d) => d.id === "uebergabe_mietobjekt");
+  let voOk = true, voMsg = "";
+  try { window.openVorlageForm("uebergabe_mietobjekt"); } catch (e) { voOk = false; voMsg = e.message; }
+  assert(voOk, "Übergabeprotokoll-Vorlage rendert ohne Exception" + (voOk ? "" : " (" + voMsg + ")"));
+  const voModalHtml = window.document.getElementById("modalOverlay").innerHTML;
+  const checkboxCount = (voModalHtml.match(/type="checkbox"/g) || []).length;
+  assert(checkboxCount === uebergabeDef.felder.filter((f) => f.typ === "checkbox").length, "Checkbox-Felder werden als echte Checkboxen gerendert (" + checkboxCount + ")");
+  assert(voModalHtml.includes("voSig"), "Vorlagen-Formular enthält Unterschrift-Canvas");
+  window.closeModal();
+
+  window.S.vorlagen.push({ id: "vo1", defId: "uebergabe_mietobjekt", projektId: "", werte: { "Objekt": "Musterhaus", "Schlüssel übergeben": "Ja", "Mängelfrei übergeben": "Nein" }, unterschrift: "", datum: window.todayISO() });
+  window.document.getElementById("view").innerHTML = "";
+  window.renderVorlagen(window.document.getElementById("view"));
+  assert(window.document.getElementById("view").innerHTML.includes("exportVorlagePDF"), "Ausgefüllte Vorlage erscheint mit PDF-Export-Button in der Liste");
+
   console.log("\n=================================");
   console.log(passed + " Tests bestanden, " + failures + " fehlgeschlagen.");
   console.log("=================================");
