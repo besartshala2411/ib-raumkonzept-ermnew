@@ -75,12 +75,11 @@ async function main() {
   // sicherheitsrelevant ist nur, dass < > & korrekt escaped bleiben (kein Tag-Ausbruch/HTML-Injection).
   assert(viewHtml.includes("&lt;Söhne&gt;"), "Name in Tabellenzelle korrekt escaped (escHtml) – kein Tag-Ausbruch möglich");
   try {
-    window.openKundeForm("test-evil-1");
-  } catch (e) { threw = true; console.log("  Exception bei openKundeForm: " + e.message); }
-  const modalHtml = window.document.getElementById("modalOverlay") ? window.document.getElementById("modalOverlay").innerHTML : "";
-  assert(modalHtml.includes('value="Ma&quot;ler'), "Name im value-Attribut korrekt escAttr()-escaped (kein Attribut-Bruch)");
-  assert(!modalHtml.includes('value="Ma"ler'), "Kein unescaped-Anführungszeichen, das das Attribut aufbricht");
-  window.closeModal();
+    window.renderKunden(window.document.getElementById("view"), "test-evil-1", "stammdaten");
+  } catch (e) { threw = true; console.log("  Exception bei renderKunden (Detail/Stammdaten): " + e.message); }
+  const detailHtml = window.document.getElementById("view").innerHTML;
+  assert(detailHtml.includes('value="Ma&quot;ler'), "Name im value-Attribut korrekt escAttr()-escaped (kein Attribut-Bruch)");
+  assert(!detailHtml.includes('value="Ma"ler'), "Kein unescaped-Anführungszeichen, das das Attribut aufbricht");
   window.S.kunden = window.S.kunden.filter((k) => k.id !== "test-evil-1");
 
   console.log("\n== CRUD: Mitarbeiter ==");
@@ -151,6 +150,52 @@ async function main() {
     catch (e) { ok = false; errMsg = e.message; }
     assert(ok, "Modul '" + mod.id + "' rendert ohne Exception" + (ok ? "" : " (" + errMsg + ")"));
   }
+
+  console.log("\n== Personalakte (Tabs, Pflichtdokumente, Vorname/Nachname) ==");
+  const pk = window.S.mitarbeiter.find((x) => x.id === "m1");
+  pk.vorname = "Max"; pk.nachname = "Mustermann";
+  ["stammdaten", "dokumente", "stundenzettel", "urlaub", "lohn"].forEach((t) => {
+    let ok = true, msg = "";
+    try { window._pkTab = t; window.openPersonalakte("m1"); } catch (e) { ok = false; msg = e.message; }
+    assert(ok, "Personalakte-Tab '" + t + "' rendert ohne Exception" + (ok ? "" : " (" + msg + ")"));
+  });
+  window.closeModal();
+  const pflichtHtml = window.renderPflichtChecklist("mitarbeiter", "m1");
+  assert(pflichtHtml.includes("Pflichtdokumente"), "Pflichtdokumente-Checkliste wird für Mitarbeiter gerendert");
+  assert(pflichtHtml.includes("Personalausweis"), "Default-Pflichtdokumente-Liste enthält erwarteten Eintrag");
+
+  console.log("\n== Subunternehmer- und Kunden-Detailseiten (Tabs) ==");
+  window.S.subunternehmer.push({ id: "sub1", firma: "Testbau GmbH", ansprechpartner: "", tel: "", email: "", gewerk: "Elektro", notizen: "", dokumente: [] });
+  ["dokumente", "stammdaten", "projekte", "notizen"].forEach((t) => {
+    let ok = true, msg = "";
+    try { window.document.getElementById("view").innerHTML = ""; window.renderSubunternehmer(window.document.getElementById("view"), "sub1", t); }
+    catch (e) { ok = false; msg = e.message; }
+    assert(ok, "Subunternehmer-Tab '" + t + "' rendert ohne Exception" + (ok ? "" : " (" + msg + ")"));
+  });
+  window.S.kunden.push({ id: "kd1", name: "Testkunde GmbH", ansprechpartner: "", tel: "", email: "", adresse: "", notizen: "", dokumente: [] });
+  ["dokumente", "stammdaten", "projekte", "notizen"].forEach((t) => {
+    let ok = true, msg = "";
+    try { window.document.getElementById("view").innerHTML = ""; window.renderKunden(window.document.getElementById("view"), "kd1", t); }
+    catch (e) { ok = false; msg = e.message; }
+    assert(ok, "Kunden-Tab '" + t + "' rendert ohne Exception" + (ok ? "" : " (" + msg + ")"));
+  });
+
+  console.log("\n== Projekt <-> Subunternehmer Zuordnung ==");
+  window.addSubToProjekt("sub1", "p1");
+  assert(window.S.projekte.find((p) => p.id === "p1").subunternehmer.includes("sub1"), "Subunternehmer wird dem Projekt zugeordnet");
+  window.removeSubFromProjekt("sub1", "p1");
+  assert(!window.S.projekte.find((p) => p.id === "p1").subunternehmer.includes("sub1"), "Subunternehmer-Zuordnung wird wieder entfernt");
+
+  console.log("\n== Briefkopf Live-Vorschau (Split-Layout) ==");
+  window.S.firma.name = "Ma\"ler & <Söhne> GmbH";
+  window.S.firma.slogan = "Test-Slogan";
+  let briefOk = true, briefMsg = "";
+  try { window.document.getElementById("view").innerHTML = ""; window.renderEinstellungen(window.document.getElementById("view"), "firma"); }
+  catch (e) { briefOk = false; briefMsg = e.message; }
+  assert(briefOk, "Briefkopf & Firma (Live-Vorschau) rendert ohne Exception" + (briefOk ? "" : " (" + briefMsg + ")"));
+  const firmaViewHtml = window.document.getElementById("view").innerHTML;
+  assert(firmaViewHtml.includes("Live-Vorschau") && firmaViewHtml.includes("Konfigurieren"), "Split-Layout Konfigurieren/Live-Vorschau vorhanden");
+  assert(firmaViewHtml.includes("&lt;Söhne&gt;"), "Firmenname in Live-Vorschau korrekt escaped (kein Tag-Ausbruch)");
 
   console.log("\n=================================");
   console.log(passed + " Tests bestanden, " + failures + " fehlgeschlagen.");

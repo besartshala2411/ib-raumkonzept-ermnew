@@ -345,7 +345,7 @@ function defaultState(){
   return {
     _v: 1,
     firma: {
-      name:"IB Raumkonzept GmbH", strasse:"", plz:"", ort:"", tel:"", email:"", web:"",
+      name:"IB Raumkonzept GmbH", slogan:"", strasse:"", plz:"", ort:"", tel:"", email:"", web:"",
       iban:"", bic:"", bank:"", steuernr:"", ustid:"", geschaeftsfuehrer:"", amtsgericht:"", hrb:"",
       logo:""
     },
@@ -371,6 +371,37 @@ function defaultState(){
     benachrichtigungen: [],
     einstellungen: {
       rechnungNrCounter: 1,
+      pflichtdokumenteDefs: {
+        mitarbeiter: [
+          {name:"Personalausweis / Reisepass", icon:"🪪"},
+          {name:"Aufenthaltstitel / Arbeitserlaubnis", icon:"📘"},
+          {name:"Sozialversicherungsausweis", icon:"👥"},
+          {name:"Lohnsteuerabzugsmerkmale (ELStAM)", icon:"🧾"},
+          {name:"Führerschein", icon:"🚗"},
+          {name:"Gesundheitsuntersuchung (G25)", icon:"🩺"},
+          {name:"SOKA-Bau Anmeldung", icon:"🏗️"},
+        ],
+        subunternehmer: [
+          {name:"Freistellungsbescheinigung §48b", icon:"📄"},
+          {name:"§13b UStG Bauleistungen (Steuerschuldnerschaft)", icon:"🧾"},
+          {name:"Handwerkskarte / Befähigungsnachweis", icon:"🔧"},
+          {name:"Gewerbeanmeldung", icon:"📘"},
+          {name:"Betriebshaftpflicht", icon:"🛡️"},
+          {name:"BG-Nachweis / Unbedenklichkeit", icon:"💰"},
+          {name:"Sozialversicherungsnachweis", icon:"👥"},
+          {name:"Eintragung Handwerksrolle", icon:"📋"},
+          {name:"Steuerliche Unbedenklichkeitsbescheinigung", icon:"🏛️"},
+          {name:"Personalausweis / Reisepass", icon:"🪪"},
+          {name:"Aufenthalts-/Arbeitstitel", icon:"📜"},
+        ],
+        kunden: [
+          {name:"Auftragsbestätigung / Vertrag", icon:"📄"},
+          {name:"Baugenehmigung", icon:"🏛️"},
+          {name:"Grundbuchauszug / Eigentumsnachweis", icon:"📋"},
+          {name:"Bonitätsauskunft", icon:"💰"},
+          {name:"Vollmacht (bei Vertretung)", icon:"🪪"},
+        ],
+      },
     },
     currentUserId: null,
   };
@@ -412,13 +443,32 @@ function ensureShape(s){
   }
   for(const k in d.firma) if(s.firma[k] === undefined) s.firma[k] = d.firma[k];
   for(const k in d.einstellungen) if(s.einstellungen[k] === undefined) s.einstellungen[k] = d.einstellungen[k];
+  if(!s.einstellungen.pflichtdokumenteDefs) s.einstellungen.pflichtdokumenteDefs = d.einstellungen.pflichtdokumenteDefs;
+  else for(const k in d.einstellungen.pflichtdokumenteDefs) if(!s.einstellungen.pflichtdokumenteDefs[k]) s.einstellungen.pflichtdokumenteDefs[k] = d.einstellungen.pflichtdokumenteDefs[k];
   s.mitarbeiter.forEach(m=>{
     if(!m.dokumente) m.dokumente=[];
     if(!m.status) m.status="aktiv";
     if(m.urlaubstageJahr==null) m.urlaubstageJahr=30;
+    if(m.vorname==null || m.nachname==null){
+      const parts = String(m.name||"").trim().split(/\s+/);
+      if(m.vorname==null) m.vorname = parts[0]||"";
+      if(m.nachname==null) m.nachname = parts.slice(1).join(" ");
+    }
+    if(m.abteilung==null) m.abteilung = "";
+    if(m.brutto==null) m.brutto = 0;
+    if(m.vertragstyp==null) m.vertragstyp = "Vollzeit";
+  });
+  s.kunden.forEach(k=>{
+    if(!k.dokumente) k.dokumente=[];
+    if(k.notizen==null) k.notizen="";
+  });
+  s.subunternehmer.forEach(sub=>{
+    if(!sub.dokumente) sub.dokumente=[];
+    if(sub.notizen==null) sub.notizen="";
   });
   s.projekte.forEach(p=>{
     if(!p.team) p.team=[];
+    if(!p.subunternehmer) p.subunternehmer=[];
     if(!p.fotos) p.fotos=[];
     if(!p.dokumente) p.dokumente=[];
     if(!p.material) p.material=[];
@@ -805,6 +855,90 @@ function businessDaysBetween(vonISO, bisISO){
 function fieldMic(id){ return micButtonHTML(id); }
 
 /* =========================================================
+   PFLICHTDOKUMENTE-CHECKLISTE (generisch für Mitarbeiter/Subunternehmer/Kunden)
+========================================================= */
+function pflichtEntityArray(type){
+  return type==="mitarbeiter" ? S.mitarbeiter : type==="subunternehmer" ? S.subunternehmer : S.kunden;
+}
+function pflichtGetEntity(type, id){
+  return pflichtEntityArray(type).find(x=>x.id===id);
+}
+function pflichtLabel(type){
+  return {mitarbeiter:"Mitarbeiter", subunternehmer:"Subunternehmer", kunden:"Kunden"}[type] || type;
+}
+function renderPflichtChecklist(type, id){
+  const entity = pflichtGetEntity(type, id);
+  const defs = (S.einstellungen.pflichtdokumenteDefs && S.einstellungen.pflichtdokumenteDefs[type]) || [];
+  if(!entity.dokumente) entity.dokumente = [];
+  const missing = defs.filter(d=>!entity.dokumente.some(doc=>doc.pflichttyp===d.name));
+  return `
+    <div class="card" style="margin-bottom:16px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+        <b>📋 Pflichtdokumente</b>
+        <button class="btn sm" onclick="openPflichtDefsForm('${type}')">⚙️ Verwalten</button>
+      </div>
+      ${missing.length ? `<div style="background:var(--amber-bg); border:1px solid var(--amber); border-radius:10px; padding:10px 14px; margin-bottom:12px; font-size:13px;">
+        <b style="color:var(--amber);">⚠ Fehlende Pflichtdokumente:</b> ${missing.map(m=>escHtml(m.name)).join(" · ")}
+      </div>` : ""}
+      <div style="display:flex; flex-direction:column; gap:6px;">
+        ${defs.map(d=>{
+          const doc = entity.dokumente.find(doc=>doc.pflichttyp===d.name);
+          return doc ? `
+            <div style="display:flex; align-items:center; gap:10px; padding:10px 14px; background:var(--card2); border-radius:10px;">
+              <span style="color:var(--green); font-size:15px;">✅</span>
+              <span>${d.icon||"📄"}</span>
+              <a href="${escAttr(doc.dataURL)}" download="${escAttr(doc.name)}" style="flex:1; font-size:13px;">${escHtml(d.name)}</a>
+              <button class="iconBtn" onclick="removePflichtDok('${type}','${escAttr(id)}','${escAttr(doc.id)}')">🗑️</button>
+            </div>
+          ` : `
+            <label style="display:flex; align-items:center; gap:10px; padding:10px 14px; background:var(--card2); border-radius:10px; cursor:pointer;">
+              <span style="color:var(--red); font-size:15px;">⭕</span>
+              <span>${d.icon||"📄"}</span>
+              <span style="flex:1; font-size:13px;">${escHtml(d.name)}</span>
+              <span class="btn sm">Hochladen</span>
+              <input type="file" style="display:none;" onchange="uploadPflichtDok('${type}','${escAttr(id)}','${escAttr(d.name)}', this)">
+            </label>
+          `;
+        }).join("") || `<div class="empty" style="padding:14px;">Keine Pflichtdokumente definiert.</div>`}
+      </div>
+    </div>
+  `;
+}
+async function uploadPflichtDok(type, id, defName, input){
+  const file = input.files[0]; if(!file) return;
+  const entity = pflichtGetEntity(type, id);
+  try{
+    const dataURL = await fileToDataURL(file);
+    entity.dokumente.push({id:uid(), name:file.name, dataURL, pflichttyp:defName, datum:new Date().toISOString()});
+    saveState(); route(location.hash);
+    toast("Dokument hochgeladen.", "success");
+  }catch(e){ toast("Datei konnte nicht gelesen werden: "+e.message, "error"); }
+}
+function removePflichtDok(type, id, docId){
+  const entity = pflichtGetEntity(type, id);
+  entity.dokumente = entity.dokumente.filter(d=>d.id!==docId);
+  saveState(); route(location.hash);
+}
+function openPflichtDefsForm(type){
+  const defs = (S.einstellungen.pflichtdokumenteDefs && S.einstellungen.pflichtdokumenteDefs[type]) || [];
+  openModal(`
+    <div class="modalHead"><div class="modalTitle">Pflichtdokumente – ${escHtml(pflichtLabel(type))}</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
+    <div class="formRow"><label>Ein Dokumenttyp pro Zeile</label><textarea id="pdDefs" style="min-height:240px;">${escHtml(defs.map(d=>d.name).join("\n"))}</textarea></div>
+    <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="savePflichtDefs('${type}')">Speichern</button></div>
+  `);
+}
+function savePflichtDefs(type){
+  const names = document.getElementById("pdDefs").value.split("\n").map(s=>s.trim()).filter(Boolean);
+  const old = (S.einstellungen.pflichtdokumenteDefs && S.einstellungen.pflichtdokumenteDefs[type]) || [];
+  S.einstellungen.pflichtdokumenteDefs[type] = names.map(name=>{
+    const existing = old.find(d=>d.name===name);
+    return existing || {name, icon:"📄"};
+  });
+  saveState(); closeModal(); route(location.hash);
+  toast("Pflichtdokumente-Liste gespeichert.", "success");
+}
+
+/* =========================================================
    MODULE: DASHBOARD
 ========================================================= */
 function renderDashboard(view){
@@ -915,8 +1049,17 @@ function buildDailyOverviewPrompt(){
 }
 
 /* =========================================================
-   MODULE: MITARBEITER
+   MODULE: MITARBEITER (Personalakte)
 ========================================================= */
+const MITARBEITER_ABTEILUNGEN = ["Trockenbau","Malerarbeiten","Fliesenverlegung","Sanitärinstallation","Planung","Büro/Verwaltung","Lager/Fuhrpark"];
+const MITARBEITER_VERTRAGSTYPEN = ["Vollzeit","Teilzeit","Minijob","Ausbildung","Werkstudent"];
+const PERSONALAKTE_TABS = [
+  {id:"stammdaten", label:"Stammdaten", icon:"🧾"},
+  {id:"dokumente", label:"Dokumente", icon:"📁"},
+  {id:"stundenzettel", label:"Stundenzettel", icon:"⏱️"},
+  {id:"urlaub", label:"Urlaub", icon:"🏖️"},
+  {id:"lohn", label:"Lohn", icon:"💶"},
+];
 function renderMitarbeiter(view){
   view.innerHTML = `
     <div class="pageHead">
@@ -928,15 +1071,15 @@ function renderMitarbeiter(view){
         <thead><tr><th>Name</th><th>Position</th><th>Telefon</th><th>E-Mail</th><th>Eintritt</th><th>Status</th><th></th></tr></thead>
         <tbody>
         ${S.mitarbeiter.map(m=>`
-          <tr>
+          <tr style="cursor:pointer;" onclick="openMitarbeiterForm('${escAttr(m.id)}')">
             <td><b>${escHtml(m.name)}</b></td>
             <td>${escHtml(m.position||"–")}</td>
             <td>${escHtml(m.tel||"–")}</td>
             <td>${escHtml(m.email||"–")}</td>
             <td>${fmtDate(m.eintritt)}</td>
             <td>${statusBadge(m.status)}</td>
-            <td style="text-align:right; white-space:nowrap;">
-              <button class="iconBtn" onclick="openMitarbeiterForm('${escAttr(m.id)}')" title="Bearbeiten">✏️</button>
+            <td style="text-align:right; white-space:nowrap;" onclick="event.stopPropagation()">
+              <button class="iconBtn" onclick="openMitarbeiterForm('${escAttr(m.id)}')" title="Personalakte öffnen">📋</button>
               <button class="iconBtn" onclick="deleteMitarbeiter('${escAttr(m.id)}')" title="Löschen">🗑️</button>
             </td>
           </tr>
@@ -951,72 +1094,188 @@ function statusBadge(status){
   return `<span class="badge ${map[status]||"gray"}">${escHtml(status||"–")}</span>`;
 }
 function openMitarbeiterForm(id){
-  const m = id ? S.mitarbeiter.find(x=>x.id===id) : {id:uid(), name:"", position:"", tel:"", email:"", adresse:"", eintritt:todayISO(), status:"aktiv", urlaubstageJahr:30, dokumente:[]};
+  if(!id){
+    const m = {id:uid(), vorname:"", nachname:"", name:"", position:"", abteilung:"", tel:"", email:"", adresse:"", geburtstag:"", eintritt:todayISO(), brutto:0, urlaubstageJahr:30, stundenlohn:0, vertragstyp:"Vollzeit", status:"aktiv", dokumente:[]};
+    window._newMitarbeiterDraft = m;
+    openModal(`
+      <div class="modalHead"><div class="modalTitle">Mitarbeiter anlegen</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
+      ${renderMitarbeiterStammdatenFields(m)}
+      <div class="modalFoot">
+        <button class="btn" onclick="closeModal()">Abbrechen</button>
+        <button class="btn primary" onclick="saveMitarbeiter('${escAttr(m.id)}', false)">Speichern</button>
+      </div>
+    `, true);
+    return;
+  }
+  window._pkTab = "stammdaten";
+  openPersonalakte(id);
+}
+function openPersonalakte(id){
+  const m = S.mitarbeiter.find(x=>x.id===id);
+  const tab = window._pkTab || "stammdaten";
   openModal(`
-    <div class="modalHead"><div class="modalTitle">${id?"Mitarbeiter bearbeiten":"Mitarbeiter anlegen"}</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
-    <div class="grid cols-2">
-      <div class="formRow"><label>Name</label><div class="micWrap"><input id="mName" type="text" value="${escAttr(m.name)}">${fieldMic("mName")}</div></div>
-      <div class="formRow"><label>Position</label><input id="mPosition" type="text" value="${escAttr(m.position||"")}"></div>
-      <div class="formRow"><label>Telefon</label><input id="mTel" type="tel" value="${escAttr(m.tel||"")}"></div>
-      <div class="formRow"><label>E-Mail</label><input id="mEmail" type="email" value="${escAttr(m.email||"")}"></div>
-      <div class="formRow" style="grid-column:1/-1;"><label>Adresse</label><input id="mAdresse" type="text" value="${escAttr(m.adresse||"")}"></div>
-      <div class="formRow"><label>Eintrittsdatum</label><input id="mEintritt" type="date" value="${escAttr(m.eintritt||"")}"></div>
-      <div class="formRow"><label>Geburtstag</label><input id="mGeburtstag" type="date" value="${escAttr(m.geburtstag||"")}"></div>
-      <div class="formRow"><label>Urlaubstage/Jahr</label><input id="mUrlaub" type="number" value="${escAttr(m.urlaubstageJahr||30)}"></div>
-      <div class="formRow"><label>Stundenlohn (€, für Lohn/DATEV)</label><input id="mLohn" type="number" step="0.01" value="${escAttr(m.stundenlohn||0)}"></div>
-      <div class="formRow"><label>Status</label>
-        <select id="mStatus">
-          ${["aktiv","krank","urlaub","inaktiv"].map(s=>`<option value="${s}" ${m.status===s?"selected":""}>${s}</option>`).join("")}
-        </select>
-      </div>
-    </div>
-    <div class="formRow"><label>Dokumente</label>
-      <input type="file" id="mDocInput" multiple onchange="addMitarbeiterDoc('${escAttr(m.id)}')">
-      <div id="mDocList" style="margin-top:8px; display:flex; flex-direction:column; gap:6px;">
-        ${(m.dokumente||[]).map(d=>`<div style="display:flex; justify-content:space-between; align-items:center; background:var(--card2); padding:6px 10px; border-radius:8px; font-size:12.5px;"><a href="${escAttr(d.dataURL)}" download="${escAttr(d.name)}">${escHtml(d.name)}</a><button class="iconBtn" onclick="removeMitarbeiterDoc('${escAttr(m.id)}','${escAttr(d.id)}')">🗑️</button></div>`).join("")}
-      </div>
-    </div>
-    <div class="modalFoot">
-      <button class="btn" onclick="closeModal()">Abbrechen</button>
-      <button class="btn primary" onclick="saveMitarbeiter('${escAttr(m.id)}', ${id?"true":"false"})">Speichern</button>
-    </div>
+    <div class="modalHead"><div class="modalTitle">📋 Personalakte — ${escHtml(m.name)}</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
+    <div class="tabs">${PERSONALAKTE_TABS.map(t=>`<button class="tabBtn ${tab===t.id?"active":""}" onclick="switchPersonalakteTab('${escAttr(id)}','${t.id}')">${t.icon} ${t.label}</button>`).join("")}</div>
+    <div id="pkBody"></div>
   `, true);
-  if(!id) window._newMitarbeiterDraft = m;
+  renderPersonalakteTab(id, tab);
 }
-function getOrDraftMitarbeiter(id){
-  return S.mitarbeiter.find(x=>x.id===id) || window._newMitarbeiterDraft;
+function switchPersonalakteTab(id, tab){
+  window._pkTab = tab;
+  openPersonalakte(id);
 }
-async function addMitarbeiterDoc(id){
-  const input = document.getElementById("mDocInput");
-  const m = getOrDraftMitarbeiter(id);
+function renderPersonalakteTab(id, tab){
+  const body = document.getElementById("pkBody");
+  const m = S.mitarbeiter.find(x=>x.id===id);
+  if(!body || !m) return;
+  if(tab==="dokumente") body.innerHTML = renderPflichtChecklist("mitarbeiter", id) + renderMitarbeiterFreieDokumente(m);
+  else if(tab==="stundenzettel") body.innerHTML = renderMitarbeiterStundenzettelTab(m);
+  else if(tab==="urlaub") body.innerHTML = renderMitarbeiterUrlaubTab(m);
+  else if(tab==="lohn") body.innerHTML = renderMitarbeiterLohnTab(m);
+  else body.innerHTML = renderMitarbeiterStammdatenFields(m) + `
+    <div class="modalFoot">
+      <button class="btn" onclick="closeModal()">Schließen</button>
+      <button class="btn primary" onclick="saveMitarbeiter('${escAttr(id)}', true)">Speichern</button>
+    </div>`;
+}
+function renderMitarbeiterStammdatenFields(m){
+  return `
+    <div class="grid cols-2">
+      <div class="formRow"><label>Vorname</label><div class="micWrap"><input id="mVorname" type="text" value="${escAttr(m.vorname||"")}">${fieldMic("mVorname")}</div></div>
+      <div class="formRow"><label>Nachname</label><div class="micWrap"><input id="mNachname" type="text" value="${escAttr(m.nachname||"")}">${fieldMic("mNachname")}</div></div>
+      <div class="formRow"><label>Position</label><input id="mPosition" type="text" value="${escAttr(m.position||"")}"></div>
+      <div class="formRow"><label>Abteilung</label><select id="mAbteilung">
+        <option value="">–</option>
+        ${MITARBEITER_ABTEILUNGEN.map(a=>`<option value="${escAttr(a)}" ${m.abteilung===a?"selected":""}>${escHtml(a)}</option>`).join("")}
+      </select></div>
+      <div class="formRow"><label>E-Mail</label><input id="mEmail" type="email" value="${escAttr(m.email||"")}"></div>
+      <div class="formRow"><label>Telefon</label><input id="mTel" type="tel" value="${escAttr(m.tel||"")}"></div>
+      <div class="formRow"><label>Geburtsdatum</label><input id="mGeburtstag" type="date" value="${escAttr(m.geburtstag||"")}"></div>
+      <div class="formRow"><label>Eintritt</label><input id="mEintritt" type="date" value="${escAttr(m.eintritt||"")}"></div>
+      <div class="formRow"><label>Brutto €</label><input id="mBrutto" type="number" step="0.01" value="${escAttr(m.brutto||0)}"></div>
+      <div class="formRow"><label>Urlaubstage</label><input id="mUrlaub" type="number" value="${escAttr(m.urlaubstageJahr||30)}"></div>
+      <div class="formRow"><label>Vertragstyp</label><select id="mVertragstyp">
+        ${MITARBEITER_VERTRAGSTYPEN.map(v=>`<option value="${escAttr(v)}" ${m.vertragstyp===v?"selected":""}>${escHtml(v)}</option>`).join("")}
+      </select></div>
+      <div class="formRow"><label>Status</label><select id="mStatus">
+        ${["aktiv","krank","urlaub","inaktiv"].map(s=>`<option value="${s}" ${m.status===s?"selected":""}>${s}</option>`).join("")}
+      </select></div>
+      <div class="formRow" style="grid-column:1/-1;"><label>Adresse</label><input id="mAdresse" type="text" value="${escAttr(m.adresse||"")}"></div>
+      <div class="formRow"><label>Stundenlohn (€, für DATEV)</label><input id="mLohn" type="number" step="0.01" value="${escAttr(m.stundenlohn||0)}"></div>
+    </div>
+  `;
+}
+function renderMitarbeiterFreieDokumente(m){
+  const freie = (m.dokumente||[]).filter(d=>!d.pflichttyp);
+  return `
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+        <b>Weitere Dokumente</b>
+        <label class="btn sm" style="margin:0;">⬆ Hochladen<input type="file" multiple style="display:none;" onchange="addMitarbeiterDoc('${escAttr(m.id)}', this)"></label>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:6px;">
+        ${freie.map(d=>`<div style="display:flex; justify-content:space-between; align-items:center; background:var(--card2); padding:8px 12px; border-radius:8px; font-size:12.5px;"><a href="${escAttr(d.dataURL)}" download="${escAttr(d.name)}">📄 ${escHtml(d.name)}</a><button class="iconBtn" onclick="removeMitarbeiterDoc('${escAttr(m.id)}','${escAttr(d.id)}')">🗑️</button></div>`).join("") || `<div class="empty" style="padding:10px;">Keine weiteren Dokumente.</div>`}
+      </div>
+    </div>
+  `;
+}
+async function addMitarbeiterDoc(id, input){
+  const m = S.mitarbeiter.find(x=>x.id===id);
   for(const file of input.files){
     try{
       const dataURL = await fileToDataURL(file);
-      m.dokumente.push({id:uid(), name:file.name, dataURL});
+      m.dokumente.push({id:uid(), name:file.name, dataURL, datum:new Date().toISOString()});
     }catch(e){ toast("Datei konnte nicht geladen werden: "+e.message, "error"); }
   }
-  document.getElementById("mDocList").innerHTML = (m.dokumente||[]).map(d=>`<div style="display:flex; justify-content:space-between; align-items:center; background:var(--card2); padding:6px 10px; border-radius:8px; font-size:12.5px;"><a href="${escAttr(d.dataURL)}" download="${escAttr(d.name)}">${escHtml(d.name)}</a><button class="iconBtn" onclick="removeMitarbeiterDoc('${escAttr(id)}','${escAttr(d.id)}')">🗑️</button></div>`).join("");
+  saveState();
+  renderPersonalakteTab(id, "dokumente");
 }
 function removeMitarbeiterDoc(id, docId){
-  const m = getOrDraftMitarbeiter(id);
+  const m = S.mitarbeiter.find(x=>x.id===id);
   m.dokumente = m.dokumente.filter(d=>d.id!==docId);
-  document.getElementById("mDocList").innerHTML = (m.dokumente||[]).map(d=>`<div style="display:flex; justify-content:space-between; align-items:center; background:var(--card2); padding:6px 10px; border-radius:8px; font-size:12.5px;"><a href="${escAttr(d.dataURL)}" download="${escAttr(d.name)}">${escHtml(d.name)}</a><button class="iconBtn" onclick="removeMitarbeiterDoc('${escAttr(id)}','${escAttr(d.id)}')">🗑️</button></div>`).join("");
+  saveState();
+  renderPersonalakteTab(id, "dokumente");
+}
+function renderMitarbeiterStundenzettelTab(m){
+  const entries = S.zeiterfassung.filter(z=>z.mitarbeiterId===m.id && z.kommen && z.gehen).slice().sort((a,b)=>b.datum.localeCompare(a.datum)).slice(0,20);
+  const monat = todayISO().slice(0,7);
+  const monatsstunden = S.zeiterfassung.filter(z=>z.mitarbeiterId===m.id && z.datum && z.datum.startsWith(monat) && z.kommen && z.gehen).reduce((s,z)=>s+hoursBetween(z.kommen,z.gehen),0);
+  return `
+    <div class="card">
+      <div class="grid cols-2" style="margin-bottom:14px;">
+        <div class="kpi"><div class="kpiIcon">⏱️</div><div class="kpiVal">${monatsstunden.toFixed(1)} h</div><div class="kpiLabel">Stunden diesen Monat</div></div>
+        <div class="kpi"><div class="kpiIcon">📅</div><div class="kpiVal">${entries.length}</div><div class="kpiLabel">Letzte Einträge</div></div>
+      </div>
+      <div class="tableWrap"><table>
+        <thead><tr><th>Datum</th><th>Kommen</th><th>Gehen</th><th>Stunden</th></tr></thead>
+        <tbody>
+        ${entries.map(z=>`<tr><td>${fmtDate(z.datum)}</td><td>${z.kommen}</td><td>${z.gehen}</td><td>${hoursBetween(z.kommen,z.gehen).toFixed(2)} h</td></tr>`).join("") || `<tr><td colspan="4"><div class="empty">Keine Einträge.</div></td></tr>`}
+        </tbody>
+      </table></div>
+      <button class="btn sm" style="margin-top:12px;" onclick="closeModal(); goTo('#stundenzettel')">📋 Vollständigen Stundenzettel öffnen</button>
+    </div>
+  `;
+}
+function renderMitarbeiterUrlaubTab(m){
+  const jahr = new Date().getFullYear();
+  const genommen = S.urlaubsantraege.filter(u=>u.mitarbeiterId===m.id && u.status==="genehmigt" && u.von && u.von.startsWith(String(jahr))).reduce((s,u)=>s+u.tage,0);
+  const rest = (m.urlaubstageJahr||30) - genommen;
+  const antraege = S.urlaubsantraege.filter(u=>u.mitarbeiterId===m.id).slice().sort((a,b)=>b.von.localeCompare(a.von));
+  return `
+    <div class="card">
+      <div class="grid cols-2" style="margin-bottom:14px;">
+        <div class="kpi"><div class="kpiIcon">🏖️</div><div class="kpiVal">${rest}</div><div class="kpiLabel">Resturlaub ${jahr}</div></div>
+        <div class="kpi"><div class="kpiIcon">✅</div><div class="kpiVal">${genommen}</div><div class="kpiLabel">Genommen ${jahr}</div></div>
+      </div>
+      <div class="tableWrap"><table>
+        <thead><tr><th>Von</th><th>Bis</th><th>Tage</th><th>Status</th></tr></thead>
+        <tbody>
+        ${antraege.map(u=>`<tr><td>${fmtDate(u.von)}</td><td>${fmtDate(u.bis)}</td><td>${u.tage}</td><td>${statusBadgeUrlaub(u.status)}</td></tr>`).join("") || `<tr><td colspan="4"><div class="empty">Keine Anträge.</div></td></tr>`}
+        </tbody>
+      </table></div>
+      <button class="btn sm" style="margin-top:12px;" onclick="closeModal(); goTo('#urlaub')">🏖️ Urlaubsverwaltung öffnen</button>
+    </div>
+  `;
+}
+function renderMitarbeiterLohnTab(m){
+  const monat = todayISO().slice(0,7);
+  const monatsstunden = S.zeiterfassung.filter(z=>z.mitarbeiterId===m.id && z.datum && z.datum.startsWith(monat) && z.kommen && z.gehen).reduce((s,z)=>s+hoursBetween(z.kommen,z.gehen),0);
+  const stundenlohnSumme = monatsstunden * (Number(m.stundenlohn)||0);
+  return `
+    <div class="card">
+      <div class="grid cols-2" style="margin-bottom:14px;">
+        <div class="formRow"><label>Brutto-Monatsgehalt (€)</label><input type="number" step="0.01" value="${escAttr(m.brutto||0)}" onchange="quickUpdateMitarbeiterField('${escAttr(m.id)}','brutto',this.value)"></div>
+        <div class="formRow"><label>Stundenlohn (€)</label><input type="number" step="0.01" value="${escAttr(m.stundenlohn||0)}" onchange="quickUpdateMitarbeiterField('${escAttr(m.id)}','stundenlohn',this.value)"></div>
+      </div>
+      <div class="kpi" style="margin-bottom:14px;"><div class="kpiIcon">💶</div><div class="kpiVal">${fmtCurrency(stundenlohnSumme)}</div><div class="kpiLabel">Geschätzter Stundenlohn-Verdienst (${monat})</div></div>
+      <button class="btn sm" onclick="closeModal(); goTo('#datev')">💾 Zum DATEV/Lohn-Export</button>
+    </div>
+  `;
+}
+function quickUpdateMitarbeiterField(id, field, val){
+  const m = S.mitarbeiter.find(x=>x.id===id);
+  m[field] = Number(val)||0;
+  saveState();
 }
 function saveMitarbeiter(id, isEdit){
-  const name = document.getElementById("mName").value.trim();
-  if(!name){ toast("Name ist erforderlich.", "warn"); return; }
+  const vorname = document.getElementById("mVorname").value.trim();
+  const nachname = document.getElementById("mNachname").value.trim();
+  if(!vorname && !nachname){ toast("Bitte Vor- oder Nachname angeben.", "warn"); return; }
   let m = isEdit ? S.mitarbeiter.find(x=>x.id===id) : window._newMitarbeiterDraft;
-  m.name = name;
+  m.vorname = vorname; m.nachname = nachname; m.name = (vorname+" "+nachname).trim();
   m.position = document.getElementById("mPosition").value.trim();
+  m.abteilung = document.getElementById("mAbteilung").value;
   m.tel = document.getElementById("mTel").value.trim();
   m.email = document.getElementById("mEmail").value.trim();
   m.adresse = document.getElementById("mAdresse").value.trim();
   m.eintritt = document.getElementById("mEintritt").value;
   m.geburtstag = document.getElementById("mGeburtstag").value;
+  m.brutto = Number(document.getElementById("mBrutto").value)||0;
   m.urlaubstageJahr = Number(document.getElementById("mUrlaub").value)||30;
   m.stundenlohn = Number(document.getElementById("mLohn").value)||0;
+  m.vertragstyp = document.getElementById("mVertragstyp").value;
   m.status = document.getElementById("mStatus").value;
-  if(!isEdit){ S.mitarbeiter.push(m); window._newMitarbeiterDraft=null; }
+  if(!isEdit){ if(!m.dokumente) m.dokumente=[]; S.mitarbeiter.push(m); window._newMitarbeiterDraft=null; }
   saveState();
   closeModal();
   route(location.hash);
@@ -1310,7 +1569,14 @@ reg("onboarding","Onboarding","🆕","Personal",renderOnboarding);
 /* =========================================================
    MODULE: KUNDEN
 ========================================================= */
-function renderKunden(view){
+const KUNDE_TABS = [
+  {id:"dokumente", label:"Dokumente", icon:"📁"},
+  {id:"stammdaten", label:"Stammdaten", icon:"🧾"},
+  {id:"projekte", label:"Projekte", icon:"🏢"},
+  {id:"notizen", label:"Notizen", icon:"📝"},
+];
+function renderKunden(view, id, tab){
+  if(id) return renderKundeDetail(view, id, tab||"dokumente");
   view.innerHTML = `
     <div class="pageHead">
       <div><div class="pageTitle">Kunden</div><div class="pageSub">${S.kunden.length} Kunden</div></div>
@@ -1323,11 +1589,11 @@ function renderKunden(view){
       <thead><tr><th>Name</th><th>Ansprechpartner</th><th>Telefon</th><th>E-Mail</th><th>Adresse</th><th></th></tr></thead>
       <tbody>
       ${S.kunden.map(k=>`
-        <tr>
+        <tr style="cursor:pointer;" onclick="goTo('#kunden/${escAttr(k.id)}')">
           <td><b>${escHtml(k.name)}</b></td><td>${escHtml(k.ansprechpartner||"–")}</td>
           <td>${escHtml(k.tel||"–")}</td><td>${escHtml(k.email||"–")}</td><td>${escHtml(k.adresse||"–")}</td>
-          <td style="text-align:right; white-space:nowrap;">
-            <button class="iconBtn" onclick="openKundeForm('${escAttr(k.id)}')">✏️</button>
+          <td style="text-align:right; white-space:nowrap;" onclick="event.stopPropagation()">
+            <button class="iconBtn" onclick="goTo('#kunden/${escAttr(k.id)}')">📋</button>
             <button class="iconBtn" onclick="deleteKunde('${escAttr(k.id)}')">🗑️</button>
           </td>
         </tr>
@@ -1336,38 +1602,147 @@ function renderKunden(view){
     </table></div></div>
   `;
 }
-function openKundeForm(id){
-  const k = id ? S.kunden.find(x=>x.id===id) : {id:uid(), name:"", ansprechpartner:"", tel:"", email:"", adresse:"", notizen:""};
-  openModal(`
-    <div class="modalHead"><div class="modalTitle">${id?"Kunde bearbeiten":"Kunde anlegen"}</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
+function renderKundeStammdatenFields(k){
+  return `
     <div class="grid cols-2">
-      <div class="formRow"><label>Name / Firma</label><input id="kName" type="text" value="${escAttr(k.name)}"></div>
+      <div class="formRow"><label>Name / Firma</label><div class="micWrap"><input id="kName" type="text" value="${escAttr(k.name)}">${fieldMic("kName")}</div></div>
       <div class="formRow"><label>Ansprechpartner</label><input id="kAnsprech" type="text" value="${escAttr(k.ansprechpartner||"")}"></div>
       <div class="formRow"><label>Telefon</label><input id="kTel" type="tel" value="${escAttr(k.tel||"")}"></div>
       <div class="formRow"><label>E-Mail</label><input id="kEmail" type="email" value="${escAttr(k.email||"")}"></div>
       <div class="formRow" style="grid-column:1/-1;"><label>Adresse</label><input id="kAdresse" type="text" value="${escAttr(k.adresse||"")}"></div>
     </div>
-    <div class="formRow"><label>Notizen</label><div class="micWrap"><textarea id="kNotizen">${escHtml(k.notizen||"")}</textarea>${fieldMic("kNotizen")}</div></div>
-    <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="saveKunde('${escAttr(k.id)}', ${id?"true":"false"})">Speichern</button></div>
-  `);
-  if(!id) window._newKundeDraft = k;
+  `;
 }
-function saveKunde(id, isEdit){
+function openKundeForm(){
+  const k = {id:uid(), name:"", ansprechpartner:"", tel:"", email:"", adresse:"", notizen:"", dokumente:[]};
+  window._newKundeDraft = k;
+  openModal(`
+    <div class="modalHead"><div class="modalTitle">Kunde anlegen</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
+    ${renderKundeStammdatenFields(k)}
+    <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="saveKundeNew()">Speichern</button></div>
+  `, true);
+}
+function saveKundeNew(){
   const name = document.getElementById("kName").value.trim();
   if(!name){ toast("Name ist erforderlich.", "warn"); return; }
-  let k = isEdit ? S.kunden.find(x=>x.id===id) : window._newKundeDraft;
+  const k = window._newKundeDraft;
   k.name=name; k.ansprechpartner=document.getElementById("kAnsprech").value.trim();
   k.tel=document.getElementById("kTel").value.trim(); k.email=document.getElementById("kEmail").value.trim();
-  k.adresse=document.getElementById("kAdresse").value.trim(); k.notizen=document.getElementById("kNotizen").value.trim();
-  if(!isEdit){ S.kunden.push(k); window._newKundeDraft=null; }
-  saveState(); closeModal(); route(location.hash);
-  toast("Kunde gespeichert.", "success");
+  k.adresse=document.getElementById("kAdresse").value.trim();
+  S.kunden.push(k); window._newKundeDraft=null;
+  saveState(); closeModal();
+  goTo("#kunden/"+k.id);
+  toast("Kunde angelegt.", "success");
+}
+function saveKundeEdit(id){
+  const k = S.kunden.find(x=>x.id===id);
+  const name = document.getElementById("kName").value.trim();
+  if(!name){ toast("Name ist erforderlich.", "warn"); return; }
+  k.name=name; k.ansprechpartner=document.getElementById("kAnsprech").value.trim();
+  k.tel=document.getElementById("kTel").value.trim(); k.email=document.getElementById("kEmail").value.trim();
+  k.adresse=document.getElementById("kAdresse").value.trim();
+  saveState(); route(location.hash);
+  toast("Gespeichert.", "success");
+}
+function quickUpdateKundeField(id, field, val){
+  const k = S.kunden.find(x=>x.id===id);
+  k[field] = val;
+  saveState();
 }
 function deleteKunde(id){
   confirmDelete("Kunde „"+kundeName(id)+"“ wirklich löschen?", ()=>{
     S.kunden = S.kunden.filter(x=>x.id!==id);
-    saveState(); route(location.hash);
+    saveState(); goTo("#kunden");
   });
+}
+function renderKundeDetail(view, id, tab){
+  const k = S.kunden.find(x=>x.id===id);
+  if(!k){ view.innerHTML = `<div class="empty">Kunde nicht gefunden. <button class="btn" onclick="goTo('#kunden')">Zurück</button></div>`; return; }
+  view.innerHTML = `
+    <div class="pageHead">
+      <div>
+        <button class="btn sm" onclick="goTo('#kunden')" style="margin-bottom:8px;">← Alle Kunden</button>
+        <div class="pageTitle">${escHtml(k.name)}</div>
+        <div class="pageSub">${escHtml(k.ansprechpartner||"–")}${k.adresse?" · "+escHtml(k.adresse):""}</div>
+      </div>
+      <button class="btn danger" onclick="deleteKunde('${escAttr(k.id)}')">🗑️ Löschen</button>
+    </div>
+    <div class="tabs">${KUNDE_TABS.map(t=>`<button class="tabBtn ${tab===t.id?"active":""}" onclick="goTo('#kunden/${escAttr(k.id)}/${t.id}')">${t.icon} ${t.label}</button>`).join("")}</div>
+    <div id="kundeTabBody"></div>
+  `;
+  const body = document.getElementById("kundeTabBody");
+  if(tab==="stammdaten") body.innerHTML = `<div class="card">${renderKundeStammdatenFields(k)}<button class="btn primary" style="margin-top:14px;" onclick="saveKundeEdit('${escAttr(k.id)}')">Speichern</button></div>`;
+  else if(tab==="projekte") body.innerHTML = renderKundeProjekteTab(k);
+  else if(tab==="notizen") body.innerHTML = `<div class="card"><div class="formRow"><label>Notizen</label><div class="micWrap"><textarea id="kundeNotizen" style="min-height:200px;" onchange="quickUpdateKundeField('${escAttr(k.id)}','notizen',this.value)">${escHtml(k.notizen||"")}</textarea>${fieldMic("kundeNotizen")}</div></div></div>`;
+  else body.innerHTML = renderPflichtChecklist("kunden", id) + renderKundeFreieDokumente(k);
+}
+function renderKundeFreieDokumente(k){
+  const freie = (k.dokumente||[]).filter(d=>!d.pflichttyp);
+  return `
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+        <b>Weitere Dokumente</b>
+        <label class="btn sm" style="margin:0;">⬆ Hochladen<input type="file" multiple style="display:none;" onchange="addKundeDoc('${escAttr(k.id)}', this)"></label>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:6px;">
+        ${freie.map(d=>`<div style="display:flex; justify-content:space-between; align-items:center; background:var(--card2); padding:8px 12px; border-radius:8px; font-size:12.5px;"><a href="${escAttr(d.dataURL)}" download="${escAttr(d.name)}">📄 ${escHtml(d.name)}</a><button class="iconBtn" onclick="removeKundeDoc('${escAttr(k.id)}','${escAttr(d.id)}')">🗑️</button></div>`).join("") || `<div class="empty" style="padding:10px;">Keine weiteren Dokumente.</div>`}
+      </div>
+    </div>
+  `;
+}
+async function addKundeDoc(id, input){
+  const k = S.kunden.find(x=>x.id===id);
+  for(const file of input.files){
+    try{ const dataURL = await fileToDataURL(file); k.dokumente.push({id:uid(), name:file.name, dataURL, datum:new Date().toISOString()}); }
+    catch(e){ toast("Datei konnte nicht geladen werden: "+e.message, "error"); }
+  }
+  saveState(); route(location.hash);
+}
+function removeKundeDoc(id, docId){
+  const k = S.kunden.find(x=>x.id===id);
+  k.dokumente = k.dokumente.filter(d=>d.id!==docId);
+  saveState(); route(location.hash);
+}
+function renderKundeProjekteTab(k){
+  const projekte = S.projekte.filter(p=>p.kundeId===k.id);
+  return `
+    <div class="card">
+      <b>Projekte (${projekte.length})</b>
+      <div style="margin-top:14px; display:flex; flex-direction:column; gap:8px;">
+        ${projekte.map(p=>`
+          <div style="display:flex; justify-content:space-between; align-items:center; background:var(--card2); padding:10px 14px; border-radius:10px;">
+            <a href="#projekte/${escAttr(p.id)}">${escHtml(p.name)}</a>
+            <div style="display:flex; align-items:center; gap:10px;">${projektStatusBadge(p.status)}<span class="pageSub">${p.fortschritt||0}%</span></div>
+          </div>
+        `).join("") || `<div class="empty">Noch keine Projekte für diesen Kunden.</div>`}
+      </div>
+    </div>
+  `;
+}
+function importKundenCSV(input){
+  const file = input.files[0]; if(!file) return;
+  const reader = new FileReader();
+  reader.onload = ()=>{
+    const text = reader.result.replace(/^﻿/,"");
+    const lines = text.split(/\r?\n/).filter(l=>l.trim());
+    if(!lines.length){ toast("CSV ist leer.", "warn"); return; }
+    const delim = lines[0].includes(";") ? ";" : ",";
+    const header = lines[0].split(delim).map(h=>h.trim().toLowerCase());
+    let count = 0;
+    for(let i=1;i<lines.length;i++){
+      const cols = lines[i].split(delim);
+      const row = {};
+      header.forEach((h,idx)=>row[h]=(cols[idx]||"").trim());
+      const name = row.name || row.firma || row.kunde;
+      if(!name) continue;
+      S.kunden.push({id:uid(), name, ansprechpartner:row.ansprechpartner||row.kontakt||"", tel:row.telefon||row.tel||"", email:row.email||row["e-mail"]||"", adresse:row.adresse||"", notizen:"", dokumente:[]});
+      count++;
+    }
+    saveState(); route(location.hash);
+    toast(count + " Kunden importiert.", "success");
+  };
+  reader.onerror = ()=>toast("CSV konnte nicht gelesen werden.", "error");
+  reader.readAsText(file, "utf-8");
 }
 function importKundenCSV(input){
   const file = input.files[0]; if(!file) return;
@@ -1398,7 +1773,14 @@ function importKundenCSV(input){
 /* =========================================================
    MODULE: SUBUNTERNEHMER
 ========================================================= */
-function renderSubunternehmer(view){
+const SUB_TABS = [
+  {id:"dokumente", label:"Dokumente", icon:"📁"},
+  {id:"stammdaten", label:"Stammdaten", icon:"🧾"},
+  {id:"projekte", label:"Projekte", icon:"🏢"},
+  {id:"notizen", label:"Notizen", icon:"📝"},
+];
+function renderSubunternehmer(view, id, tab){
+  if(id) return renderSubDetail(view, id, tab||"dokumente");
   view.innerHTML = `
     <div class="pageHead">
       <div><div class="pageTitle">Subunternehmer</div><div class="pageSub">${S.subunternehmer.length} Fremdfirmen</div></div>
@@ -1408,11 +1790,11 @@ function renderSubunternehmer(view){
       <thead><tr><th>Firma</th><th>Ansprechpartner</th><th>Gewerk</th><th>Telefon</th><th>E-Mail</th><th></th></tr></thead>
       <tbody>
       ${S.subunternehmer.map(s=>`
-        <tr>
+        <tr style="cursor:pointer;" onclick="goTo('#subunternehmer/${escAttr(s.id)}')">
           <td><b>${escHtml(s.firma)}</b></td><td>${escHtml(s.ansprechpartner||"–")}</td><td>${escHtml(s.gewerk||"–")}</td>
           <td>${escHtml(s.tel||"–")}</td><td>${escHtml(s.email||"–")}</td>
-          <td style="text-align:right; white-space:nowrap;">
-            <button class="iconBtn" onclick="openSubForm('${escAttr(s.id)}')">✏️</button>
+          <td style="text-align:right; white-space:nowrap;" onclick="event.stopPropagation()">
+            <button class="iconBtn" onclick="goTo('#subunternehmer/${escAttr(s.id)}')">📋</button>
             <button class="iconBtn" onclick="deleteSub('${escAttr(s.id)}')">🗑️</button>
           </td>
         </tr>
@@ -1421,39 +1803,143 @@ function renderSubunternehmer(view){
     </table></div></div>
   `;
 }
-function openSubForm(id){
-  const s = id ? S.subunternehmer.find(x=>x.id===id) : {id:uid(), firma:"", ansprechpartner:"", tel:"", email:"", gewerk:"", notizen:""};
-  openModal(`
-    <div class="modalHead"><div class="modalTitle">${id?"Subunternehmer bearbeiten":"Subunternehmer anlegen"}</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
+function renderSubStammdatenFields(s){
+  return `
     <div class="grid cols-2">
-      <div class="formRow"><label>Firma</label><input id="sFirma" type="text" value="${escAttr(s.firma)}"></div>
+      <div class="formRow"><label>Firma</label><div class="micWrap"><input id="sFirma" type="text" value="${escAttr(s.firma)}">${fieldMic("sFirma")}</div></div>
       <div class="formRow"><label>Gewerk</label><input id="sGewerk" type="text" value="${escAttr(s.gewerk||"")}"></div>
       <div class="formRow"><label>Ansprechpartner</label><input id="sAnsprech" type="text" value="${escAttr(s.ansprechpartner||"")}"></div>
       <div class="formRow"><label>Telefon</label><input id="sTel" type="tel" value="${escAttr(s.tel||"")}"></div>
       <div class="formRow" style="grid-column:1/-1;"><label>E-Mail</label><input id="sEmail" type="email" value="${escAttr(s.email||"")}"></div>
     </div>
-    <div class="formRow"><label>Notizen</label><textarea id="sNotizen">${escHtml(s.notizen||"")}</textarea></div>
-    <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="saveSub('${escAttr(s.id)}', ${id?"true":"false"})">Speichern</button></div>
-  `);
-  if(!id) window._newSubDraft = s;
+  `;
 }
-function saveSub(id, isEdit){
+function openSubForm(){
+  const s = {id:uid(), firma:"", ansprechpartner:"", tel:"", email:"", gewerk:"", notizen:"", dokumente:[]};
+  window._newSubDraft = s;
+  openModal(`
+    <div class="modalHead"><div class="modalTitle">Subunternehmer anlegen</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
+    ${renderSubStammdatenFields(s)}
+    <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="saveSubNew()">Speichern</button></div>
+  `, true);
+}
+function saveSubNew(){
   const firma = document.getElementById("sFirma").value.trim();
   if(!firma){ toast("Firma ist erforderlich.", "warn"); return; }
-  let s = isEdit ? S.subunternehmer.find(x=>x.id===id) : window._newSubDraft;
+  const s = window._newSubDraft;
   s.firma=firma; s.gewerk=document.getElementById("sGewerk").value.trim();
   s.ansprechpartner=document.getElementById("sAnsprech").value.trim();
   s.tel=document.getElementById("sTel").value.trim(); s.email=document.getElementById("sEmail").value.trim();
-  s.notizen=document.getElementById("sNotizen").value.trim();
-  if(!isEdit){ S.subunternehmer.push(s); window._newSubDraft=null; }
-  saveState(); closeModal(); route(location.hash);
-  toast("Subunternehmer gespeichert.", "success");
+  S.subunternehmer.push(s); window._newSubDraft=null;
+  saveState(); closeModal();
+  goTo("#subunternehmer/"+s.id);
+  toast("Subunternehmer angelegt.", "success");
+}
+function saveSubEdit(id){
+  const s = S.subunternehmer.find(x=>x.id===id);
+  const firma = document.getElementById("sFirma").value.trim();
+  if(!firma){ toast("Firma ist erforderlich.", "warn"); return; }
+  s.firma=firma; s.gewerk=document.getElementById("sGewerk").value.trim();
+  s.ansprechpartner=document.getElementById("sAnsprech").value.trim();
+  s.tel=document.getElementById("sTel").value.trim(); s.email=document.getElementById("sEmail").value.trim();
+  saveState(); route(location.hash);
+  toast("Gespeichert.", "success");
+}
+function quickUpdateSubField(id, field, val){
+  const s = S.subunternehmer.find(x=>x.id===id);
+  s[field] = val;
+  saveState();
 }
 function deleteSub(id){
   confirmDelete("Subunternehmer wirklich löschen?", ()=>{
     S.subunternehmer = S.subunternehmer.filter(x=>x.id!==id);
-    saveState(); route(location.hash);
+    S.projekte.forEach(p=>{ p.subunternehmer = (p.subunternehmer||[]).filter(x=>x!==id); });
+    saveState(); goTo("#subunternehmer");
+    toast("Subunternehmer gelöscht.", "success");
   });
+}
+function renderSubDetail(view, id, tab){
+  const s = S.subunternehmer.find(x=>x.id===id);
+  if(!s){ view.innerHTML = `<div class="empty">Subunternehmer nicht gefunden. <button class="btn" onclick="goTo('#subunternehmer')">Zurück</button></div>`; return; }
+  view.innerHTML = `
+    <div class="pageHead">
+      <div>
+        <button class="btn sm" onclick="goTo('#subunternehmer')" style="margin-bottom:8px;">← Alle Subunternehmer</button>
+        <div class="pageTitle">${escHtml(s.firma)}</div>
+        <div class="pageSub">${escHtml(s.gewerk||"–")}${s.ansprechpartner?" · "+escHtml(s.ansprechpartner):""}</div>
+      </div>
+      <button class="btn danger" onclick="deleteSub('${escAttr(s.id)}')">🗑️ Löschen</button>
+    </div>
+    <div class="tabs">${SUB_TABS.map(t=>`<button class="tabBtn ${tab===t.id?"active":""}" onclick="goTo('#subunternehmer/${escAttr(s.id)}/${t.id}')">${t.icon} ${t.label}</button>`).join("")}</div>
+    <div id="subTabBody"></div>
+  `;
+  const body = document.getElementById("subTabBody");
+  if(tab==="stammdaten") body.innerHTML = `<div class="card">${renderSubStammdatenFields(s)}<button class="btn primary" style="margin-top:14px;" onclick="saveSubEdit('${escAttr(s.id)}')">Speichern</button></div>`;
+  else if(tab==="projekte") body.innerHTML = renderSubProjekteTab(s);
+  else if(tab==="notizen") body.innerHTML = `<div class="card"><div class="formRow"><label>Notizen</label><div class="micWrap"><textarea id="subNotizen" style="min-height:200px;" onchange="quickUpdateSubField('${escAttr(s.id)}','notizen',this.value)">${escHtml(s.notizen||"")}</textarea>${fieldMic("subNotizen")}</div></div></div>`;
+  else body.innerHTML = renderPflichtChecklist("subunternehmer", id) + renderSubFreieDokumente(s);
+}
+function renderSubFreieDokumente(s){
+  const freie = (s.dokumente||[]).filter(d=>!d.pflichttyp);
+  return `
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+        <b>Weitere Dokumente</b>
+        <label class="btn sm" style="margin:0;">⬆ Hochladen<input type="file" multiple style="display:none;" onchange="addSubDoc('${escAttr(s.id)}', this)"></label>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:6px;">
+        ${freie.map(d=>`<div style="display:flex; justify-content:space-between; align-items:center; background:var(--card2); padding:8px 12px; border-radius:8px; font-size:12.5px;"><a href="${escAttr(d.dataURL)}" download="${escAttr(d.name)}">📄 ${escHtml(d.name)}</a><button class="iconBtn" onclick="removeSubDoc('${escAttr(s.id)}','${escAttr(d.id)}')">🗑️</button></div>`).join("") || `<div class="empty" style="padding:10px;">Keine weiteren Dokumente.</div>`}
+      </div>
+    </div>
+  `;
+}
+async function addSubDoc(id, input){
+  const s = S.subunternehmer.find(x=>x.id===id);
+  for(const file of input.files){
+    try{ const dataURL = await fileToDataURL(file); s.dokumente.push({id:uid(), name:file.name, dataURL, datum:new Date().toISOString()}); }
+    catch(e){ toast("Datei konnte nicht geladen werden: "+e.message, "error"); }
+  }
+  saveState(); route(location.hash);
+}
+function removeSubDoc(id, docId){
+  const s = S.subunternehmer.find(x=>x.id===id);
+  s.dokumente = s.dokumente.filter(d=>d.id!==docId);
+  saveState(); route(location.hash);
+}
+function renderSubProjekteTab(s){
+  const zugeordnet = S.projekte.filter(p=>(p.subunternehmer||[]).includes(s.id));
+  const verfuegbar = S.projekte.filter(p=>!(p.subunternehmer||[]).includes(s.id));
+  return `
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+        <b>Zugeordnete Projekte (${zugeordnet.length})</b>
+        <select onchange="addSubToProjekt('${escAttr(s.id)}', this.value); this.value='';">
+          <option value="">+ Projekt zuordnen</option>
+          ${verfuegbar.map(p=>`<option value="${escAttr(p.id)}">${escHtml(p.name)}</option>`).join("")}
+        </select>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:8px;">
+        ${zugeordnet.map(p=>`
+          <div style="display:flex; justify-content:space-between; align-items:center; background:var(--card2); padding:10px 14px; border-radius:10px;">
+            <a href="#projekte/${escAttr(p.id)}">${escHtml(p.name)}</a> ${projektStatusBadge(p.status)}
+            <button class="iconBtn" onclick="removeSubFromProjekt('${escAttr(s.id)}','${escAttr(p.id)}')">🗑️</button>
+          </div>
+        `).join("") || `<div class="empty">Noch keine Projekte zugeordnet.</div>`}
+      </div>
+    </div>
+  `;
+}
+function addSubToProjekt(subId, projektId){
+  if(!projektId) return;
+  const p = S.projekte.find(x=>x.id===projektId);
+  if(!p.subunternehmer) p.subunternehmer=[];
+  if(!p.subunternehmer.includes(subId)) p.subunternehmer.push(subId);
+  saveState(); route(location.hash);
+}
+function removeSubFromProjekt(subId, projektId){
+  const p = S.projekte.find(x=>x.id===projektId);
+  p.subunternehmer = (p.subunternehmer||[]).filter(x=>x!==subId);
+  saveState(); route(location.hash);
 }
 
 /* =========================================================
@@ -1719,8 +2205,9 @@ function updateProjektFortschritt(id, val){
 }
 
 function renderTabTeam(body, p){
+  if(!p.subunternehmer) p.subunternehmer=[];
   body.innerHTML = `
-    <div class="card">
+    <div class="card" style="margin-bottom:16px;">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
         <b>Team (${p.team.length})</b>
         <select onchange="addTeamMember('${escAttr(p.id)}', this.value); this.value='';">
@@ -1736,6 +2223,24 @@ function renderTabTeam(body, p){
             <button class="iconBtn" onclick="removeTeamMember('${escAttr(p.id)}','${escAttr(mid)}')">🗑️ Entfernen</button>
           </div>
         `).join("") || `<div class="empty" style="grid-column:1/-1;">Noch kein Team zugeordnet.</div>`}
+      </div>
+    </div>
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+        <b>Subunternehmer (${p.subunternehmer.length})</b>
+        <select onchange="addSubToProjekt(this.value, '${escAttr(p.id)}'); this.value='';">
+          <option value="">+ Subunternehmer hinzufügen</option>
+          ${S.subunternehmer.filter(s=>!p.subunternehmer.includes(s.id)).map(s=>`<option value="${escAttr(s.id)}">${escHtml(s.firma)}</option>`).join("")}
+        </select>
+      </div>
+      <div class="grid cols-4">
+        ${p.subunternehmer.map(sid=>`
+          <div class="card" style="text-align:center;">
+            <div class="userPickAvatar" style="margin:0 auto 8px;">🏗️</div>
+            <div style="font-size:13px; font-weight:600;">${escHtml((S.subunternehmer.find(s=>s.id===sid)||{}).firma||"–")}</div>
+            <button class="iconBtn" onclick="removeSubFromProjekt('${escAttr(sid)}','${escAttr(p.id)}')">🗑️ Entfernen</button>
+          </div>
+        `).join("") || `<div class="empty" style="grid-column:1/-1;">Kein Subunternehmer zugeordnet.</div>`}
       </div>
     </div>
   `;
@@ -3474,42 +3979,119 @@ function renderSetProfil(body){
   `;
 }
 function renderSetFirma(body){
-  const f = S.firma;
+  window._firmaDraft = JSON.parse(JSON.stringify(S.firma));
+  const f = window._firmaDraft;
   body.innerHTML = `
-    <div class="card" style="max-width:720px;">
-      <b>Firmendaten &amp; Briefkopf</b>
-      <div class="pageSub" style="margin:4px 0 16px;">Wird auf allen PDFs (Rechnungen, Angebote, Verträge, Aufmaß) verwendet.</div>
-      <div class="formRow"><label>Logo</label>
-        <div style="display:flex; align-items:center; gap:14px;">
-          <div class="sidebarLogo" id="firmaLogoPreview" style="width:56px; height:56px; font-size:18px;">${f.logo?`<img src="${escAttr(f.logo)}">`:escHtml(initialsOf(f.name))}</div>
-          <input type="file" accept="image/*" onchange="uploadFirmaLogo(this)">
+    <div class="grid cols-2" style="align-items:start;">
+      <div class="card">
+        <b>⚙️ Konfigurieren <span class="badge gray">Lokal</span></b>
+        <div class="formRow" style="margin-top:14px;"><label>Logo</label>
+          <div style="display:flex; align-items:center; gap:14px;">
+            <div class="sidebarLogo" id="firmaLogoPreview" style="width:56px; height:56px; font-size:18px;">${f.logo?`<img src="${escAttr(f.logo)}">`:escHtml(initialsOf(f.name))}</div>
+            <input type="file" accept="image/*" onchange="uploadFirmaLogo(this)">
+          </div>
         </div>
+        <div class="navGroupLabel" style="padding-left:0;">Firma</div>
+        <div class="grid cols-2">
+          <div class="formRow" style="grid-column:1/-1;"><label>Firmenname *</label><input id="fiName" type="text" value="${escAttr(f.name)}" oninput="firmaDraftChange('name',this.value)"></div>
+          <div class="formRow" style="grid-column:1/-1;"><label>Slogan</label><input id="fiSlogan" type="text" value="${escAttr(f.slogan||"")}" oninput="firmaDraftChange('slogan',this.value)"></div>
+        </div>
+        <div class="navGroupLabel" style="padding-left:0;">Kontakt</div>
+        <div class="grid cols-2">
+          <div class="formRow" style="grid-column:1/-1;"><label>Straße &amp; Hausnummer</label><input id="fiStrasse" type="text" value="${escAttr(f.strasse)}" oninput="firmaDraftChange('strasse',this.value)"></div>
+          <div class="formRow"><label>PLZ &amp; Ort</label><input id="fiPlz" type="text" value="${escAttr(f.plz)}" oninput="firmaDraftChange('plz',this.value)" placeholder="PLZ"></div>
+          <div class="formRow" style="margin-top:20px;"><input id="fiOrt" type="text" value="${escAttr(f.ort)}" oninput="firmaDraftChange('ort',this.value)" placeholder="Ort"></div>
+          <div class="formRow"><label>Telefon</label><input id="fiTel" type="tel" value="${escAttr(f.tel)}" oninput="firmaDraftChange('tel',this.value)"></div>
+          <div class="formRow"><label>E-Mail</label><input id="fiEmail" type="email" value="${escAttr(f.email)}" oninput="firmaDraftChange('email',this.value)"></div>
+          <div class="formRow" style="grid-column:1/-1;"><label>Website</label><input id="fiWeb" type="text" value="${escAttr(f.web)}" oninput="firmaDraftChange('web',this.value)"></div>
+        </div>
+        <div class="navGroupLabel" style="padding-left:0;">Rechtliches</div>
+        <div class="grid cols-2">
+          <div class="formRow"><label>Geschäftsführer</label><input id="fiGf" type="text" value="${escAttr(f.geschaeftsfuehrer)}" oninput="firmaDraftChange('geschaeftsfuehrer',this.value)"></div>
+          <div class="formRow"><label>HRB-Nummer</label><input id="fiHrb" type="text" value="${escAttr(f.hrb)}" oninput="firmaDraftChange('hrb',this.value)"></div>
+          <div class="formRow"><label>Registergericht</label><input id="fiAmtsgericht" type="text" value="${escAttr(f.amtsgericht)}" oninput="firmaDraftChange('amtsgericht',this.value)"></div>
+          <div class="formRow"><label>USt-IdNr.</label><input id="fiUstid" type="text" value="${escAttr(f.ustid)}" oninput="firmaDraftChange('ustid',this.value)"></div>
+          <div class="formRow"><label>Steuernummer</label><input id="fiSteuernr" type="text" value="${escAttr(f.steuernr)}" oninput="firmaDraftChange('steuernr',this.value)"></div>
+        </div>
+        <div class="navGroupLabel" style="padding-left:0;">Bank</div>
+        <div class="grid cols-2">
+          <div class="formRow"><label>Bank</label><input id="fiBank" type="text" value="${escAttr(f.bank)}" oninput="firmaDraftChange('bank',this.value)"></div>
+          <div class="formRow"><label>BIC</label><input id="fiBic" type="text" value="${escAttr(f.bic)}" oninput="firmaDraftChange('bic',this.value)"></div>
+          <div class="formRow" style="grid-column:1/-1;"><label>IBAN</label><input id="fiIban" type="text" value="${escAttr(f.iban)}" oninput="firmaDraftChange('iban',this.value)"></div>
+        </div>
+        <button class="btn primary" style="margin-top:6px;" onclick="saveFirma()">Speichern</button>
       </div>
-      <div class="grid cols-2">
-        <div class="formRow" style="grid-column:1/-1;"><label>Firmenname</label><input id="fiName" type="text" value="${escAttr(f.name)}"></div>
-        <div class="formRow" style="grid-column:1/-1;"><label>Straße &amp; Hausnummer</label><input id="fiStrasse" type="text" value="${escAttr(f.strasse)}"></div>
-        <div class="formRow"><label>PLZ</label><input id="fiPlz" type="text" value="${escAttr(f.plz)}"></div>
-        <div class="formRow"><label>Ort</label><input id="fiOrt" type="text" value="${escAttr(f.ort)}"></div>
-        <div class="formRow"><label>Telefon</label><input id="fiTel" type="tel" value="${escAttr(f.tel)}"></div>
-        <div class="formRow"><label>E-Mail</label><input id="fiEmail" type="email" value="${escAttr(f.email)}"></div>
-        <div class="formRow"><label>Webseite</label><input id="fiWeb" type="text" value="${escAttr(f.web)}"></div>
-        <div class="formRow"><label>Geschäftsführer</label><input id="fiGf" type="text" value="${escAttr(f.geschaeftsfuehrer)}"></div>
-        <div class="formRow"><label>Amtsgericht</label><input id="fiAmtsgericht" type="text" value="${escAttr(f.amtsgericht)}"></div>
-        <div class="formRow"><label>HRB-Nummer</label><input id="fiHrb" type="text" value="${escAttr(f.hrb)}"></div>
-        <div class="formRow"><label>Steuernummer</label><input id="fiSteuernr" type="text" value="${escAttr(f.steuernr)}"></div>
-        <div class="formRow"><label>USt-IdNr.</label><input id="fiUstid" type="text" value="${escAttr(f.ustid)}"></div>
-        <div class="formRow"><label>Bank</label><input id="fiBank" type="text" value="${escAttr(f.bank)}"></div>
-        <div class="formRow"><label>IBAN</label><input id="fiIban" type="text" value="${escAttr(f.iban)}"></div>
-        <div class="formRow"><label>BIC</label><input id="fiBic" type="text" value="${escAttr(f.bic)}"></div>
+      <div class="card" style="position:sticky; top:0;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+          <b>👁️ Live-Vorschau</b>
+          <div style="display:flex; gap:8px;">
+            <button class="btn sm" onclick="openBriefSchreiben()">✉️ Brief schreiben</button>
+            <button class="btn sm primary" onclick="exportTestPDF()">📄 Test-PDF</button>
+          </div>
+        </div>
+        <div id="firmaLivePreview"></div>
       </div>
-      <button class="btn primary" onclick="saveFirma()">Speichern</button>
     </div>
   `;
+  renderFirmaLivePreview();
+}
+function firmaDraftChange(field, val){
+  window._firmaDraft[field] = val;
+  renderFirmaLivePreview();
+}
+function briefkopfPreviewHTML(f, opts){
+  opts = opts || {};
+  const heute = new Date().toLocaleDateString("de-DE",{day:"2-digit",month:"long",year:"numeric"});
+  return `
+    <div style="background:#fff; color:#111; border-radius:10px; padding:26px; font-family:Arial,Helvetica,sans-serif; font-size:12px; line-height:1.55; box-shadow:0 2px 14px rgba(0,0,0,.2);">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px;">
+        <div style="display:flex; align-items:center; gap:10px;">
+          ${f.logo?`<img src="${escAttr(f.logo)}" style="height:40px;">`:`<div style="width:40px;height:40px;border-radius:8px;background:linear-gradient(135deg,#3b82f6,#a855f7);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;">${escHtml(initialsOf(f.name||"IB"))}</div>`}
+          <div>
+            <div style="font-weight:800; font-size:14px;">${escHtml(f.name||"")}</div>
+            ${f.slogan?`<div style="font-size:10px; color:#666;">${escHtml(f.slogan)}</div>`:""}
+          </div>
+        </div>
+        <div style="text-align:right; font-size:10px; color:#555;">
+          ${[f.strasse, [f.plz,f.ort].filter(Boolean).join(" "), f.tel, f.email, f.web].filter(Boolean).map(l=>`<div>${escHtml(l)}</div>`).join("")}
+        </div>
+      </div>
+      <div style="border-top:2px solid #e11; width:60px; margin-bottom:16px;"></div>
+      <div style="font-size:9.5px; color:#888; text-decoration:underline; margin-bottom:4px;">${escHtml(f.name||"")} · ${escHtml(f.strasse||"")} · ${escHtml([f.plz,f.ort].filter(Boolean).join(" "))}</div>
+      <div style="margin-bottom:22px; color:#333; white-space:pre-wrap;">${opts.empfaenger ? escHtml(opts.empfaenger).replace(/\n/g,"<br>") : "[Empfängeradresse]"}</div>
+      <div style="text-align:right; color:#888; font-size:10.5px; margin-bottom:16px;">${escHtml(f.ort||"")}${f.ort?", den ":"den "}${heute}</div>
+      <div style="font-weight:700; margin-bottom:10px;">Betreff: ${escHtml(opts.betreff||"Muster-Dokument")}</div>
+      <div style="white-space:pre-wrap; min-height:70px;">${opts.body || "Sehr geehrte Damen und Herren,<br><br>Lorem ipsum dolor sit amet.<br><br>Mit freundlichen Grüßen<br>Ihr Team von "+escHtml(f.name||"")}</div>
+      <div style="margin-top:26px; border-top:1px solid #ddd; padding-top:12px; display:grid; grid-template-columns:repeat(3,1fr); gap:10px; font-size:9px; color:#777;">
+        <div>
+          <b style="color:#444;">Kontakt</b><br>
+          ${escHtml(f.name||"")}<br>${escHtml(f.strasse||"")}<br>${escHtml([f.plz,f.ort].filter(Boolean).join(" "))}<br>
+          ${f.tel?"Tel: "+escHtml(f.tel)+"<br>":""}${f.email?escHtml(f.email):""}
+        </div>
+        <div>
+          <b style="color:#444;">Geschäftsführer</b><br>
+          ${escHtml(f.geschaeftsfuehrer||"")}<br>
+          ${escHtml([f.amtsgericht,f.hrb].filter(Boolean).join(" "))}
+        </div>
+        <div>
+          <b style="color:#444;">Bankverbindung</b><br>
+          ${escHtml(f.bank||"")}<br>${escHtml(f.iban||"")}<br>${escHtml(f.bic||"")}<br>
+          ${f.steuernr?"St-Nr: "+escHtml(f.steuernr)+"<br>":""}${f.ustid?"USt-IdNr "+escHtml(f.ustid):""}
+        </div>
+      </div>
+    </div>
+  `;
+}
+function renderFirmaLivePreview(){
+  const el = document.getElementById("firmaLivePreview");
+  if(!el) return;
+  el.innerHTML = briefkopfPreviewHTML(window._firmaDraft, {});
 }
 async function uploadFirmaLogo(input){
   const file = input.files[0]; if(!file) return;
   try{
     const dataURL = await compressImage(file, 512, 0.85);
+    window._firmaDraft.logo = dataURL;
     S.firma.logo = dataURL;
     saveState();
     applyBranding(); buildSidebar();
@@ -3518,16 +4100,59 @@ async function uploadFirmaLogo(input){
   }catch(e){ toast("Logo konnte nicht verarbeitet werden: "+e.message, "error"); }
 }
 function saveFirma(){
-  const f = S.firma;
-  f.name=document.getElementById("fiName").value.trim(); f.strasse=document.getElementById("fiStrasse").value.trim();
-  f.plz=document.getElementById("fiPlz").value.trim(); f.ort=document.getElementById("fiOrt").value.trim();
-  f.tel=document.getElementById("fiTel").value.trim(); f.email=document.getElementById("fiEmail").value.trim();
-  f.web=document.getElementById("fiWeb").value.trim(); f.geschaeftsfuehrer=document.getElementById("fiGf").value.trim();
-  f.amtsgericht=document.getElementById("fiAmtsgericht").value.trim(); f.hrb=document.getElementById("fiHrb").value.trim();
-  f.steuernr=document.getElementById("fiSteuernr").value.trim(); f.ustid=document.getElementById("fiUstid").value.trim();
-  f.bank=document.getElementById("fiBank").value.trim(); f.iban=document.getElementById("fiIban").value.trim(); f.bic=document.getElementById("fiBic").value.trim();
+  Object.assign(S.firma, window._firmaDraft);
   saveState(); applyBranding(); buildSidebar();
   toast("Firmendaten gespeichert.", "success");
+}
+function exportTestPDF(){
+  saveFirma();
+  const doc = pdfNewDoc();
+  let y = pdfHeader(doc, "Muster-Dokument");
+  doc.setFontSize(10.5);
+  doc.text("Sehr geehrte Damen und Herren,", 15, y); y+=10;
+  doc.text(doc.splitTextToSize("Lorem ipsum dolor sit amet. Dies ist ein Test-Dokument zur Überprüfung Ihres Briefkopf-Layouts.",180), 15, y); y+=22;
+  doc.text("Mit freundlichen Grüßen", 15, y); y+=6;
+  doc.text("Ihr Team von " + S.firma.name, 15, y);
+  pdfFooter(doc);
+  doc.save("Test-Briefkopf.pdf");
+  toast("Test-PDF erstellt.", "success");
+}
+function openBriefSchreiben(){
+  window._briefDraft = {empfaenger:"", betreff:"", text:""};
+  openModal(`
+    <div class="modalHead"><div class="modalTitle">✉️ Brief schreiben</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
+    <div class="grid cols-2">
+      <div>
+        <div class="formRow"><label>Empfänger-Adresse</label><div class="micWrap"><textarea id="brEmpfaenger" style="min-height:70px;" oninput="briefDraftChange('empfaenger',this.value)">${fieldMic("brEmpfaenger")}</div></div>
+        <div class="formRow"><label>Betreff</label><div class="micWrap"><input id="brBetreff" type="text" oninput="briefDraftChange('betreff',this.value)">${fieldMic("brBetreff")}</div></div>
+        <div class="formRow"><label>Text</label><div class="micWrap"><textarea id="brText" style="min-height:220px;" oninput="briefDraftChange('text',this.value)">${fieldMic("brText")}</div></div>
+      </div>
+      <div id="briefPreviewWrap" style="max-height:520px; overflow-y:auto;"></div>
+    </div>
+    <div class="modalFoot"><button class="btn" onclick="closeModal()">Schließen</button><button class="btn primary" onclick="exportBriefPDF()">📄 Als PDF exportieren</button></div>
+  `, true);
+  updateBriefPreview();
+}
+function briefDraftChange(field, val){
+  window._briefDraft[field] = val;
+  updateBriefPreview();
+}
+function updateBriefPreview(){
+  const d = window._briefDraft;
+  const el = document.getElementById("briefPreviewWrap");
+  if(!el) return;
+  el.innerHTML = briefkopfPreviewHTML(S.firma, {betreff:d.betreff, body: d.text ? escHtml(d.text).replace(/\n/g,"<br>") : "", empfaenger:d.empfaenger});
+}
+function exportBriefPDF(){
+  const d = window._briefDraft;
+  const doc = pdfNewDoc();
+  let y = pdfHeader(doc, d.betreff||"Schreiben");
+  doc.setFontSize(10.5);
+  if(d.empfaenger){ const lines = doc.splitTextToSize(d.empfaenger,90); doc.text(lines, 15, y); y += lines.length*5+10; }
+  doc.text(doc.splitTextToSize(d.text||"",180), 15, y);
+  pdfFooter(doc);
+  doc.save((d.betreff||"Brief").replace(/[^a-z0-9]+/gi,"_")+".pdf");
+  toast("Brief-PDF erstellt.", "success");
 }
 function renderSetCloud(body){
   body.innerHTML = `
