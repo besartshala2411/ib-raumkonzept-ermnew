@@ -57,6 +57,24 @@ function buildReminders(payload) {
     }
   });
 
+  const pflichtGruppen = [
+    ["mitarbeiter", (m) => m.name],
+    ["subunternehmer", (s) => s.firma],
+    ["kunden", (k) => k.name],
+  ];
+  pflichtGruppen.forEach(([key, nameOf]) => {
+    (payload[key] || []).forEach((entity) => {
+      (entity.dokumente || []).filter((d) => d.pflichttyp && d.gueltigBis).forEach((doc) => {
+        const days = Math.floor((new Date(doc.gueltigBis) - new Date(today)) / 86400000);
+        if (days >= 0 && days <= 30) {
+          reminders.push({ title: "Pflichtdokument läuft bald ab", body: `${doc.pflichttyp} – ${nameOf(entity)} (bis ${doc.gueltigBis})`, tag: "pflichtdok-" + key + "-" + entity.id + "-" + doc.pflichttyp });
+        } else if (days < 0) {
+          reminders.push({ title: "Pflichtdokument abgelaufen", body: `${doc.pflichttyp} – ${nameOf(entity)} (war gültig bis ${doc.gueltigBis})`, tag: "pflichtdok-abgelaufen-" + key + "-" + entity.id + "-" + doc.pflichttyp });
+        }
+      });
+    });
+  });
+
   return reminders;
 }
 

@@ -365,6 +365,29 @@ async function main() {
   assert(fotoModalHtml.includes("data-color-swatch"), "Foto-Markierung zeigt Farbauswahl");
   window.closeModal();
 
+  console.log("\n== Pflichtdokumente: Ablaufdatum (Gültig bis) ==");
+  assert(window.pflichtDocStatus(null) === "missing", "Kein Dokument -> Status 'missing'");
+  assert(window.pflichtDocStatus({ gueltigBis: "" }) === "ok", "Dokument ohne Ablaufdatum -> Status 'ok'");
+  const inFarFuture = new Date(Date.now() + 200 * 86400000).toISOString().slice(0, 10);
+  const inTenDays = new Date(Date.now() + 10 * 86400000).toISOString().slice(0, 10);
+  const inPast = new Date(Date.now() - 5 * 86400000).toISOString().slice(0, 10);
+  assert(window.pflichtDocStatus({ gueltigBis: inFarFuture }) === "ok", "Ablaufdatum weit in der Zukunft -> 'ok'");
+  assert(window.pflichtDocStatus({ gueltigBis: inTenDays }) === "expiring", "Ablaufdatum in 10 Tagen -> 'expiring'");
+  assert(window.pflichtDocStatus({ gueltigBis: inPast }) === "expired", "Ablaufdatum in der Vergangenheit -> 'expired'");
+
+  const mA = window.S.mitarbeiter.find((x) => x.id === "m1");
+  mA.dokumente.push({ id: "pd1", name: "ausweis.pdf", dataURL: "data:application/pdf;base64,AAAA", pflichttyp: "Personalausweis / Reisepass", gueltigBis: inTenDays, datum: new Date().toISOString() });
+  const checklistHtmlExp = window.renderPflichtChecklist("mitarbeiter", "m1");
+  assert(checklistHtmlExp.includes("Läuft bald ab"), "Checkliste zeigt 'Läuft bald ab'-Warnung für Dokument mit nahem Ablaufdatum");
+  assert(checklistHtmlExp.includes('type="date"'), "Checkliste bietet 'Gültig bis'-Datumsfeld pro Dokument");
+
+  const warnungen = window.pflichtAlleAblaufwarnungen();
+  assert(warnungen.some((w) => w.entityId === "m1" && w.status === "expiring"), "pflichtAlleAblaufwarnungen() erfasst das bald ablaufende Mitarbeiter-Dokument");
+
+  window.document.getElementById("view").innerHTML = "";
+  window.renderDashboard(window.document.getElementById("view"));
+  assert(window.document.getElementById("view").innerHTML.includes("Pflichtdokumente"), "Dashboard zeigt Pflichtdokumente-Warnkachel");
+
   console.log("\n=================================");
   console.log(passed + " Tests bestanden, " + failures + " fehlgeschlagen.");
   console.log("=================================");

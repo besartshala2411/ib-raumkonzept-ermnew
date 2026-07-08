@@ -923,39 +923,72 @@ function pflichtGetEntity(type, id){
 function pflichtLabel(type){
   return {mitarbeiter:"Mitarbeiter", subunternehmer:"Subunternehmer", kunden:"Kunden"}[type] || type;
 }
+function pflichtDocStatus(doc){
+  if(!doc) return "missing";
+  if(!doc.gueltigBis) return "ok";
+  const days = Math.floor((new Date(doc.gueltigBis) - new Date(todayISO())) / 86400000);
+  if(days < 0) return "expired";
+  if(days <= 30) return "expiring";
+  return "ok";
+}
+function refreshPflichtView(type, id){
+  if(type==="mitarbeiter" && document.getElementById("pkBody")){
+    renderPersonalakteTab(id, "dokumente");
+  }else{
+    route(location.hash);
+  }
+}
 function renderPflichtChecklist(type, id){
   const entity = pflichtGetEntity(type, id);
   const defs = (S.einstellungen.pflichtdokumenteDefs && S.einstellungen.pflichtdokumenteDefs[type]) || [];
   if(!entity.dokumente) entity.dokumente = [];
-  const missing = defs.filter(d=>!entity.dokumente.some(doc=>doc.pflichttyp===d.name));
+  const rows = defs.map(d=>{
+    const doc = entity.dokumente.find(doc=>doc.pflichttyp===d.name);
+    return {d, doc, status: pflichtDocStatus(doc)};
+  });
+  const missing = rows.filter(r=>r.status==="missing").map(r=>r.d.name);
+  const expired = rows.filter(r=>r.status==="expired").map(r=>r.d.name);
+  const expiring = rows.filter(r=>r.status==="expiring").map(r=>r.d.name);
   return `
     <div class="card" style="margin-bottom:16px;">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
         <b>📋 Pflichtdokumente</b>
         <button class="btn sm" onclick="openPflichtDefsForm('${type}')">⚙️ Verwalten</button>
       </div>
-      ${missing.length ? `<div style="background:var(--amber-bg); border:1px solid var(--amber); border-radius:10px; padding:10px 14px; margin-bottom:12px; font-size:13px;">
-        <b style="color:var(--amber);">⚠ Fehlende Pflichtdokumente:</b> ${missing.map(m=>escHtml(m.name)).join(" · ")}
+      ${missing.length ? `<div style="background:var(--amber-bg); border:1px solid var(--amber); border-radius:10px; padding:10px 14px; margin-bottom:8px; font-size:13px;">
+        <b style="color:var(--amber);">⚠ Fehlend:</b> ${missing.map(m=>escHtml(m)).join(" · ")}
+      </div>` : ""}
+      ${expired.length ? `<div style="background:var(--red-bg); border:1px solid var(--red); border-radius:10px; padding:10px 14px; margin-bottom:8px; font-size:13px;">
+        <b style="color:var(--red);">⛔ Abgelaufen:</b> ${expired.map(m=>escHtml(m)).join(" · ")}
+      </div>` : ""}
+      ${expiring.length ? `<div style="background:var(--amber-bg); border:1px solid var(--amber); border-radius:10px; padding:10px 14px; margin-bottom:12px; font-size:13px;">
+        <b style="color:var(--amber);">⏳ Läuft bald ab (≤30 Tage):</b> ${expiring.map(m=>escHtml(m)).join(" · ")}
       </div>` : ""}
       <div style="display:flex; flex-direction:column; gap:6px;">
-        ${defs.map(d=>{
-          const doc = entity.dokumente.find(doc=>doc.pflichttyp===d.name);
-          return doc ? `
-            <div style="display:flex; align-items:center; gap:10px; padding:10px 14px; background:var(--card2); border-radius:10px;">
-              <span style="color:var(--green); font-size:15px;">✅</span>
-              <span>${d.icon||"📄"}</span>
-              <a href="${escAttr(doc.dataURL)}" download="${escAttr(doc.name)}" style="flex:1; font-size:13px;">${escHtml(d.name)}</a>
-              <button class="iconBtn" onclick="removePflichtDok('${type}','${escAttr(id)}','${escAttr(doc.id)}')">🗑️</button>
-            </div>
-          ` : `
+        ${rows.map(({d,doc,status})=>{
+          if(!doc){
+            return `
             <label style="display:flex; align-items:center; gap:10px; padding:10px 14px; background:var(--card2); border-radius:10px; cursor:pointer;">
               <span style="color:var(--red); font-size:15px;">⭕</span>
               <span>${d.icon||"📄"}</span>
               <span style="flex:1; font-size:13px;">${escHtml(d.name)}</span>
               <span class="btn sm">Hochladen</span>
               <input type="file" style="display:none;" onchange="uploadPflichtDok('${type}','${escAttr(id)}','${escAttr(d.name)}', this)">
-            </label>
-          `;
+            </label>`;
+          }
+          const statusIcon = status==="expired" ? `<span style="color:var(--red); font-size:15px;" title="Abgelaufen">⛔</span>`
+            : status==="expiring" ? `<span style="color:var(--amber); font-size:15px;" title="Läuft bald ab">⏳</span>`
+            : `<span style="color:var(--green); font-size:15px;" title="Gültig">✅</span>`;
+          return `
+            <div style="display:flex; align-items:center; gap:10px; padding:10px 14px; background:var(--card2); border-radius:10px; flex-wrap:wrap;">
+              ${statusIcon}
+              <span>${d.icon||"📄"}</span>
+              <a href="${escAttr(doc.dataURL)}" download="${escAttr(doc.name)}" style="flex:1; font-size:13px; min-width:140px;">${escHtml(d.name)}</a>
+              <label style="display:flex; align-items:center; gap:6px; font-size:11px; color:var(--text-dim);">Gültig bis
+                <input type="date" value="${escAttr(doc.gueltigBis||"")}" onchange="setPflichtDokGueltigkeit('${type}','${escAttr(id)}','${escAttr(doc.id)}',this.value)" style="background:var(--bg2); border:1px solid var(--border); border-radius:6px; padding:4px 6px; font-size:11px; color:var(--text);">
+              </label>
+              <button class="iconBtn" onclick="removePflichtDok('${type}','${escAttr(id)}','${escAttr(doc.id)}')">🗑️</button>
+            </div>`;
         }).join("") || `<div class="empty" style="padding:14px;">Keine Pflichtdokumente definiert.</div>`}
       </div>
     </div>
@@ -966,15 +999,22 @@ async function uploadPflichtDok(type, id, defName, input){
   const entity = pflichtGetEntity(type, id);
   try{
     const dataURL = await fileToDataURL(file);
-    entity.dokumente.push({id:uid(), name:file.name, dataURL, pflichttyp:defName, datum:new Date().toISOString()});
-    saveState(); route(location.hash);
+    entity.dokumente.push({id:uid(), name:file.name, dataURL, pflichttyp:defName, gueltigBis:"", datum:new Date().toISOString()});
+    saveState(); refreshPflichtView(type, id);
     toast("Dokument hochgeladen.", "success");
   }catch(e){ toast("Datei konnte nicht gelesen werden: "+e.message, "error"); }
 }
 function removePflichtDok(type, id, docId){
   const entity = pflichtGetEntity(type, id);
   entity.dokumente = entity.dokumente.filter(d=>d.id!==docId);
-  saveState(); route(location.hash);
+  saveState(); refreshPflichtView(type, id);
+}
+function setPflichtDokGueltigkeit(type, id, docId, val){
+  const entity = pflichtGetEntity(type, id);
+  const doc = entity.dokumente.find(d=>d.id===docId);
+  doc.gueltigBis = val;
+  saveState(); refreshPflichtView(type, id);
+  toast("Gültigkeit gespeichert.", "success");
 }
 function openPflichtDefsForm(type){
   const defs = (S.einstellungen.pflichtdokumenteDefs && S.einstellungen.pflichtdokumenteDefs[type]) || [];
@@ -1010,6 +1050,7 @@ function renderDashboard(view){
     const days = (new Date(f.tuev) - new Date(todayISO())) / 86400000;
     return days <= 30;
   });
+  const pflichtWarnungen = pflichtAlleAblaufwarnungen();
   const ungelesen = S.benachrichtigungen.filter(n=>!n.gelesen);
 
   view.innerHTML = `
@@ -1079,6 +1120,12 @@ function renderDashboard(view){
         <b>🚐 Fuhrpark-Warnungen</b>
         <div style="margin-top:12px; display:flex; flex-direction:column; gap:8px; max-height:220px; overflow-y:auto;">
           ${tuevWarn.map(f=>`<div style="display:flex; justify-content:space-between; font-size:13px;"><span>${escHtml(f.kennzeichen)}</span><span class="badge amber">TÜV bis ${fmtDate(f.tuev)}</span></div>`).join("") || `<div class="empty" style="padding:16px;">Keine anstehenden Fristen</div>`}
+        </div>
+      </div>
+      <div class="card">
+        <b>📋 Pflichtdokumente</b>
+        <div style="margin-top:12px; display:flex; flex-direction:column; gap:8px; max-height:220px; overflow-y:auto;">
+          ${pflichtWarnungen.map(w=>`<div style="display:flex; justify-content:space-between; font-size:13px;"><span>${escHtml(w.dokName)} · ${escHtml(w.entityName)}</span><span class="badge ${w.status==='expired'?'red':'amber'}">${w.status==='expired'?'abgelaufen':'bis '+fmtDate(w.gueltigBis)}</span></div>`).join("") || `<div class="empty" style="padding:16px;">Alle Pflichtdokumente gültig</div>`}
         </div>
       </div>
     </div>
@@ -4505,6 +4552,21 @@ function startLocalReminderLoop(){
   checkLocalReminders();
   setInterval(checkLocalReminders, 30*60*1000);
 }
+function pflichtAlleAblaufwarnungen(){
+  const warnungen = [];
+  ["mitarbeiter","subunternehmer","kunden"].forEach(type=>{
+    pflichtEntityArray(type).forEach(entity=>{
+      (entity.dokumente||[]).filter(d=>d.pflichttyp).forEach(doc=>{
+        const status = pflichtDocStatus(doc);
+        if(status==="expiring" || status==="expired"){
+          const entityName = type==="mitarbeiter" ? entity.name : type==="subunternehmer" ? entity.firma : entity.name;
+          warnungen.push({type, entityId:entity.id, entityName, dokName:doc.pflichttyp, gueltigBis:doc.gueltigBis, status});
+        }
+      });
+    });
+  });
+  return warnungen;
+}
 function checkLocalReminders(){
   if(LC.cloudSyncEnabled && LC.pushEnabled) return;
   if(!("Notification" in window) || Notification.permission!=="granted") return;
@@ -4518,6 +4580,14 @@ function checkLocalReminders(){
     return days>=0 && days<=7;
   }).forEach(f=>{
     try{ new Notification("TÜV-Frist läuft bald ab", {body:f.kennzeichen, tag:"tuev-"+f.id}); }catch(e){}
+  });
+  pflichtAlleAblaufwarnungen().forEach(w=>{
+    try{
+      new Notification(w.status==="expired" ? "Pflichtdokument abgelaufen" : "Pflichtdokument läuft bald ab", {
+        body: `${w.dokName} – ${w.entityName}${w.gueltigBis?" (bis "+fmtDate(w.gueltigBis)+")":""}`,
+        tag: "pflichtdok-"+w.type+"-"+w.entityId+"-"+w.dokName
+      });
+    }catch(e){}
   });
 }
 async function enableLocalNotifications(){
