@@ -1,0 +1,4 @@
+node_modules/
+.netlify/
+.scratch_check.js
+.claude/settings.local.json

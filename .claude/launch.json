@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "erm-static",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [".devserver.js"],
+      "port": 8787
+    }
+  ]
+}
