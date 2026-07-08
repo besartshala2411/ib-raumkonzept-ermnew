@@ -273,6 +273,46 @@ async function main() {
   const checklisteHtml = window.document.getElementById("view").innerHTML;
   assert(checklisteHtml.includes("clSig") && checklisteHtml.includes("exportChecklistePDF"), "Checkliste-Tab hat Unterschriftsfeld und PDF-Export");
 
+  console.log("\n== Unterschriftsfelder Runde 2 (Personalakte, Kunde, Subunternehmer, Onboarding, Fuhrpark, Rechnung) ==");
+  let sig2Ok = true, sig2Msg = "";
+  try { window._pkTab = "stammdaten"; window.openPersonalakte("m1"); } catch (e) { sig2Ok = false; sig2Msg = e.message; }
+  assert(sig2Ok, "Personalakte-Stammdaten rendert ohne Exception" + (sig2Ok ? "" : " (" + sig2Msg + ")"));
+  assert(window.document.getElementById("modalOverlay").innerHTML.includes("mSig"), "Personalakte-Stammdaten enthält Unterschrift-Canvas");
+  window.closeModal();
+
+  sig2Ok = true;
+  try { window.openKundeForm(); } catch (e) { sig2Ok = false; sig2Msg = e.message; }
+  assert(sig2Ok, "Kunde-anlegen-Formular rendert ohne Exception" + (sig2Ok ? "" : " (" + sig2Msg + ")"));
+  assert(window.document.getElementById("modalOverlay").innerHTML.includes("kSig"), "Kunde-Formular enthält Unterschrift-Canvas");
+  window.closeModal();
+
+  sig2Ok = true;
+  try { window.openSubForm(); } catch (e) { sig2Ok = false; sig2Msg = e.message; }
+  assert(sig2Ok, "Subunternehmer-anlegen-Formular rendert ohne Exception" + (sig2Ok ? "" : " (" + sig2Msg + ")"));
+  assert(window.document.getElementById("modalOverlay").innerHTML.includes("sSig"), "Subunternehmer-Formular enthält Unterschrift-Canvas");
+  window.closeModal();
+
+  window.S.onboardingVorlagen = [{ id: "ov1", name: "Standard", items: ["Punkt A", "Punkt B"] }];
+  window.S.onboarding.push({ id: "ob1", mitarbeiterId: "m1", betreuer: "Chef", start: "2026-07-01", items: [{ text: "Punkt A", done: true }, { text: "Punkt B", done: false }], abgeschlossen: null });
+  sig2Ok = true;
+  try { window.openOnboardingAbschliessenForm("ob1"); } catch (e) { sig2Ok = false; sig2Msg = e.message; }
+  assert(sig2Ok, "Onboarding-Abschließen-Formular rendert ohne Exception" + (sig2Ok ? "" : " (" + sig2Msg + ")"));
+  assert(window.document.getElementById("modalOverlay").innerHTML.includes("onboardingSig"), "Onboarding-Formular enthält Unterschrift-Canvas");
+  window.closeModal();
+
+  sig2Ok = true;
+  try { window.openFahrzeugForm(); } catch (e) { sig2Ok = false; sig2Msg = e.message; }
+  assert(sig2Ok, "Fahrzeug-anlegen-Formular rendert ohne Exception" + (sig2Ok ? "" : " (" + sig2Msg + ")"));
+  assert(window.document.getElementById("modalOverlay").innerHTML.includes("fzSig"), "Fahrzeug-Formular enthält Unterschrift-Canvas");
+  window.closeModal();
+
+  window.S.kunden.push({ id: "kd2", name: "Rechnungskunde GmbH", ansprechpartner: "", tel: "", email: "", adresse: "", notizen: "", dokumente: [] });
+  sig2Ok = true;
+  try { window.openRechnungForm(); } catch (e) { sig2Ok = false; sig2Msg = e.message; }
+  assert(sig2Ok, "Rechnung-anlegen-Formular rendert ohne Exception" + (sig2Ok ? "" : " (" + sig2Msg + ")"));
+  assert(window.document.getElementById("modalOverlay").innerHTML.includes("rSig"), "Rechnungs-Formular enthält Unterschrift-Canvas");
+  window.closeModal();
+
   console.log("\n=================================");
   console.log(passed + " Tests bestanden, " + failures + " fehlgeschlagen.");
   console.log("=================================");

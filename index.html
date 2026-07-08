@@ -1160,6 +1160,7 @@ function openMitarbeiterForm(id){
         <button class="btn primary" onclick="saveMitarbeiter('${escAttr(m.id)}', false)">Speichern</button>
       </div>
     `, true);
+    initMitarbeiterSigPad(m);
     return;
   }
   window._pkTab = "stammdaten";
@@ -1187,12 +1188,15 @@ function renderPersonalakteTab(id, tab){
   else if(tab==="stundenzettel") body.innerHTML = renderMitarbeiterStundenzettelTab(m);
   else if(tab==="urlaub") body.innerHTML = renderMitarbeiterUrlaubTab(m);
   else if(tab==="lohn") body.innerHTML = renderMitarbeiterLohnTab(m);
-  else body.innerHTML = renderMitarbeiterStammdatenFields(m) + `
+  else{
+    body.innerHTML = renderMitarbeiterStammdatenFields(m) + `
     <div class="modalFoot">
       <button class="btn" onclick="closeModal()">Schließen</button>
       <button class="btn" onclick="exportPersonalakteStammblattPDF('${escAttr(id)}')">📄 Stammblatt-PDF</button>
       <button class="btn primary" onclick="saveMitarbeiter('${escAttr(id)}', true)">Speichern</button>
     </div>`;
+    initMitarbeiterSigPad(m);
+  }
 }
 function exportPersonalakteStammblattPDF(id){
   const m = S.mitarbeiter.find(x=>x.id===id);
@@ -1211,6 +1215,13 @@ function exportPersonalakteStammblattPDF(id){
     if(y>270){ doc.addPage(); y=20; }
     doc.setFont(undefined,"bold"); doc.text(label+":", 15, y); doc.setFont(undefined,"normal"); doc.text(String(val), 75, y); y+=8;
   });
+  if(m.unterschrift){
+    y += 12;
+    if(y>230){ doc.addPage(); y=20; }
+    try{ doc.addImage(m.unterschrift,"PNG",15,y,60,26); }catch(e){}
+    y += 28; doc.line(15,y,80,y); y+=5;
+    doc.setFontSize(9); doc.text("Unterschrift Mitarbeiter",15,y);
+  }
   pdfFooter(doc);
   doc.save("Personalstammblatt_"+m.name.replace(/[^a-z0-9]+/gi,"_")+".pdf");
   toast("Stammblatt-PDF erstellt.", "success");
@@ -1240,7 +1251,12 @@ function renderMitarbeiterStammdatenFields(m){
       <div class="formRow" style="grid-column:1/-1;"><label>Adresse</label><input id="mAdresse" type="text" value="${escAttr(m.adresse||"")}"></div>
       <div class="formRow"><label>Stundenlohn (€, für DATEV)</label><input id="mLohn" type="number" step="0.01" value="${escAttr(m.stundenlohn||0)}"></div>
     </div>
+    ${sigPadHTML("mSig", "Unterschrift Mitarbeiter (Stammdaten bestätigt)")}
   `;
+}
+function initMitarbeiterSigPad(m){
+  window._mitarbeiterSigDraft = m.unterschrift || "";
+  initSigPad("mSig", m.unterschrift || "", v=>window._mitarbeiterSigDraft=v);
 }
 function renderMitarbeiterFreieDokumente(m){
   const freie = (m.dokumente||[]).filter(d=>!d.pflichttyp);
@@ -1352,6 +1368,7 @@ function saveMitarbeiter(id, isEdit){
   m.stundenlohn = Number(document.getElementById("mLohn").value)||0;
   m.vertragstyp = document.getElementById("mVertragstyp").value;
   m.status = document.getElementById("mStatus").value;
+  m.unterschrift = window._mitarbeiterSigDraft || m.unterschrift || "";
   if(!isEdit){ if(!m.dokumente) m.dokumente=[]; S.mitarbeiter.push(m); window._newMitarbeiterDraft=null; }
   saveState();
   closeModal();
@@ -1638,8 +1655,8 @@ function renderOnboarding(view){
           <div style="display:flex; flex-direction:column; gap:6px; max-height:160px; overflow-y:auto;">
             ${o.items.map((it,i)=>`<label style="display:flex; gap:8px; font-size:12.5px; align-items:center;"><input type="checkbox" ${it.done?"checked":""} onchange="toggleOnboardingItem('${escAttr(o.id)}',${i})"> ${escHtml(it.text)}</label>`).join("")}
           </div>
-          <div style="display:flex; gap:8px; margin-top:12px;">
-            ${!o.abgeschlossen?`<button class="btn sm primary" onclick="completeOnboarding('${escAttr(o.id)}')">Abschließen</button>`:""}
+          <div style="display:flex; gap:8px; margin-top:12px; flex-wrap:wrap;">
+            ${!o.abgeschlossen?`<button class="btn sm primary" onclick="openOnboardingAbschliessenForm('${escAttr(o.id)}')">Abschließen</button>`:`<button class="btn sm" onclick="exportOnboardingPDF('${escAttr(o.id)}')">📄 PDF</button>`}
             <button class="btn sm danger" onclick="deleteOnboarding('${escAttr(o.id)}')">Löschen</button>
           </div>
         </div>`;
@@ -1693,10 +1710,21 @@ function toggleOnboardingItem(id, idx){
   o.items[idx].done = !o.items[idx].done;
   saveState(); route(location.hash);
 }
+function openOnboardingAbschliessenForm(id){
+  window._onboardingSigDraft = "";
+  openModal(`
+    <div class="modalHead"><div class="modalTitle">Onboarding abschließen</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
+    <div class="pageSub" style="margin-bottom:12px;">Der Mitarbeiter bestätigt mit seiner Unterschrift, dass alle Onboarding-Punkte durchlaufen wurden.</div>
+    ${sigPadHTML("onboardingSig", "Unterschrift Mitarbeiter")}
+    <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="completeOnboarding('${escAttr(id)}')">Abschließen</button></div>
+  `);
+  initSigPad("onboardingSig", "", v=>window._onboardingSigDraft=v);
+}
 function completeOnboarding(id){
   const o = S.onboarding.find(x=>x.id===id);
   o.abgeschlossen = todayISO();
-  saveState(); route(location.hash);
+  o.unterschrift = window._onboardingSigDraft || "";
+  saveState(); closeModal(); route(location.hash);
   toast("Onboarding abgeschlossen.", "success");
 }
 function deleteOnboarding(id){
@@ -1704,6 +1732,30 @@ function deleteOnboarding(id){
     S.onboarding = S.onboarding.filter(x=>x.id!==id);
     saveState(); route(location.hash);
   });
+}
+function exportOnboardingPDF(id){
+  const o = S.onboarding.find(x=>x.id===id);
+  const doc = pdfNewDoc();
+  let y = pdfHeader(doc, "Onboarding-Nachweis");
+  doc.setFontSize(10.5);
+  doc.text("Mitarbeiter: "+mitarbeiterName(o.mitarbeiterId), 15, y); y+=6;
+  doc.text("Betreuer: "+(o.betreuer||"–"), 15, y); y+=6;
+  doc.text("Start: "+fmtDate(o.start)+"   Abgeschlossen: "+(o.abgeschlossen?fmtDate(o.abgeschlossen):"–"), 15, y); y+=10;
+  o.items.forEach(it=>{
+    if(y>270){ doc.addPage(); y=20; }
+    doc.text((it.done?"[x] ":"[ ] ")+it.text, 15, y);
+    y += 7;
+  });
+  y += 12;
+  if(o.unterschrift){
+    if(y>230){ doc.addPage(); y=20; }
+    try{ doc.addImage(o.unterschrift,"PNG",15,y,60,26); }catch(e){}
+    y += 28; doc.line(15,y,80,y); y+=5;
+    doc.setFontSize(9); doc.text("Unterschrift Mitarbeiter",15,y);
+  }
+  pdfFooter(doc);
+  doc.save("Onboarding_"+mitarbeiterName(o.mitarbeiterId).replace(/[^a-z0-9]+/gi,"_")+".pdf");
+  toast("Onboarding-PDF erstellt.", "success");
 }
 
 reg("dashboard","Dashboard","🏠","",renderDashboard);
@@ -1758,7 +1810,12 @@ function renderKundeStammdatenFields(k){
       <div class="formRow"><label>E-Mail</label><input id="kEmail" type="email" value="${escAttr(k.email||"")}"></div>
       <div class="formRow" style="grid-column:1/-1;"><label>Adresse</label><input id="kAdresse" type="text" value="${escAttr(k.adresse||"")}"></div>
     </div>
+    ${sigPadHTML("kSig", "Unterschrift Kunde")}
   `;
+}
+function initKundeSigPad(k){
+  window._kundeSigDraft = k.unterschrift || "";
+  initSigPad("kSig", k.unterschrift || "", v=>window._kundeSigDraft=v);
 }
 function openKundeForm(){
   const k = {id:uid(), name:"", ansprechpartner:"", tel:"", email:"", adresse:"", notizen:"", dokumente:[]};
@@ -1768,6 +1825,7 @@ function openKundeForm(){
     ${renderKundeStammdatenFields(k)}
     <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="saveKundeNew()">Speichern</button></div>
   `, true);
+  initKundeSigPad(k);
 }
 function saveKundeNew(){
   const name = document.getElementById("kName").value.trim();
@@ -1776,6 +1834,7 @@ function saveKundeNew(){
   k.name=name; k.ansprechpartner=document.getElementById("kAnsprech").value.trim();
   k.tel=document.getElementById("kTel").value.trim(); k.email=document.getElementById("kEmail").value.trim();
   k.adresse=document.getElementById("kAdresse").value.trim();
+  k.unterschrift = window._kundeSigDraft || "";
   S.kunden.push(k); window._newKundeDraft=null;
   saveState(); closeModal();
   goTo("#kunden/"+k.id);
@@ -1788,8 +1847,30 @@ function saveKundeEdit(id){
   k.name=name; k.ansprechpartner=document.getElementById("kAnsprech").value.trim();
   k.tel=document.getElementById("kTel").value.trim(); k.email=document.getElementById("kEmail").value.trim();
   k.adresse=document.getElementById("kAdresse").value.trim();
+  k.unterschrift = window._kundeSigDraft || k.unterschrift || "";
   saveState(); route(location.hash);
   toast("Gespeichert.", "success");
+}
+function exportKundeStammdatenPDF(id){
+  const k = S.kunden.find(x=>x.id===id);
+  const doc = pdfNewDoc();
+  let y = pdfHeader(doc, "Kundenstammdaten");
+  doc.setFontSize(10.5);
+  const rows = [
+    ["Name / Firma", k.name], ["Ansprechpartner", k.ansprechpartner||"–"],
+    ["Telefon", k.tel||"–"], ["E-Mail", k.email||"–"], ["Adresse", k.adresse||"–"],
+  ];
+  rows.forEach(([label,val])=>{ doc.setFont(undefined,"bold"); doc.text(label+":", 15, y); doc.setFont(undefined,"normal"); doc.text(String(val), 75, y); y+=8; });
+  if(k.unterschrift){
+    y += 12;
+    if(y>230){ doc.addPage(); y=20; }
+    try{ doc.addImage(k.unterschrift,"PNG",15,y,60,26); }catch(e){}
+    y += 28; doc.line(15,y,80,y); y+=5;
+    doc.setFontSize(9); doc.text("Unterschrift Kunde",15,y);
+  }
+  pdfFooter(doc);
+  doc.save("Kundenstammdaten_"+k.name.replace(/[^a-z0-9]+/gi,"_")+".pdf");
+  toast("Stammdaten-PDF erstellt.", "success");
 }
 function quickUpdateKundeField(id, field, val){
   const k = S.kunden.find(x=>x.id===id);
@@ -1818,7 +1899,15 @@ function renderKundeDetail(view, id, tab){
     <div id="kundeTabBody"></div>
   `;
   const body = document.getElementById("kundeTabBody");
-  if(tab==="stammdaten") body.innerHTML = `<div class="card">${renderKundeStammdatenFields(k)}<button class="btn primary" style="margin-top:14px;" onclick="saveKundeEdit('${escAttr(k.id)}')">Speichern</button></div>`;
+  if(tab==="stammdaten"){
+    body.innerHTML = `<div class="card">${renderKundeStammdatenFields(k)}
+      <div style="display:flex; gap:8px; margin-top:14px;">
+        <button class="btn" onclick="exportKundeStammdatenPDF('${escAttr(k.id)}')">📄 Stammdaten-PDF</button>
+        <button class="btn primary" onclick="saveKundeEdit('${escAttr(k.id)}')">Speichern</button>
+      </div>
+    </div>`;
+    initKundeSigPad(k);
+  }
   else if(tab==="projekte") body.innerHTML = renderKundeProjekteTab(k);
   else if(tab==="notizen") body.innerHTML = `<div class="card"><div class="formRow"><label>Notizen</label><div class="micWrap"><textarea id="kundeNotizen" style="min-height:200px;" onchange="quickUpdateKundeField('${escAttr(k.id)}','notizen',this.value)">${escHtml(k.notizen||"")}</textarea>${fieldMic("kundeNotizen")}</div></div></div>`;
   else body.innerHTML = renderPflichtChecklist("kunden", id) + renderKundeFreieDokumente(k);
@@ -1959,7 +2048,12 @@ function renderSubStammdatenFields(s){
       <div class="formRow"><label>Telefon</label><input id="sTel" type="tel" value="${escAttr(s.tel||"")}"></div>
       <div class="formRow" style="grid-column:1/-1;"><label>E-Mail</label><input id="sEmail" type="email" value="${escAttr(s.email||"")}"></div>
     </div>
+    ${sigPadHTML("sSig", "Unterschrift Subunternehmer")}
   `;
+}
+function initSubSigPad(s){
+  window._subSigDraft = s.unterschrift || "";
+  initSigPad("sSig", s.unterschrift || "", v=>window._subSigDraft=v);
 }
 function openSubForm(){
   const s = {id:uid(), firma:"", ansprechpartner:"", tel:"", email:"", gewerk:"", notizen:"", dokumente:[]};
@@ -1969,6 +2063,7 @@ function openSubForm(){
     ${renderSubStammdatenFields(s)}
     <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="saveSubNew()">Speichern</button></div>
   `, true);
+  initSubSigPad(s);
 }
 function saveSubNew(){
   const firma = document.getElementById("sFirma").value.trim();
@@ -1977,6 +2072,7 @@ function saveSubNew(){
   s.firma=firma; s.gewerk=document.getElementById("sGewerk").value.trim();
   s.ansprechpartner=document.getElementById("sAnsprech").value.trim();
   s.tel=document.getElementById("sTel").value.trim(); s.email=document.getElementById("sEmail").value.trim();
+  s.unterschrift = window._subSigDraft || "";
   S.subunternehmer.push(s); window._newSubDraft=null;
   saveState(); closeModal();
   goTo("#subunternehmer/"+s.id);
@@ -1989,8 +2085,30 @@ function saveSubEdit(id){
   s.firma=firma; s.gewerk=document.getElementById("sGewerk").value.trim();
   s.ansprechpartner=document.getElementById("sAnsprech").value.trim();
   s.tel=document.getElementById("sTel").value.trim(); s.email=document.getElementById("sEmail").value.trim();
+  s.unterschrift = window._subSigDraft || s.unterschrift || "";
   saveState(); route(location.hash);
   toast("Gespeichert.", "success");
+}
+function exportSubStammdatenPDF(id){
+  const s = S.subunternehmer.find(x=>x.id===id);
+  const doc = pdfNewDoc();
+  let y = pdfHeader(doc, "Subunternehmer-Stammdaten");
+  doc.setFontSize(10.5);
+  const rows = [
+    ["Firma", s.firma], ["Gewerk", s.gewerk||"–"], ["Ansprechpartner", s.ansprechpartner||"–"],
+    ["Telefon", s.tel||"–"], ["E-Mail", s.email||"–"],
+  ];
+  rows.forEach(([label,val])=>{ doc.setFont(undefined,"bold"); doc.text(label+":", 15, y); doc.setFont(undefined,"normal"); doc.text(String(val), 75, y); y+=8; });
+  if(s.unterschrift){
+    y += 12;
+    if(y>230){ doc.addPage(); y=20; }
+    try{ doc.addImage(s.unterschrift,"PNG",15,y,60,26); }catch(e){}
+    y += 28; doc.line(15,y,80,y); y+=5;
+    doc.setFontSize(9); doc.text("Unterschrift Subunternehmer",15,y);
+  }
+  pdfFooter(doc);
+  doc.save("Subunternehmer_"+s.firma.replace(/[^a-z0-9]+/gi,"_")+".pdf");
+  toast("Stammdaten-PDF erstellt.", "success");
 }
 function quickUpdateSubField(id, field, val){
   const s = S.subunternehmer.find(x=>x.id===id);
@@ -2021,7 +2139,15 @@ function renderSubDetail(view, id, tab){
     <div id="subTabBody"></div>
   `;
   const body = document.getElementById("subTabBody");
-  if(tab==="stammdaten") body.innerHTML = `<div class="card">${renderSubStammdatenFields(s)}<button class="btn primary" style="margin-top:14px;" onclick="saveSubEdit('${escAttr(s.id)}')">Speichern</button></div>`;
+  if(tab==="stammdaten"){
+    body.innerHTML = `<div class="card">${renderSubStammdatenFields(s)}
+      <div style="display:flex; gap:8px; margin-top:14px;">
+        <button class="btn" onclick="exportSubStammdatenPDF('${escAttr(s.id)}')">📄 Stammdaten-PDF</button>
+        <button class="btn primary" onclick="saveSubEdit('${escAttr(s.id)}')">Speichern</button>
+      </div>
+    </div>`;
+    initSubSigPad(s);
+  }
   else if(tab==="projekte") body.innerHTML = renderSubProjekteTab(s);
   else if(tab==="notizen") body.innerHTML = `<div class="card"><div class="formRow"><label>Notizen</label><div class="micWrap"><textarea id="subNotizen" style="min-height:200px;" onchange="quickUpdateSubField('${escAttr(s.id)}','notizen',this.value)">${escHtml(s.notizen||"")}</textarea>${fieldMic("subNotizen")}</div></div></div>`;
   else body.innerHTML = renderPflichtChecklist("subunternehmer", id) + renderSubFreieDokumente(s);
@@ -3226,10 +3352,12 @@ function openRechnungForm(id){
       <button class="btn sm" style="margin-top:6px;" onclick="addRechnungPos()">➕ Position</button>
     </div>
     <div style="text-align:right; font-size:13.5px; margin-bottom:10px;" id="rSummeOut"></div>
-    <div class="formRow"><label>Notiz</label><textarea oninput="window._rechnungDraft.notiz=this.value">${escHtml(r.notiz||"")}</textarea></div>
+    <div class="formRow"><label>Notiz</label><textarea id="rNotiz" oninput="window._rechnungDraft.notiz=this.value">${escHtml(r.notiz||"")}</textarea></div>
+    ${sigPadHTML("rSig", "Unterschrift")}
     <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="saveRechnung()">Speichern</button></div>
   `, true);
   renderRechnungPosList();
+  initSigPad("rSig", r.unterschrift || "", v=>window._rechnungDraft.unterschrift=v);
 }
 function renderRechnungPosList(){
   const r = window._rechnungDraft;
@@ -3300,7 +3428,14 @@ function exportRechnungPDF(id){
   doc.setFont(undefined,"bold");
   doc.text("Gesamt:", 150, y); doc.text(fmtCurrency(rechnungSumme(r)), 195, y, {align:"right"});
   doc.setFont(undefined,"normal");
-  if(r.notiz){ y+=12; doc.setFontSize(9); doc.text(doc.splitTextToSize(r.notiz,180), 15, y); }
+  if(r.notiz){ y+=12; doc.setFontSize(9); doc.text(doc.splitTextToSize(r.notiz,180), 15, y); y+=10; }
+  if(r.unterschrift){
+    y += 14;
+    if(y>230){ doc.addPage(); y=20; }
+    try{ doc.addImage(r.unterschrift,"PNG",15,y,60,26); }catch(e){}
+    y += 28; doc.line(15,y,80,y); y+=5;
+    doc.setFontSize(9); doc.text("Unterschrift",15,y);
+  }
   pdfFooter(doc);
   doc.save(r.nr+".pdf");
 }
@@ -3749,9 +3884,10 @@ function renderFuhrpark(view){
             <div style="display:flex; justify-content:space-between;">Tankkosten gesamt <b>${fmtCurrency(tankSum)}</b></div>
             <div style="display:flex; justify-content:space-between;">Schäden gesamt <b>${fmtCurrency(schadenSum)}</b></div>
           </div>
-          <div style="display:flex; gap:8px; margin-top:12px;">
+          <div style="display:flex; gap:8px; margin-top:12px; flex-wrap:wrap;">
             <button class="btn sm" onclick="openTankForm('${escAttr(f.id)}')">⛽ Tanken</button>
             <button class="btn sm" onclick="openSchadenForm('${escAttr(f.id)}')">⚠️ Schaden</button>
+            <button class="btn sm" onclick="exportFahrzeugPDF('${escAttr(f.id)}')">📄 PDF</button>
           </div>
         </div>`;
       }).join("") || `<div class="empty" style="grid-column:1/-1;">Noch keine Fahrzeuge.</div>`}
@@ -3760,6 +3896,7 @@ function renderFuhrpark(view){
 }
 function openFahrzeugForm(id){
   const f = id ? S.fuhrpark.find(x=>x.id===id) : {id:uid(), kennzeichen:"", typ:"", tuev:"", zugeordnet:"", tankkosten:[], schaeden:[]};
+  window._fzSigDraft = f.unterschrift || "";
   openModal(`
     <div class="modalHead"><div class="modalTitle">${id?"Fahrzeug bearbeiten":"Fahrzeug anlegen"}</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
     <div class="grid cols-2">
@@ -3768,8 +3905,10 @@ function openFahrzeugForm(id){
       <div class="formRow"><label>TÜV-Frist</label><input id="fzTuev" type="date" value="${escAttr(f.tuev||"")}"></div>
       <div class="formRow"><label>Zugeordnet an</label><select id="fzZuge"><option value="">–</option>${S.mitarbeiter.map(m=>`<option value="${escAttr(m.id)}" ${f.zugeordnet===m.id?"selected":""}>${escHtml(m.name)}</option>`).join("")}</select></div>
     </div>
+    ${sigPadHTML("fzSig", "Übernahmebestätigung Fahrer")}
     <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="saveFahrzeug('${escAttr(f.id)}', ${id?"true":"false"})">Speichern</button></div>
   `);
+  initSigPad("fzSig", f.unterschrift || "", v=>window._fzSigDraft=v);
   if(!id) window._newFzDraft = f;
 }
 function saveFahrzeug(id, isEdit){
@@ -3778,8 +3917,32 @@ function saveFahrzeug(id, isEdit){
   let f = isEdit ? S.fuhrpark.find(x=>x.id===id) : window._newFzDraft;
   f.kennzeichen=kennzeichen; f.typ=document.getElementById("fzTyp").value.trim();
   f.tuev=document.getElementById("fzTuev").value; f.zugeordnet=document.getElementById("fzZuge").value||null;
+  f.unterschrift = window._fzSigDraft || "";
   if(!isEdit){ S.fuhrpark.push(f); window._newFzDraft=null; }
   saveState(); closeModal(); route(location.hash);
+}
+function exportFahrzeugPDF(id){
+  const f = S.fuhrpark.find(x=>x.id===id);
+  const tankSum = (f.tankkosten||[]).reduce((s,t)=>s+(Number(t.kosten)||0),0);
+  const schadenSum = (f.schaeden||[]).reduce((s,sc)=>s+(Number(sc.kosten)||0),0);
+  const doc = pdfNewDoc();
+  let y = pdfHeader(doc, "Fahrzeug-Übernahme");
+  doc.setFontSize(10.5);
+  const rows = [
+    ["Kennzeichen", f.kennzeichen], ["Typ/Modell", f.typ||"–"], ["TÜV-Frist", f.tuev?fmtDate(f.tuev):"–"],
+    ["Zugeordnet an", mitarbeiterName(f.zugeordnet)||"–"], ["Tankkosten gesamt", fmtCurrency(tankSum)], ["Schäden gesamt", fmtCurrency(schadenSum)],
+  ];
+  rows.forEach(([label,val])=>{ doc.setFont(undefined,"bold"); doc.text(label+":", 15, y); doc.setFont(undefined,"normal"); doc.text(String(val), 75, y); y+=8; });
+  if(f.unterschrift){
+    y += 12;
+    if(y>230){ doc.addPage(); y=20; }
+    try{ doc.addImage(f.unterschrift,"PNG",15,y,60,26); }catch(e){}
+    y += 28; doc.line(15,y,80,y); y+=5;
+    doc.setFontSize(9); doc.text("Übernahmebestätigung Fahrer",15,y);
+  }
+  pdfFooter(doc);
+  doc.save("Fahrzeug_"+f.kennzeichen.replace(/[^a-z0-9]+/gi,"_")+".pdf");
+  toast("Fahrzeug-PDF erstellt.", "success");
 }
 function deleteFahrzeug(id){
   confirmDelete("Fahrzeug wirklich löschen?", ()=>{
