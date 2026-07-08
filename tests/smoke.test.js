@@ -219,6 +219,59 @@ async function main() {
   window.closeModal();
   assert(typeof window.FIRMA_LOGO_DEFAULT === "string" && window.FIRMA_LOGO_DEFAULT.startsWith("data:image/jpeg;base64,"), "Echtes Firmenlogo ist als Default eingebettet");
   assert(window.S.firma.logo === window.FIRMA_LOGO_DEFAULT, "Firmenlogo ist im Default-State gesetzt");
+  assert(typeof window.FIRMA_ICON_DEFAULT === "string" && window.FIRMA_ICON_DEFAULT.startsWith("data:image/png;base64,"), "Quadratisches App-Icon ist als Default eingebettet");
+  assert(window.S.firma.icon === window.FIRMA_ICON_DEFAULT, "App-Icon ist im Default-State gesetzt");
+
+  console.log("\n== Unterschriftsfelder (Urlaub, Aufmaß, Bautagebuch, Schlüssel, Checkliste) ==");
+  let sigOk = true, sigMsg = "";
+  try { window.openUrlaubForm(); } catch (e) { sigOk = false; sigMsg = e.message; }
+  assert(sigOk, "Urlaubsantrag-Formular mit Unterschriftsfeld rendert ohne Exception" + (sigOk ? "" : " (" + sigMsg + ")"));
+  assert(window.document.getElementById("modalOverlay").innerHTML.includes("uSig"), "Urlaubsantrag-Formular enthält Unterschrift-Canvas");
+  window.closeModal();
+
+  console.log("\n== Regression: Mic-Button darf nicht als Text im Textarea landen ==");
+  // Frueherer Bug: `<textarea id="x">${fieldMic("x")}</textarea>` setzt den Mic-Button-HTML-String
+  // als Textarea-INHALT statt als Sibling-Element daneben zu rendern.
+  const textareaFormRenderers = [
+    ["Urlaubsantrag", () => window.openUrlaubForm()],
+    ["Bautagebuch", () => window.openBautagebuchForm("p1")],
+    ["Schluessel-Ausgabe", () => window.openSchluesselForm()],
+  ];
+  textareaFormRenderers.forEach(([name, render]) => {
+    render();
+    const textareas = Array.from(window.document.querySelectorAll("#modalOverlay textarea"));
+    const broken = textareas.some((t) => t.value.includes("micBtn") || t.textContent.includes("micBtn"));
+    assert(!broken, name + ": kein Mic-Button-HTML als Textarea-Inhalt gerendert");
+    window.closeModal();
+  });
+
+  window.document.getElementById("view").innerHTML = "";
+  window.renderProjekte(window.document.getElementById("view"), "p1", "aufmass");
+  const aufmassHtml = window.document.getElementById("view").innerHTML;
+  assert(aufmassHtml.includes("aufmassSig") && aufmassHtml.includes("saveAufmassUnterschrift"), "Aufmaß-Tab hat Unterschriftsfeld für Bestätigung");
+
+  sigOk = true;
+  try { window.openBautagebuchForm("p1"); } catch (e) { sigOk = false; sigMsg = e.message; }
+  assert(sigOk, "Bautagebuch-Formular mit Unterschriftsfeld rendert ohne Exception" + (sigOk ? "" : " (" + sigMsg + ")"));
+  assert(window.document.getElementById("modalOverlay").innerHTML.includes("btSig"), "Bautagebuch-Formular enthält Unterschrift-Canvas");
+  window.closeModal();
+
+  sigOk = true;
+  try { window.openSchluesselForm(); } catch (e) { sigOk = false; sigMsg = e.message; }
+  assert(sigOk, "Schlüssel-Ausgabe-Formular mit Unterschriftsfeld rendert ohne Exception" + (sigOk ? "" : " (" + sigMsg + ")"));
+  assert(window.document.getElementById("modalOverlay").innerHTML.includes("skSig"), "Schlüssel-Ausgabe-Formular enthält Unterschrift-Canvas");
+  window.closeModal();
+  window.S.schluessel.push({ id: "sk1", bezeichnung: "Haustür EG", projektId: "p1", ausgegebenAn: "m1", ausgabeDatum: "2026-07-01", rueckgabeDatum: null, status: "ausgegeben", unterschriftAusgabe: "", unterschriftRueckgabe: "" });
+  sigOk = true;
+  try { window.openSchluesselRueckgabeForm("sk1"); } catch (e) { sigOk = false; sigMsg = e.message; }
+  assert(sigOk, "Schlüssel-Rückgabe-Formular mit Unterschriftsfeld rendert ohne Exception" + (sigOk ? "" : " (" + sigMsg + ")"));
+  assert(window.document.getElementById("modalOverlay").innerHTML.includes("skRueckgabeSig"), "Schlüssel-Rückgabe-Formular enthält Unterschrift-Canvas");
+  window.closeModal();
+
+  window.document.getElementById("view").innerHTML = "";
+  window.renderProjekte(window.document.getElementById("view"), "p1", "checkliste");
+  const checklisteHtml = window.document.getElementById("view").innerHTML;
+  assert(checklisteHtml.includes("clSig") && checklisteHtml.includes("exportChecklistePDF"), "Checkliste-Tab hat Unterschriftsfeld und PDF-Export");
 
   console.log("\n=================================");
   console.log(passed + " Tests bestanden, " + failures + " fehlgeschlagen.");

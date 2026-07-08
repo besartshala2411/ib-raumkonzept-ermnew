@@ -837,6 +837,53 @@ function confirmDelete(msg, onYes){
 }
 
 /* =========================================================
+   UNTERSCHRIFT-PAD (wiederverwendbar, Maus + Touch, PC & iPad)
+========================================================= */
+function sigPadHTML(canvasId, label){
+  return `<div class="formRow"><label>${escHtml(label)}</label>
+    <canvas id="${escAttr(canvasId)}" width="280" height="120" style="background:#fff; border-radius:8px; width:100%; touch-action:none; border:1px solid var(--border); display:block;"></canvas>
+    <button type="button" class="btn sm" style="margin-top:6px;" onclick="clearSigPad('${escAttr(canvasId)}')">Unterschrift löschen</button>
+  </div>`;
+}
+const _sigPadCallbacks = {};
+function initSigPad(canvasId, existingDataURL, onChange){
+  const canvas = document.getElementById(canvasId);
+  if(!canvas) return;
+  _sigPadCallbacks[canvasId] = onChange;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#fff"; ctx.fillRect(0,0,canvas.width,canvas.height);
+  if(existingDataURL){
+    const img = new Image();
+    img.onload = ()=>ctx.drawImage(img,0,0,canvas.width,canvas.height);
+    img.src = existingDataURL;
+  }
+  let drawing = false;
+  const pos = e=>{
+    const rect = canvas.getBoundingClientRect();
+    const cx = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+    const cy = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
+    return { x: cx*canvas.width/rect.width, y: cy*canvas.height/rect.height };
+  };
+  const start = e=>{ drawing = true; const p = pos(e); ctx.beginPath(); ctx.moveTo(p.x,p.y); e.preventDefault(); };
+  const move = e=>{ if(!drawing) return; const p = pos(e); ctx.lineTo(p.x,p.y); ctx.strokeStyle="#111"; ctx.lineWidth=2; ctx.lineCap="round"; ctx.stroke(); e.preventDefault(); };
+  const end = ()=>{ if(!drawing) return; drawing = false; const cb = _sigPadCallbacks[canvasId]; if(cb) cb(canvas.toDataURL("image/png")); };
+  canvas.addEventListener("mousedown", start);
+  canvas.addEventListener("mousemove", move);
+  window.addEventListener("mouseup", end);
+  canvas.addEventListener("touchstart", start, {passive:false});
+  canvas.addEventListener("touchmove", move, {passive:false});
+  canvas.addEventListener("touchend", end);
+}
+function clearSigPad(canvasId){
+  const canvas = document.getElementById(canvasId);
+  if(!canvas) return;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#fff"; ctx.fillRect(0,0,canvas.width,canvas.height);
+  const cb = _sigPadCallbacks[canvasId];
+  if(cb) cb("");
+}
+
+/* =========================================================
    DOMAIN HELPERS (cross-module)
 ========================================================= */
 function mitarbeiterName(id){ const m=S.mitarbeiter.find(x=>x.id===id); return m?m.name:"–"; }
@@ -1489,6 +1536,7 @@ function statusBadgeUrlaub(s){
   return `<span class="badge ${map[s]||"gray"}">${escHtml(s)}</span>`;
 }
 function openUrlaubForm(){
+  window._urlaubSigDraft = "";
   openModal(`
     <div class="modalHead"><div class="modalTitle">Urlaubsantrag</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
     <div class="formRow"><label>Mitarbeiter</label>
@@ -1498,9 +1546,11 @@ function openUrlaubForm(){
       <div class="formRow"><label>Von</label><input id="uVon" type="date" value="${todayISO()}"></div>
       <div class="formRow"><label>Bis</label><input id="uBis" type="date" value="${todayISO()}"></div>
     </div>
-    <div class="formRow"><label>Kommentar</label><div class="micWrap"><textarea id="uKommentar">${fieldMic("uKommentar")}</textarea></div></div>
+    <div class="formRow"><label>Kommentar</label><div class="micWrap"><textarea id="uKommentar"></textarea>${fieldMic("uKommentar")}</div></div>
+    ${sigPadHTML("uSig", "Unterschrift Mitarbeiter")}
     <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="saveUrlaub()">Antrag stellen</button></div>
   `);
+  initSigPad("uSig", "", v=>window._urlaubSigDraft=v);
 }
 function saveUrlaub(){
   const von = document.getElementById("uVon").value, bis = document.getElementById("uBis").value;
@@ -1508,7 +1558,8 @@ function saveUrlaub(){
   S.urlaubsantraege.push({
     id:uid(), mitarbeiterId:document.getElementById("uMitarbeiter").value,
     von, bis, tage:businessDaysBetween(von,bis), status:"offen",
-    kommentar:document.getElementById("uKommentar").value.trim()
+    kommentar:document.getElementById("uKommentar").value.trim(),
+    unterschrift:window._urlaubSigDraft||""
   });
   saveState(); closeModal(); route(location.hash);
   toast("Urlaubsantrag gestellt.", "success");
@@ -1539,8 +1590,9 @@ function exportUrlaubantragPDF(id){
   ];
   lines.forEach(([label,val])=>{ doc.setFont(undefined,"bold"); doc.text(label,15,y); doc.setFont(undefined,"normal"); doc.text(val,70,y); y+=8; });
   if(u.kommentar){ y+=2; doc.setFont(undefined,"bold"); doc.text("Kommentar:",15,y); doc.setFont(undefined,"normal"); y+=6; doc.text(doc.splitTextToSize(u.kommentar,180),15,y); y+=14; }
-  y += 20;
-  if(y>250){ doc.addPage(); y=20; }
+  y += 16;
+  if(y>220){ doc.addPage(); y=20; }
+  if(u.unterschrift){ try{ doc.addImage(u.unterschrift,"PNG",15,y,60,26); }catch(e){} y+=28; }
   doc.line(15,y,80,y); doc.line(115,y,180,y); y+=5;
   doc.setFontSize(9);
   doc.text("Unterschrift Arbeitnehmer",15,y);
@@ -2480,6 +2532,7 @@ function renderTabBautagebuch(body, p){
             <div style="display:flex; justify-content:space-between;"><b>${fmtDate(e.datum)}</b><button class="iconBtn" onclick="deleteBautagebuch('${escAttr(p.id)}','${escAttr(e.id)}')">🗑️</button></div>
             <div style="font-size:13px; margin-top:4px; white-space:pre-wrap;">${escHtml(e.text)}</div>
             ${e.wetter?`<div class="pageSub" style="margin-top:6px;">☁️ ${escHtml(e.wetter)}</div>`:""}
+            ${e.unterschrift?`<span class="badge green" style="margin-top:6px; display:inline-block;">✍️ unterschrieben</span>`:""}
           </div>
         `).join("") || `<div class="empty">Noch keine Einträge.</div>`}
       </div>
@@ -2487,19 +2540,22 @@ function renderTabBautagebuch(body, p){
   `;
 }
 function openBautagebuchForm(pid){
+  window._btSigDraft = "";
   openModal(`
     <div class="modalHead"><div class="modalTitle">Bautagebuch-Eintrag</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
     <div class="formRow"><label>Datum</label><input id="btDatum" type="date" value="${todayISO()}"></div>
     <div class="formRow"><label>Wetter (optional, manuell)</label><input id="btWetter" type="text" placeholder="z.B. 14°C, bewölkt"></div>
     <div class="formRow"><label>Eintrag</label><div class="micWrap"><textarea id="btText" style="min-height:120px;"></textarea>${fieldMic("btText")}</div></div>
+    ${sigPadHTML("btSig", "Unterschrift Bauleiter/Vorarbeiter")}
     <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="saveBautagebuch('${escAttr(pid)}')">Speichern</button></div>
   `);
+  initSigPad("btSig", "", v=>window._btSigDraft=v);
 }
 function saveBautagebuch(pid){
   const text = document.getElementById("btText").value.trim();
   if(!text){ toast("Text erforderlich.", "warn"); return; }
   const p = S.projekte.find(x=>x.id===pid);
-  p.bautagebuch.push({id:uid(), datum:document.getElementById("btDatum").value, wetter:document.getElementById("btWetter").value.trim(), text});
+  p.bautagebuch.push({id:uid(), datum:document.getElementById("btDatum").value, wetter:document.getElementById("btWetter").value.trim(), text, unterschrift:window._btSigDraft||""});
   saveState(); closeModal(); route(location.hash);
 }
 function deleteBautagebuch(pid, eid){
@@ -2516,12 +2572,19 @@ function exportBautagebuchPDF(pid){
   doc.text("Projekt: "+p.name, 15, y); y+=6;
   doc.text("Adresse: "+(p.adresse||"–"), 15, y); y+=10;
   p.bautagebuch.slice().sort((a,b)=>a.datum.localeCompare(b.datum)).forEach(e=>{
-    if(y>255){ doc.addPage(); y=20; }
+    if(y>250){ doc.addPage(); y=20; }
     doc.setFont(undefined,"bold"); doc.text(fmtDate(e.datum)+(e.wetter?"  ·  "+e.wetter:""), 15, y); doc.setFont(undefined,"normal");
     y+=6;
     const lines = doc.splitTextToSize(e.text, 180);
     doc.text(lines, 15, y);
-    y += lines.length*5 + 8;
+    y += lines.length*5 + 4;
+    if(e.unterschrift){
+      if(y>240){ doc.addPage(); y=20; }
+      try{ doc.addImage(e.unterschrift,"PNG",15,y,35,16); }catch(err){}
+      doc.setFontSize(7.5); doc.setTextColor(120); doc.text("Unterschrift", 15, y+19); doc.setTextColor(0); doc.setFontSize(10.5);
+      y += 22;
+    }
+    y += 6;
   });
   pdfFooter(doc);
   doc.save("Bautagebuch_"+p.name.replace(/[^a-z0-9]+/gi,"_")+".pdf");
@@ -2550,7 +2613,7 @@ function openZugangForm(pid){
   openModal(`
     <div class="modalHead"><div class="modalTitle">Zugang / Schlüsselinfo</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
     <div class="formRow"><label>Bezeichnung</label><input id="zBez" type="text" placeholder="z.B. Haustür-Code, Bauzaun-Schlüssel"></div>
-    <div class="formRow"><label>Info</label><div class="micWrap"><textarea id="zInfo">${fieldMic("zInfo")}</textarea></div></div>
+    <div class="formRow"><label>Info</label><div class="micWrap"><textarea id="zInfo"></textarea>${fieldMic("zInfo")}</div></div>
     <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="saveZugang('${escAttr(pid)}')">Speichern</button></div>
   `);
 }
@@ -2572,7 +2635,10 @@ function renderTabChecklist(body, p){
     <div class="card">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
         <b>WISO / Abnahme-Checkliste (${p.checkliste.filter(c=>c.done).length}/${p.checkliste.length})</b>
-        <button class="btn primary sm" onclick="openChecklistItemForm('${escAttr(p.id)}')">➕ Punkt</button>
+        <div style="display:flex; gap:8px;">
+          <button class="btn sm" onclick="exportChecklistePDF('${escAttr(p.id)}')">📄 PDF Export</button>
+          <button class="btn primary sm" onclick="openChecklistItemForm('${escAttr(p.id)}')">➕ Punkt</button>
+        </div>
       </div>
       <div style="display:flex; flex-direction:column; gap:6px;">
         ${p.checkliste.map((c,i)=>`
@@ -2584,7 +2650,47 @@ function renderTabChecklist(body, p){
         `).join("") || `<div class="empty">Keine Checklisten-Punkte.</div>`}
       </div>
     </div>
+    <div class="card" style="margin-top:16px;">
+      <b>Abnahme-Bestätigung</b>
+      <div class="pageSub" style="margin:4px 0 10px;">Unterschrift des Kunden/Auftraggebers zur Bestätigung der Abnahme.</div>
+      ${sigPadHTML("clSig", "Unterschrift Kunde/Auftraggeber")}
+      <button class="btn sm primary" style="margin-top:8px;" onclick="saveChecklisteUnterschrift('${escAttr(p.id)}')">Unterschrift speichern</button>
+    </div>
   `;
+  window._checklisteSigDraft = p.checklisteUnterschrift || "";
+  initSigPad("clSig", p.checklisteUnterschrift || "", v=>window._checklisteSigDraft=v);
+}
+function saveChecklisteUnterschrift(pid){
+  const p = S.projekte.find(x=>x.id===pid);
+  p.checklisteUnterschrift = window._checklisteSigDraft || "";
+  saveState();
+  toast("Unterschrift gespeichert.", "success");
+}
+function exportChecklistePDF(pid){
+  const p = S.projekte.find(x=>x.id===pid);
+  if(!p.checkliste.length){ toast("Keine Checklisten-Punkte zum Exportieren.", "warn"); return; }
+  const doc = pdfNewDoc();
+  let y = pdfHeader(doc, "WISO / Abnahme-Checkliste");
+  doc.setFontSize(10.5);
+  doc.text("Projekt: "+p.name, 15, y); y+=6;
+  doc.text("Adresse: "+(p.adresse||"–"), 15, y); y+=12;
+  p.checkliste.forEach(c=>{
+    if(y>270){ doc.addPage(); y=20; }
+    doc.text((c.done?"[x] ":"[ ] ")+c.text, 15, y);
+    y += 7;
+  });
+  y += 14;
+  if(p.checklisteUnterschrift){
+    if(y>230){ doc.addPage(); y=20; }
+    try{ doc.addImage(p.checklisteUnterschrift,"PNG",15,y,60,26); }catch(e){}
+    y += 28;
+  }
+  doc.line(15,y,80,y); y+=5;
+  doc.setFontSize(9);
+  doc.text("Unterschrift Kunde/Auftraggeber",15,y);
+  pdfFooter(doc);
+  doc.save("Abnahme-Checkliste_"+p.name.replace(/[^a-z0-9]+/gi,"_")+".pdf");
+  toast("Checkliste-PDF erstellt.", "success");
 }
 function openChecklistItemForm(pid){
   openModal(`
@@ -2693,7 +2799,21 @@ function renderTabAufmass(body, p){
       }).join("") || `<div class="empty" style="grid-column:1/-1;">Noch keine Räume aufgemessen.</div>`}
       </div>
     </div>
+    <div class="card" style="margin-top:16px;">
+      <b>Bestätigung Aufmaß</b>
+      <div class="pageSub" style="margin:4px 0 10px;">Unterschrift z.B. durch Auftraggeber oder Vorarbeiter zur Bestätigung der aufgenommenen Maße.</div>
+      ${sigPadHTML("aufmassSig", "Unterschrift")}
+      <button class="btn sm primary" style="margin-top:8px;" onclick="saveAufmassUnterschrift('${escAttr(p.id)}')">Unterschrift speichern</button>
+    </div>
   `;
+  window._aufmassSigDraft = p.aufmassUnterschrift || "";
+  initSigPad("aufmassSig", p.aufmassUnterschrift || "", v=>window._aufmassSigDraft=v);
+}
+function saveAufmassUnterschrift(pid){
+  const p = S.projekte.find(x=>x.id===pid);
+  p.aufmassUnterschrift = window._aufmassSigDraft || "";
+  saveState();
+  toast("Unterschrift gespeichert.", "success");
 }
 function openRaumForm(pid, rid){
   const p = S.projekte.find(x=>x.id===pid);
@@ -2817,6 +2937,15 @@ function exportAufmassPDF(pid){
   doc.setFont(undefined,"bold");
   doc.text(`Gesamt Grundfläche: ${gesamtFlaeche.toFixed(2)} m²   Gesamt Wandfläche: ${gesamtWand.toFixed(2)} m²`, 15, y);
   doc.setFont(undefined,"normal");
+  y += 20;
+  if(p.aufmassUnterschrift){
+    if(y>240){ doc.addPage(); y=20; }
+    try{ doc.addImage(p.aufmassUnterschrift,"PNG",15,y,60,26); }catch(e){}
+    y += 28;
+    doc.line(15,y,80,y); y+=5;
+    doc.setFontSize(9);
+    doc.text("Unterschrift (Bestätigung Aufmaß)",15,y);
+  }
   pdfFooter(doc);
   doc.save("Aufmass_"+p.name.replace(/[^a-z0-9]+/gi,"_")+".pdf");
 }
@@ -2864,7 +2993,7 @@ function openAufgabeForm(){
   openModal(`
     <div class="modalHead"><div class="modalTitle">Neue Aufgabe</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
     <div class="formRow"><label>Titel</label><div class="micWrap"><input id="agTitel" type="text">${fieldMic("agTitel")}</div></div>
-    <div class="formRow"><label>Beschreibung</label><div class="micWrap"><textarea id="agBeschreibung">${fieldMic("agBeschreibung")}</textarea></div></div>
+    <div class="formRow"><label>Beschreibung</label><div class="micWrap"><textarea id="agBeschreibung"></textarea>${fieldMic("agBeschreibung")}</div></div>
     <div class="grid cols-2">
       <div class="formRow"><label>Fällig am</label><input id="agFaellig" type="date"></div>
       <div class="formRow"><label>Priorität</label><select id="agPrio"><option value="niedrig">Niedrig</option><option value="mittel" selected>Mittel</option><option value="hoch">Hoch</option></select></div>
@@ -3323,7 +3452,8 @@ function renderSchluessel(view){
           <td>${fmtDate(s.ausgabeDatum)}</td><td>${s.rueckgabeDatum?fmtDate(s.rueckgabeDatum):"–"}</td>
           <td><span class="badge ${s.status==='ausgegeben'?'amber':'green'}">${escHtml(s.status)}</span></td>
           <td style="text-align:right; white-space:nowrap;">
-            ${s.status==="ausgegeben"?`<button class="btn sm" onclick="schluesselRueckgabe('${escAttr(s.id)}')">Rückgabe</button>`:""}
+            ${s.status==="ausgegeben"?`<button class="btn sm" onclick="openSchluesselRueckgabeForm('${escAttr(s.id)}')">Rückgabe</button>`:""}
+            <button class="iconBtn" onclick="exportSchluesselEinzelPDF('${escAttr(s.id)}')" title="Übergabeprotokoll PDF">📄</button>
             <button class="iconBtn" onclick="deleteSchluessel('${escAttr(s.id)}')">🗑️</button>
           </td>
         </tr>
@@ -3333,6 +3463,7 @@ function renderSchluessel(view){
   `;
 }
 function openSchluesselForm(){
+  window._skSigDraft = "";
   openModal(`
     <div class="modalHead"><div class="modalTitle">Schlüssel-Ausgabe</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
     <div class="formRow"><label>Bezeichnung</label><input id="skBez" type="text" placeholder="z.B. Haustürschlüssel EG"></div>
@@ -3341,23 +3472,64 @@ function openSchluesselForm(){
       <div class="formRow"><label>Ausgegeben an</label><select id="skMitarbeiter">${S.mitarbeiter.map(m=>`<option value="${escAttr(m.id)}">${escHtml(m.name)}</option>`).join("")}</select></div>
       <div class="formRow"><label>Ausgabedatum</label><input id="skDatum" type="date" value="${todayISO()}"></div>
     </div>
+    ${sigPadHTML("skSig", "Unterschrift Empfänger (Erhalt bestätigt)")}
     <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="saveSchluessel()">Speichern</button></div>
   `);
+  initSigPad("skSig", "", v=>window._skSigDraft=v);
 }
 function saveSchluessel(){
   const bezeichnung = document.getElementById("skBez").value.trim();
   if(!bezeichnung){ toast("Bezeichnung erforderlich.", "warn"); return; }
-  S.schluessel.push({id:uid(), bezeichnung, projektId:document.getElementById("skProjekt").value, ausgegebenAn:document.getElementById("skMitarbeiter").value, ausgabeDatum:document.getElementById("skDatum").value, rueckgabeDatum:null, status:"ausgegeben"});
+  S.schluessel.push({id:uid(), bezeichnung, projektId:document.getElementById("skProjekt").value, ausgegebenAn:document.getElementById("skMitarbeiter").value, ausgabeDatum:document.getElementById("skDatum").value, rueckgabeDatum:null, status:"ausgegeben", unterschriftAusgabe:window._skSigDraft||"", unterschriftRueckgabe:""});
   saveState(); closeModal(); route(location.hash);
+}
+function openSchluesselRueckgabeForm(id){
+  window._skRueckgabeSigDraft = "";
+  window._skRueckgabeId = id;
+  openModal(`
+    <div class="modalHead"><div class="modalTitle">Schlüssel-Rückgabe</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
+    ${sigPadHTML("skRueckgabeSig", "Unterschrift Rückgabe bestätigt")}
+    <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="schluesselRueckgabe('${escAttr(id)}')">Rückgabe bestätigen</button></div>
+  `);
+  initSigPad("skRueckgabeSig", "", v=>window._skRueckgabeSigDraft=v);
 }
 function schluesselRueckgabe(id){
   const s = S.schluessel.find(x=>x.id===id);
-  s.rueckgabeDatum = todayISO(); s.status="zurück";
-  saveState(); route(location.hash);
+  s.rueckgabeDatum = todayISO(); s.status="zurück"; s.unterschriftRueckgabe = window._skRueckgabeSigDraft||"";
+  saveState(); closeModal(); route(location.hash);
 }
 function deleteSchluessel(id){
   S.schluessel = S.schluessel.filter(s=>s.id!==id);
   saveState(); route(location.hash);
+}
+function exportSchluesselEinzelPDF(id){
+  const s = S.schluessel.find(x=>x.id===id);
+  const doc = pdfNewDoc();
+  let y = pdfHeader(doc, "Schlüssel-Übergabeprotokoll");
+  doc.setFontSize(10.5);
+  const lines = [
+    ["Bezeichnung:", s.bezeichnung],
+    ["Baustelle:", projektName(s.projektId)],
+    ["Ausgegeben an:", mitarbeiterName(s.ausgegebenAn)],
+    ["Ausgabedatum:", fmtDate(s.ausgabeDatum)],
+    ["Rückgabedatum:", s.rueckgabeDatum?fmtDate(s.rueckgabeDatum):"–"],
+    ["Status:", s.status],
+  ];
+  lines.forEach(([label,val])=>{ doc.setFont(undefined,"bold"); doc.text(label,15,y); doc.setFont(undefined,"normal"); doc.text(String(val),70,y); y+=8; });
+  y += 12;
+  if(s.unterschriftAusgabe){
+    if(y>230){ doc.addPage(); y=20; }
+    try{ doc.addImage(s.unterschriftAusgabe,"PNG",15,y,60,26); }catch(e){}
+    y += 28; doc.line(15,y,80,y); y+=5; doc.setFontSize(9); doc.text("Unterschrift Empfänger (Ausgabe)",15,y); doc.setFontSize(10.5); y+=14;
+  }
+  if(s.unterschriftRueckgabe){
+    if(y>230){ doc.addPage(); y=20; }
+    try{ doc.addImage(s.unterschriftRueckgabe,"PNG",15,y,60,26); }catch(e){}
+    y += 28; doc.line(15,y,80,y); y+=5; doc.setFontSize(9); doc.text("Unterschrift Rückgabe",15,y); doc.setFontSize(10.5);
+  }
+  pdfFooter(doc);
+  doc.save("Schluesseluebergabe_"+s.bezeichnung.replace(/[^a-z0-9]+/gi,"_")+".pdf");
+  toast("Übergabeprotokoll-PDF erstellt.", "success");
 }
 function exportSchluesselPDF(){
   if(!S.schluessel.length){ toast("Keine Einträge zum Exportieren.", "warn"); return; }
@@ -3416,7 +3588,7 @@ function openVorlageForm(defId){
     </div>
     ${def.felder.map((f,i)=>`
       <div class="formRow"><label>${escHtml(f.label)}</label>
-        ${f.typ==="textarea"?`<div class="micWrap"><textarea id="voFeld${i}" oninput="window._vorlageDraft.werte['${escAttr(f.label)}']=this.value">${fieldMic("voFeld"+i)}</div>`
+        ${f.typ==="textarea"?`<div class="micWrap"><textarea id="voFeld${i}" oninput="window._vorlageDraft.werte['${escAttr(f.label)}']=this.value"></textarea>${fieldMic("voFeld"+i)}</div>`
         : f.typ==="date" ? `<input id="voFeld${i}" type="date" value="${todayISO()}" oninput="window._vorlageDraft.werte['${escAttr(f.label)}']=this.value">`
         : `<div class="micWrap"><input id="voFeld${i}" type="text" oninput="window._vorlageDraft.werte['${escAttr(f.label)}']=this.value">${fieldMic("voFeld"+i)}</div>`}
       </div>
@@ -3635,7 +3807,7 @@ function openSchadenForm(fid){
   openModal(`
     <div class="modalHead"><div class="modalTitle">Schadensmeldung</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
     <div class="formRow"><label>Datum</label><input id="scDatum" type="date" value="${todayISO()}"></div>
-    <div class="formRow"><label>Beschreibung</label><div class="micWrap"><textarea id="scBeschreibung">${fieldMic("scBeschreibung")}</textarea></div></div>
+    <div class="formRow"><label>Beschreibung</label><div class="micWrap"><textarea id="scBeschreibung"></textarea>${fieldMic("scBeschreibung")}</div></div>
     <div class="formRow"><label>Kosten (€, geschätzt)</label><input id="scKosten" type="number" step="0.01"></div>
     <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="saveSchaden('${escAttr(fid)}')">Speichern</button></div>
   `);
@@ -4274,9 +4446,9 @@ function openBriefSchreiben(){
     <div class="modalHead"><div class="modalTitle">✉️ Brief schreiben</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
     <div class="grid cols-2">
       <div>
-        <div class="formRow"><label>Empfänger-Adresse</label><div class="micWrap"><textarea id="brEmpfaenger" style="min-height:70px;" oninput="briefDraftChange('empfaenger',this.value)">${fieldMic("brEmpfaenger")}</div></div>
+        <div class="formRow"><label>Empfänger-Adresse</label><div class="micWrap"><textarea id="brEmpfaenger" style="min-height:70px;" oninput="briefDraftChange('empfaenger',this.value)"></textarea>${fieldMic("brEmpfaenger")}</div></div>
         <div class="formRow"><label>Betreff</label><div class="micWrap"><input id="brBetreff" type="text" oninput="briefDraftChange('betreff',this.value)">${fieldMic("brBetreff")}</div></div>
-        <div class="formRow"><label>Text</label><div class="micWrap"><textarea id="brText" style="min-height:220px;" oninput="briefDraftChange('text',this.value)">${fieldMic("brText")}</div></div>
+        <div class="formRow"><label>Text</label><div class="micWrap"><textarea id="brText" style="min-height:220px;" oninput="briefDraftChange('text',this.value)"></textarea>${fieldMic("brText")}</div></div>
       </div>
       <div id="briefPreviewWrap" style="max-height:520px; overflow-y:auto;"></div>
     </div>
