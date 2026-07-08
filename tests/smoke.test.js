@@ -197,6 +197,29 @@ async function main() {
   assert(firmaViewHtml.includes("Live-Vorschau") && firmaViewHtml.includes("Konfigurieren"), "Split-Layout Konfigurieren/Live-Vorschau vorhanden");
   assert(firmaViewHtml.includes("&lt;Söhne&gt;"), "Firmenname in Live-Vorschau korrekt escaped (kein Tag-Ausbruch)");
 
+  console.log("\n== PDF-Export-Buttons (Stundenzettel, Urlaub, Bautagebuch, Schlüssel, Personalakte) ==");
+  window.document.getElementById("view").innerHTML = "";
+  window.renderStundenzettel(window.document.getElementById("view"));
+  assert(window.document.getElementById("view").innerHTML.includes("exportStundenzettelPDF"), "Stundenzettel hat PDF-Export-Button");
+  window.S.urlaubsantraege.push({ id: "ua1", mitarbeiterId: "m1", von: "2026-08-03", bis: "2026-08-07", tage: 5, status: "offen", kommentar: "" });
+  window.document.getElementById("view").innerHTML = "";
+  window.renderUrlaub(window.document.getElementById("view"));
+  assert(window.document.getElementById("view").innerHTML.includes("exportUrlaubUebersichtPDF"), "Urlaub-Übersicht hat PDF-Export-Button");
+  assert(window.document.getElementById("view").innerHTML.includes("exportUrlaubantragPDF"), "Urlaubsantrag-Zeilen haben PDF-Export-Button");
+  window.document.getElementById("view").innerHTML = "";
+  window.renderProjekte(window.document.getElementById("view"), "p1", "bautagebuch");
+  assert(window.document.getElementById("view").innerHTML.includes("exportBautagebuchPDF"), "Bautagebuch hat PDF-Export-Button");
+  window.document.getElementById("view").innerHTML = "";
+  window.renderSchluessel(window.document.getElementById("view"));
+  assert(window.document.getElementById("view").innerHTML.includes("exportSchluesselPDF"), "Schlüsselprotokoll hat PDF-Export-Button");
+  window._pkTab = "stammdaten";
+  window.openPersonalakte("m1");
+  const pkModalHtml = window.document.getElementById("modalOverlay").innerHTML;
+  assert(pkModalHtml.includes("exportPersonalakteStammblattPDF"), "Personalakte-Stammdaten hat Stammblatt-PDF-Button");
+  window.closeModal();
+  assert(typeof window.FIRMA_LOGO_DEFAULT === "string" && window.FIRMA_LOGO_DEFAULT.startsWith("data:image/jpeg;base64,"), "Echtes Firmenlogo ist als Default eingebettet");
+  assert(window.S.firma.logo === window.FIRMA_LOGO_DEFAULT, "Firmenlogo ist im Default-State gesetzt");
+
   console.log("\n=================================");
   console.log(passed + " Tests bestanden, " + failures + " fehlgeschlagen.");
   console.log("=================================");
