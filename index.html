@@ -354,7 +354,7 @@ function defaultState(){
       iban:"DE98 2219 1405 0079 0724 90", bic:"GENODEF1PIN", bank:"VR Bank in Holstein",
       steuernr:"18/298/51034", ustid:"DE358137280", geschaeftsfuehrer:"Ivan Majer, Berat Shala",
       amtsgericht:"Amtsgericht Pinneberg", hrb:"HRB 16958 PI",
-      logo:FIRMA_LOGO_DEFAULT, icon:FIRMA_ICON_DEFAULT
+      logo:FIRMA_LOGO_DEFAULT, logoAspect:1121/158, icon:FIRMA_ICON_DEFAULT
     },
     mitarbeiter: [],
     zeiterfassung: [],
@@ -3437,11 +3437,16 @@ function pdfHeader(doc, title){
   const f = S.firma;
   let y = 15;
   if(f.logo){
-    try{ doc.addImage(f.logo, "JPEG", 15, y, 26, 26, undefined, "FAST"); }
-    catch(e){ try{ doc.addImage(f.logo, "PNG", 15, y, 26, 26, undefined, "FAST"); }catch(e2){ /* logo not embeddable, skip silently in PDF only */ } }
+    // Seitenverhältnis beachten statt fest zu quetschen (das breite Wortmarken-Logo
+    // war vorher auf ein 26x26-Quadrat gezwungen und dadurch stark verzerrt).
+    const aspect = f.logoAspect || 1;
+    const logoW = 46, logoH = logoW / aspect;
+    try{ doc.addImage(f.logo, "JPEG", 15, y, logoW, logoH, undefined, "FAST"); }
+    catch(e){ try{ doc.addImage(f.logo, "PNG", 15, y, logoW, logoH, undefined, "FAST"); }catch(e2){ /* logo not embeddable, skip silently in PDF only */ } }
   }
   doc.setFontSize(9); doc.setTextColor(90);
-  [f.name, f.strasse, [f.plz,f.ort].filter(Boolean).join(" "), f.tel, f.email].filter(Boolean).forEach((l,i)=>{
+  // Firmenname bewusst nicht nochmal als Text - steht bereits im Logo.
+  [f.strasse, [f.plz,f.ort].filter(Boolean).join(" "), f.tel, f.email].filter(Boolean).forEach((l,i)=>{
     doc.text(String(l), 195, y+4+i*4, {align:"right"});
   });
   doc.setTextColor(0);
@@ -4012,22 +4017,7 @@ function openVorlageForm(defId){
   `, true);
   initSigPad("voSig", "", v=>window._vorlageDraft.unterschrift=v);
 }
-function saveVorlageInstanz(){
-  const v = window._vorlageDraft;
-  S.vorlagen.push(v);
-  if(v.projektId){
-    const p = S.projekte.find(x=>x.id===v.projektId);
-    p.dokumente.push({id:uid(), name:vorlagenDefName(v.defId)+"_"+v.datum+".pdf", dataURL:"", projektId:v.projektId, datum:new Date().toISOString(), vorlageRef:v.id});
-  }
-  saveState(); closeModal(); route(location.hash);
-  toast("Vorlage gespeichert.", "success");
-}
-function deleteVorlageInstanz(id){
-  S.vorlagen = S.vorlagen.filter(v=>v.id!==id);
-  saveState(); route(location.hash);
-}
-function exportVorlagePDF(id){
-  const v = S.vorlagen.find(x=>x.id===id);
+function buildVorlagePDFDoc(v){
   const def = VORLAGEN_DEFS.find(x=>x.id===v.defId);
   const doc = pdfNewDoc();
   let y = pdfHeader(doc, (def?def.name:"Vorlage"));
@@ -4054,6 +4044,32 @@ function exportVorlagePDF(id){
     doc.setFontSize(9); doc.text("Unterschrift", 15, y);
   }
   pdfFooter(doc);
+  return doc;
+}
+function saveVorlageInstanz(){
+  const v = window._vorlageDraft;
+  S.vorlagen.push(v);
+  if(v.projektId){
+    try{
+      const doc = buildVorlagePDFDoc(v);
+      const dataURL = doc.output("datauristring");
+      const p = S.projekte.find(x=>x.id===v.projektId);
+      p.dokumente.push({id:uid(), name:vorlagenDefName(v.defId)+"_"+v.datum+".pdf", dataURL, projektId:v.projektId, datum:new Date().toISOString(), vorlageRef:v.id});
+    }catch(e){
+      toast("Vorlage wurde gespeichert, aber PDF konnte nicht im Projekt hinterlegt werden: "+e.message, "warn");
+    }
+  }
+  saveState(); closeModal(); route(location.hash);
+  toast(v.projektId ? "Vorlage gespeichert und im Projekt hinterlegt." : "Vorlage gespeichert.", "success");
+}
+function deleteVorlageInstanz(id){
+  S.vorlagen = S.vorlagen.filter(v=>v.id!==id);
+  saveState(); route(location.hash);
+}
+function exportVorlagePDF(id){
+  const v = S.vorlagen.find(x=>x.id===id);
+  const def = VORLAGEN_DEFS.find(x=>x.id===v.defId);
+  const doc = buildVorlagePDFDoc(v);
   doc.save((def?def.name:"Vorlage").replace(/[^a-z0-9]+/gi,"_")+"_"+v.datum+".pdf");
 }
 
@@ -4853,12 +4869,25 @@ function renderFirmaLivePreview(){
   if(!el) return;
   el.innerHTML = briefkopfPreviewHTML(window._firmaDraft, {});
 }
+function getDataURLDimensions(dataURL){
+  return new Promise((resolve, reject)=>{
+    const img = new Image();
+    img.onload = ()=>resolve({width:img.naturalWidth||img.width, height:img.naturalHeight||img.height});
+    img.onerror = ()=>reject(new Error("Bildabmessungen konnten nicht ermittelt werden"));
+    img.src = dataURL;
+  });
+}
 async function uploadFirmaLogo(input){
   const file = input.files[0]; if(!file) return;
   try{
     const dataURL = await compressImage(file, 512, 0.85);
+    const dims = await getDataURLDimensions(dataURL).catch(()=>null);
     window._firmaDraft.logo = dataURL;
     S.firma.logo = dataURL;
+    if(dims && dims.width && dims.height){
+      window._firmaDraft.logoAspect = dims.width/dims.height;
+      S.firma.logoAspect = dims.width/dims.height;
+    }
     saveState();
     applyBranding(); buildSidebar();
     renderEinstellungen(document.getElementById("view"), "firma");

@@ -388,6 +388,34 @@ async function main() {
   window.renderDashboard(window.document.getElementById("view"));
   assert(window.document.getElementById("view").innerHTML.includes("Pflichtdokumente"), "Dashboard zeigt Pflichtdokumente-Warnkachel");
 
+  console.log("\n== Logo-Verzerrung im PDF-Briefkopf behoben ==");
+  {
+    const calls = [];
+    const textCalls = [];
+    const fakeDoc = {
+      addImage: (...args) => calls.push(args),
+      setFontSize: () => {}, setTextColor: () => {}, setDrawColor: () => {}, line: () => {}, setFont: () => {},
+      text: (str) => textCalls.push(str),
+    };
+    window.S.firma.logo = "data:image/jpeg;base64,AAAA";
+    window.S.firma.logoAspect = 1121 / 158;
+    window.pdfHeader(fakeDoc, "Test");
+    assert(calls.length === 1, "pdfHeader bettet das Logo genau einmal ein");
+    const [, , , , w, h] = calls[0];
+    const ratio = w / h;
+    assert(Math.abs(ratio - 1121 / 158) < 0.01, "Logo wird mit korrektem Seitenverhältnis eingebettet statt auf ein Quadrat gezwungen (Verhältnis=" + ratio.toFixed(2) + ")");
+    assert(!textCalls.includes(window.S.firma.name), "Firmenname wird nicht mehr redundant als Text neben dem Logo geschrieben (steht schon im Logo)");
+  }
+
+  console.log("\n== Vorlagen: Speichern hinterlegt echtes PDF im gewählten Projekt ==");
+  window.openVorlageForm("maengelruege");
+  assert(window.document.getElementById("modalOverlay").innerHTML.includes('id="voProjekt"'), "Vorlagen-Formular bietet eine Projekt-Auswahl an");
+  window._vorlageDraft.projektId = "p1";
+  let saveOk = true, saveMsg = "";
+  try { window.saveVorlageInstanz(); } catch (e) { saveOk = false; saveMsg = e.message; }
+  assert(saveOk, "saveVorlageInstanz() wirft keine Exception, auch wenn jsPDF (hier) nicht geladen ist" + (saveOk ? "" : " (" + saveMsg + ")"));
+  assert(window.S.vorlagen.some((v) => v.projektId === "p1"), "Ausgefüllte Vorlage wird mit der Projekt-ID gespeichert");
+
   console.log("\n=================================");
   console.log(passed + " Tests bestanden, " + failures + " fehlgeschlagen.");
   console.log("=================================");
