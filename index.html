@@ -4715,7 +4715,8 @@ function setCloudStatus(state, msg){
   if(el) el.innerHTML = cloudStatusHTML();
 }
 function cloudStatusHTML(){
-  const map = {idle:["gray","Nicht verbunden"], syncing:["amber","Synchronisiere..."], ok:["green","Verbunden – aktuell"], error:["red","Fehler: "+escHtml(cloudSyncStatus.msg)]};
+  const shortMsg = String(cloudSyncStatus.msg||"").slice(0,140);
+  const map = {idle:["gray","Nicht verbunden"], syncing:["amber","Synchronisiere..."], ok:["green","Verbunden – aktuell"], error:["red","Fehler: "+escHtml(shortMsg)]};
   const [cls,label] = map[cloudSyncStatus.state]||map.idle;
   return `<span class="badge ${cls}">${label}</span>`;
 }
@@ -4743,6 +4744,9 @@ async function cloudSyncPull(initial){
     const { data, error } = await sb.from("erm_data").select("payload,updated_at").eq("id",1).single();
     if(error) throw error;
     if(data && data.payload){
+      if(typeof data.payload !== "object" || Array.isArray(data.payload)){
+        throw new Error("Cloud-Daten haben ein ungültiges Format (payload ist kein Objekt, sondern " + typeof data.payload + "). Bitte in Supabase die Spalte 'payload' der Zeile mit id=1 in Tabelle erm_data auf '{}' zurücksetzen.");
+      }
       S = ensureShape(data.payload);
       try{ await idbSet("main", JSON.stringify(S)); }catch(e){}
       try{ localStorage.setItem(LS_KEY, JSON.stringify(S)); }catch(e){}
@@ -4751,7 +4755,7 @@ async function cloudSyncPull(initial){
     setCloudStatus("ok");
   }catch(e){
     setCloudStatus("error", e.message);
-    if(!initial) toast("Cloud-Sync Abruf fehlgeschlagen: "+e.message, "error");
+    if(!initial) toast("Cloud-Sync Abruf fehlgeschlagen: "+String(e.message).slice(0,180), "error");
   }
 }
 function subscribeRealtime(){
@@ -4760,7 +4764,7 @@ function subscribeRealtime(){
   if(_rtChannel){ try{ sb.removeChannel(_rtChannel); }catch(e){} }
   _rtChannel = sb.channel("erm_data_changes")
     .on("postgres_changes", {event:"UPDATE", schema:"public", table:"erm_data"}, payload=>{
-      if(payload.new && payload.new.payload){
+      if(payload.new && payload.new.payload && typeof payload.new.payload==="object" && !Array.isArray(payload.new.payload)){
         S = ensureShape(payload.new.payload);
         idbSet("main", JSON.stringify(S)).catch(()=>{});
         try{ localStorage.setItem(LS_KEY, JSON.stringify(S)); }catch(e){}
