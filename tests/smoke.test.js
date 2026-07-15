@@ -261,6 +261,24 @@ async function main() {
   assert(window.document.getElementById("modalOverlay").innerHTML.includes("uSig"), "Urlaubsantrag-Formular enthält Unterschrift-Canvas");
   window.closeModal();
 
+  console.log("\n== Urlaubsantrag: Arbeitgeber kann digital genehmigen & unterschreiben ==");
+  let ugOk = true, ugMsg = "";
+  try { window.openUrlaubGenehmigenForm("ua1"); } catch (e) { ugOk = false; ugMsg = e.message; }
+  assert(ugOk, "Genehmigen-Formular rendert ohne Exception" + (ugOk ? "" : " (" + ugMsg + ")"));
+  const ugModalHtml = window.document.getElementById("modalOverlay").innerHTML;
+  assert(ugModalHtml.includes("uaSig") && ugModalHtml.includes("Unterschrift Arbeitgeber"), "Genehmigen-Formular enthält Arbeitgeber-Unterschrift-Canvas");
+  window.confirmUrlaubGenehmigen("ua1");
+  let ua1AfterEmptySig = window.S.urlaubsantraege.find((u) => u.id === "ua1");
+  assert(ua1AfterEmptySig.status === "offen", "Ohne Unterschrift bleibt der Antrag 'offen' (Genehmigung wird verweigert)");
+  window._urlaubGenehmigenSig = "data:image/png;base64,AAAA";
+  window.confirmUrlaubGenehmigen("ua1");
+  const ua1 = window.S.urlaubsantraege.find((u) => u.id === "ua1");
+  assert(ua1.status === "genehmigt", "Antrag ist nach Unterschrift genehmigt");
+  assert(ua1.unterschriftArbeitgeber === "data:image/png;base64,AAAA", "Arbeitgeber-Unterschrift wird am Antrag gespeichert");
+  window.document.getElementById("view").innerHTML = "";
+  window.renderUrlaub(window.document.getElementById("view"));
+  assert(window.document.getElementById("view").innerHTML.includes("✍️ signiert"), "Liste zeigt 'signiert'-Hinweis bei digital unterschriebenem Antrag");
+
   console.log("\n== Regression: Mic-Button darf nicht als Text im Textarea landen ==");
   // Frueherer Bug: `<textarea id="x">${fieldMic("x")}</textarea>` setzt den Mic-Button-HTML-String
   // als Textarea-INHALT statt als Sibling-Element daneben zu rendern.

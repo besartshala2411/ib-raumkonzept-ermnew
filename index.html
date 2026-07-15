@@ -1586,9 +1586,10 @@ function renderUrlaub(view){
         <tr>
           <td>${escHtml(mitarbeiterName(u.mitarbeiterId))}</td>
           <td>${fmtDate(u.von)}</td><td>${fmtDate(u.bis)}</td><td>${u.tage}</td>
-          <td>${statusBadgeUrlaub(u.status)}</td>
+          <td>${statusBadgeUrlaub(u.status)}${u.status==="genehmigt" ? (u.unterschriftArbeitgeber?` <span class="badge green" title="Arbeitgeber hat digital unterschrieben">✍️ signiert</span>`:` <span class="badge amber" title="Arbeitgeber-Unterschrift fehlt noch">✍️ offen</span>`) : ""}</td>
           <td style="text-align:right; white-space:nowrap;">
-            ${u.status==="offen" ? `<button class="btn sm" onclick="setUrlaubStatus('${escAttr(u.id)}','genehmigt')">✅</button><button class="btn sm danger" onclick="setUrlaubStatus('${escAttr(u.id)}','abgelehnt')">✖</button>` : ""}
+            ${u.status==="offen" ? `<button class="btn sm" onclick="openUrlaubGenehmigenForm('${escAttr(u.id)}')">✅</button><button class="btn sm danger" onclick="setUrlaubStatus('${escAttr(u.id)}','abgelehnt')">✖</button>` : ""}
+            ${u.status==="genehmigt" && !u.unterschriftArbeitgeber ? `<button class="iconBtn" onclick="openUrlaubGenehmigenForm('${escAttr(u.id)}')" title="Arbeitgeber-Unterschrift nachtragen">✍️</button>` : ""}
             <button class="iconBtn" onclick="exportUrlaubantragPDF('${escAttr(u.id)}')" title="PDF">📄</button>
             <button class="iconBtn" onclick="deleteUrlaub('${escAttr(u.id)}')">🗑️</button>
           </td>
@@ -1626,7 +1627,7 @@ function saveUrlaub(){
     id:uid(), mitarbeiterId:document.getElementById("uMitarbeiter").value,
     von, bis, tage:businessDaysBetween(von,bis), status:"offen",
     kommentar:document.getElementById("uKommentar").value.trim(),
-    unterschrift:window._urlaubSigDraft||""
+    unterschrift:window._urlaubSigDraft||"", unterschriftArbeitgeber:""
   });
   saveState(); closeModal(); route(location.hash);
   toast("Urlaubsantrag gestellt.", "success");
@@ -1636,6 +1637,27 @@ function setUrlaubStatus(id, status){
   u.status = status;
   pushNotification(`Urlaubsantrag von ${mitarbeiterName(u.mitarbeiterId)} wurde ${status}.`, status==="genehmigt"?"info":"warn");
   saveState(); route(location.hash);
+}
+function openUrlaubGenehmigenForm(id){
+  const u = S.urlaubsantraege.find(x=>x.id===id);
+  window._urlaubGenehmigenSig = u.unterschriftArbeitgeber || "";
+  openModal(`
+    <div class="modalHead"><div class="modalTitle">Antrag genehmigen &amp; unterschreiben</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
+    <div class="pageSub" style="margin-bottom:10px;">${escHtml(mitarbeiterName(u.mitarbeiterId))} · ${fmtDate(u.von)} – ${fmtDate(u.bis)} (${u.tage} Tage)</div>
+    <div class="pageSub" style="margin-bottom:10px;">Direkt hier auf dem PC/Tablet unterschreiben – kein Ausdrucken nötig.</div>
+    ${sigPadHTML("uaSig", "Unterschrift Arbeitgeber")}
+    <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="confirmUrlaubGenehmigen('${escAttr(id)}')">✅ Genehmigen &amp; unterschreiben</button></div>
+  `);
+  initSigPad("uaSig", u.unterschriftArbeitgeber||"", v=>window._urlaubGenehmigenSig=v);
+}
+function confirmUrlaubGenehmigen(id){
+  const u = S.urlaubsantraege.find(x=>x.id===id);
+  if(!window._urlaubGenehmigenSig){ toast("Bitte mit Unterschrift bestätigen.", "warn"); return; }
+  u.status = "genehmigt";
+  u.unterschriftArbeitgeber = window._urlaubGenehmigenSig;
+  pushNotification(`Urlaubsantrag von ${mitarbeiterName(u.mitarbeiterId)} wurde genehmigt.`, "info");
+  saveState(); closeModal(); route(location.hash);
+  toast("Antrag genehmigt und unterschrieben.", "success");
 }
 function deleteUrlaub(id){
   confirmDelete("Urlaubsantrag wirklich löschen?", ()=>{
@@ -1659,7 +1681,9 @@ function exportUrlaubantragPDF(id){
   if(u.kommentar){ y+=2; doc.setFont(undefined,"bold"); doc.text("Kommentar:",15,y); doc.setFont(undefined,"normal"); y+=6; doc.text(doc.splitTextToSize(u.kommentar,180),15,y); y+=14; }
   y += 16;
   if(y>220){ doc.addPage(); y=20; }
-  if(u.unterschrift){ try{ doc.addImage(u.unterschrift,"PNG",15,y,60,26); }catch(e){} y+=28; }
+  if(u.unterschrift){ try{ doc.addImage(u.unterschrift,"PNG",15,y,60,26); }catch(e){} }
+  if(u.unterschriftArbeitgeber){ try{ doc.addImage(u.unterschriftArbeitgeber,"PNG",115,y,60,26); }catch(e){} }
+  y += 28;
   doc.line(15,y,80,y); doc.line(115,y,180,y); y+=5;
   doc.setFontSize(9);
   doc.text("Unterschrift Arbeitnehmer",15,y);
