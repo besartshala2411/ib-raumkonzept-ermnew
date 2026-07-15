@@ -5162,7 +5162,7 @@ function briefkopfPreviewHTML(f, opts){
       <div style="margin-bottom:22px; color:#333; white-space:pre-wrap;">${opts.empfaenger ? escHtml(opts.empfaenger).replace(/\n/g,"<br>") : "[Empfängeradresse]"}</div>
       <div style="text-align:right; color:#888; font-size:10.5px; margin-bottom:16px;">${escHtml(f.ort||"")}${f.ort?", den ":"den "}${heute}</div>
       <div style="font-weight:700; margin-bottom:10px;">Betreff: ${escHtml(opts.betreff||"Muster-Dokument")}</div>
-      <div style="white-space:pre-wrap; min-height:70px;">${opts.body || "Sehr geehrte Damen und Herren,<br><br>Lorem ipsum dolor sit amet.<br><br>Mit freundlichen Grüßen<br>Ihr Team von "+escHtml(f.name||"")}</div>
+      <div style="white-space:pre-wrap; min-height:70px;">${opts.body || "Sehr geehrte Damen und Herren,<br><br>Mit freundlichen Grüßen<br>Ihr Team von "+escHtml(f.name||"")}</div>
       <div style="margin-top:26px; border-top:1px solid #ddd; padding-top:12px; display:grid; grid-template-columns:repeat(3,1fr); gap:10px; font-size:9px; color:#777;">
         <div>
           <b style="color:#444;">Kontakt</b><br>
@@ -5236,7 +5236,7 @@ function exportTestPDF(){
   let y = pdfHeader(doc, "Muster-Dokument");
   doc.setFontSize(10.5);
   doc.text("Sehr geehrte Damen und Herren,", 15, y); y+=10;
-  doc.text(doc.splitTextToSize("Lorem ipsum dolor sit amet. Dies ist ein Test-Dokument zur Überprüfung Ihres Briefkopf-Layouts.",180), 15, y); y+=22;
+  doc.text(doc.splitTextToSize("Dies ist ein Test-Dokument zur Überprüfung Ihres Briefkopf-Layouts.",180), 15, y); y+=22;
   doc.text("Mit freundlichen Grüßen", 15, y); y+=6;
   doc.text("Ihr Team von " + S.firma.name, 15, y);
   pdfFooter(doc);
