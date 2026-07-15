@@ -4995,16 +4995,15 @@ function briefkopfPreviewHTML(f, opts){
       <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px;">
         <div style="display:flex; align-items:center; gap:10px;">
           ${f.logo?`<img src="${escAttr(f.logo)}" style="height:40px;">`:`<div style="width:40px;height:40px;border-radius:8px;background:linear-gradient(135deg,#3b82f6,#a855f7);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;">${escHtml(initialsOf(f.name||"IB"))}</div>`}
-          <div>
-            <div style="font-weight:800; font-size:14px;">${escHtml(f.name||"")}</div>
+          ${(!f.logo || f.slogan) ? `<div>
+            ${!f.logo?`<div style="font-weight:800; font-size:14px;">${escHtml(f.name||"")}</div>`:""}
             ${f.slogan?`<div style="font-size:10px; color:#666;">${escHtml(f.slogan)}</div>`:""}
-          </div>
+          </div>` : ""}
         </div>
         <div style="text-align:right; font-size:10px; color:#555;">
           ${[f.strasse, [f.plz,f.ort].filter(Boolean).join(" "), f.tel, f.email, f.web].filter(Boolean).map(l=>`<div>${escHtml(l)}</div>`).join("")}
         </div>
       </div>
-      <div style="border-top:2px solid #e11; width:60px; margin-bottom:16px;"></div>
       <div style="font-size:9.5px; color:#888; text-decoration:underline; margin-bottom:4px;">${escHtml(f.name||"")} · ${escHtml(f.strasse||"")} · ${escHtml([f.plz,f.ort].filter(Boolean).join(" "))}</div>
       <div style="margin-bottom:22px; color:#333; white-space:pre-wrap;">${opts.empfaenger ? escHtml(opts.empfaenger).replace(/\n/g,"<br>") : "[Empfängeradresse]"}</div>
       <div style="text-align:right; color:#888; font-size:10.5px; margin-bottom:16px;">${escHtml(f.ort||"")}${f.ort?", den ":"den "}${heute}</div>
