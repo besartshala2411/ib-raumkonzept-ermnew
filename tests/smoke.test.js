@@ -88,6 +88,39 @@ async function main() {
   window.route("#mitarbeiter");
   assert(window.document.getElementById("view").innerHTML.includes("Max Mustermann"), "Mitarbeiter erscheint in Liste");
 
+  console.log("\n== Undo beim Löschen ==");
+  window.S.aufgaben.push({ id: "ag1", titel: "Testaufgabe", beschreibung: "", faellig: "", prioritaet: "normal", projektId: null, zugeordnet: null, status: "offen" });
+  window.deleteAufgabe("ag1");
+  assert(!window.S.aufgaben.some((a) => a.id === "ag1"), "Aufgabe ist nach deleteAufgabe() sofort entfernt");
+  let undoToasts = Array.from(window.document.querySelectorAll("#toastWrap .toastUndo"));
+  assert(undoToasts.length === 1, "Undo-Toast mit Rückgängig-Button erscheint nach dem Löschen");
+  undoToasts[0].querySelector("button").click();
+  assert(window.S.aufgaben.some((a) => a.id === "ag1"), "Klick auf 'Rückgängig' stellt die gelöschte Aufgabe wieder her");
+  assert(undoToasts[0].style.opacity === "0", "Undo-Toast beginnt nach Klick auszublenden");
+  undoToasts[0].remove();
+  window.S.aufgaben = window.S.aufgaben.filter((a) => a.id !== "ag1");
+
+  window.S.projekte.push({ id: "pUndo", name: "Undo-Testprojekt", kundeId: "", adresse: "", status: "Aktiv", budget: 0, deadline: "", fortschritt: 0, team: [], subunternehmer: [], fotos: [], dokumente: [], material: [], bautagebuch: [], zugaenge: [], checkliste: [], aufmasse: [], bauzeitenplan: [{ id: "bp1", bezeichnung: "Testphase", von: "2026-01-01", bis: "2026-01-10", status: "geplant", fortschritt: 0 }], chat: [] });
+  const testProjekt = window.S.projekte.find((p) => p.id === "pUndo");
+  window.deleteBauphase("pUndo", "bp1");
+  assert(testProjekt.bauzeitenplan.length === 0, "Bauphase (verschachteltes Projekt-Array) ist sofort entfernt");
+  undoToasts = Array.from(window.document.querySelectorAll("#toastWrap .toastUndo"));
+  assert(undoToasts.length === 1, "Undo-Toast erscheint auch für verschachtelte Projekt-Arrays");
+  undoToasts[0].querySelector("button").click();
+  assert(testProjekt.bauzeitenplan.length === 1 && testProjekt.bauzeitenplan[0].id === "bp1", "Rückgängig stellt die Bauphase im richtigen Projekt wieder her");
+  undoToasts[0].remove();
+  window.S.projekte = window.S.projekte.filter((p) => p.id !== "pUndo");
+
+  window.S.mitarbeiter.push({ id: "mUndo", name: "Undo Testperson", position: "", tel: "", email: "", adresse: "", eintritt: "2024-01-01", status: "aktiv", urlaubstageJahr: 30, stundenlohn: 20, dokumente: [] });
+  window.deleteMitarbeiter("mUndo");
+  window.document.getElementById("confirmDelBtn").click();
+  assert(!window.S.mitarbeiter.some((m) => m.id === "mUndo"), "Mitarbeiter ist nach Bestätigung im Löschen-Dialog entfernt");
+  undoToasts = Array.from(window.document.querySelectorAll("#toastWrap .toastUndo"));
+  assert(undoToasts.length === 1, "Undo-Toast erscheint auch nach confirmDelete()-bestätigtem Löschen");
+  undoToasts[0].querySelector("button").click();
+  assert(window.S.mitarbeiter.some((m) => m.id === "mUndo"), "Rückgängig stellt den über confirmDelete() gelöschten Mitarbeiter wieder her");
+  window.S.mitarbeiter = window.S.mitarbeiter.filter((m) => m.id !== "mUndo");
+
   console.log("\n== Stempeluhr ==");
   window.stempelKommen("m1");
   assert(window.S.zeiterfassung.length === 1 && window.S.zeiterfassung[0].gehen === null, "Kommen gebucht");
@@ -179,6 +212,29 @@ async function main() {
     catch (e) { ok = false; msg = e.message; }
     assert(ok, "Kunden-Tab '" + t + "' rendert ohne Exception" + (ok ? "" : " (" + msg + ")"));
   });
+
+  console.log("\n== Globale Suche ==");
+  const gsIndex = window.globalSearchIndex();
+  assert(gsIndex.some((it) => it.typ === "mitarbeiter" && it.id === "m1"), "Suchindex enthält Mitarbeiter");
+  assert(gsIndex.some((it) => it.typ === "kunde" && it.id === "kd1"), "Suchindex enthält Kunden");
+  assert(gsIndex.some((it) => it.typ === "subunternehmer" && it.id === "sub1"), "Suchindex enthält Subunternehmer");
+  assert(gsIndex.some((it) => it.typ === "projekt" && it.id === "p1"), "Suchindex enthält Projekte");
+  let gsOk = true, gsMsg = "";
+  try { window.openGlobalSearch(); } catch (e) { gsOk = false; gsMsg = e.message; }
+  assert(gsOk, "Suche-Modal öffnet ohne Exception" + (gsOk ? "" : " (" + gsMsg + ")"));
+  assert(window.document.getElementById("gsInput") !== null, "Suche-Modal enthält Eingabefeld");
+  window.renderGlobalSearchResults("Testkunde");
+  let gsResultsHtml = window.document.getElementById("gsResults").innerHTML;
+  assert(gsResultsHtml.includes("Testkunde GmbH"), "Suche nach 'Testkunde' findet den passenden Kunden");
+  window.renderGlobalSearchResults("");
+  gsResultsHtml = window.document.getElementById("gsResults").innerHTML;
+  assert(!gsResultsHtml.includes("gsResultItem"), "Leere Suche zeigt keine Ergebnisliste, sondern einen Hinweis");
+  window.renderGlobalSearchResults("Nichtvorhanden_xyz123");
+  gsResultsHtml = window.document.getElementById("gsResults").innerHTML;
+  assert(gsResultsHtml.includes("Keine Treffer"), "Suche ohne Treffer zeigt einen Hinweis");
+  window.globalSearchOpenResult("kunde", "kd1");
+  assert(window.location.hash.includes("kunden/kd1"), "Klick auf Suchergebnis 'Kunde' navigiert zur Kunden-Detailseite");
+  assert(window.document.getElementById("modalOverlay") === null, "Suche-Modal schließt sich beim Navigieren zu einem Ergebnis");
 
   console.log("\n== Projekt <-> Subunternehmer Zuordnung ==");
   window.addSubToProjekt("sub1", "p1");

@@ -185,6 +185,12 @@ tr:hover td{background:var(--card2);}
 .toast.error{border-left-color:var(--red);}
 .toast.success{border-left-color:var(--green);}
 .toast.warn{border-left-color:var(--amber);}
+.toastUndo{display:flex; align-items:center; justify-content:space-between; gap:12px;}
+.toastUndo button{flex-shrink:0; background:var(--primary); color:#fff; border:none; border-radius:var(--radius-sm); padding:6px 12px; font-size:12px; font-weight:700; cursor:pointer;}
+
+.gsResultItem{display:flex; align-items:center; gap:10px; width:100%; text-align:left; padding:10px 12px; border-radius:var(--radius-sm); border:1px solid transparent; background:transparent; cursor:pointer; color:var(--text); font-size:13.5px;}
+.gsResultItem:hover{background:var(--card2); border-color:var(--border);}
+.gsResultType{font-size:11px; color:var(--text-dim2);}
 
 .progressBar{height:8px; background:var(--bg2); border-radius:20px; overflow:hidden;}
 .progressBar > div{height:100%; background:var(--primary); border-radius:20px;}
@@ -762,6 +768,7 @@ function renderTicker(){
     <div class="tickerItem">⏱️ <b>${gestempelt}</b> heute gestempelt</div>
     <div class="tickerSpacer"></div>
     <div class="tickerItem">${user? "👤 "+escHtml(user.name) : "👤 Gast/Büro"}</div>
+    <button class="tickerBtn" title="Suche (Strg/Cmd+K)" onclick="openGlobalSearch()">🔍</button>
     <button class="tickerBtn" title="Theme wechseln" onclick="toggleTheme()">🌗</button>
     <button class="tickerBtn" title="Abmelden" onclick="logout()">🚪</button>
   `;
@@ -772,7 +779,85 @@ function toggleTheme(){
   saveLC();
 }
 
-function goTo(hash){ location.hash = hash; }
+function goTo(hash){
+  location.hash = hash;
+  route(hash);
+}
+
+/* =========================================================
+   GLOBALE SUCHE
+========================================================= */
+function globalSearchIndex(){
+  const items = [];
+  S.mitarbeiter.forEach(m=>items.push({typ:"mitarbeiter", typLabel:"Mitarbeiter", id:m.id, icon:"👷", label:m.name, sub:m.position||"", text:[m.name,m.position,m.email,m.tel].filter(Boolean).join(" ").toLowerCase()}));
+  S.kunden.forEach(k=>items.push({typ:"kunde", typLabel:"Kunde", id:k.id, icon:"🤝", label:k.name, sub:k.ansprechpartner||"", text:[k.name,k.ansprechpartner,k.email,k.tel,k.adresse].filter(Boolean).join(" ").toLowerCase()}));
+  S.subunternehmer.forEach(s=>items.push({typ:"subunternehmer", typLabel:"Subunternehmer", id:s.id, icon:"🏗️", label:s.firma, sub:s.gewerk||"", text:[s.firma,s.ansprechpartner,s.gewerk,s.email].filter(Boolean).join(" ").toLowerCase()}));
+  S.projekte.forEach(p=>items.push({typ:"projekt", typLabel:"Projekt", id:p.id, icon:"🏢", label:p.name, sub:p.adresse||"", text:[p.name,p.adresse,p.status].filter(Boolean).join(" ").toLowerCase()}));
+  S.rechnungen.forEach(r=>items.push({typ:"rechnung", typLabel:"Rechnung", id:r.id, icon:"🧾", label:r.nr, sub:kundeName(r.kundeId), text:[r.nr,kundeName(r.kundeId)].filter(Boolean).join(" ").toLowerCase()}));
+  S.vertraege.forEach(v=>items.push({typ:"vertrag", typLabel:"Vertrag", id:v.id, icon:"📜", label:v.typ+" – "+mitarbeiterName(v.mitarbeiterId), sub:v.status||"", text:[v.typ,mitarbeiterName(v.mitarbeiterId),v.status].filter(Boolean).join(" ").toLowerCase()}));
+  S.passwoerter.forEach(pw=>items.push({typ:"passwort", typLabel:"Passwort", id:pw.id, icon:"🔐", label:pw.bezeichnung, sub:pw.benutzername||"", text:[pw.bezeichnung,pw.benutzername,pw.url].filter(Boolean).join(" ").toLowerCase()}));
+  S.fuhrpark.forEach(f=>items.push({typ:"fahrzeug", typLabel:"Fahrzeug", id:f.id, icon:"🚐", label:f.kennzeichen, sub:f.typ||"", text:[f.kennzeichen,f.typ].filter(Boolean).join(" ").toLowerCase()}));
+  S.dokumente.forEach(d=>items.push({typ:"dokument", typLabel:"Dokument", id:d.id, icon:"📁", label:d.name, sub:"", text:[d.name].filter(Boolean).join(" ").toLowerCase()}));
+  S.aufgaben.forEach(a=>items.push({typ:"aufgabe", typLabel:"Aufgabe", id:a.id, icon:"📝", label:a.titel, sub:a.beschreibung||"", text:[a.titel,a.beschreibung].filter(Boolean).join(" ").toLowerCase()}));
+  S.schluessel.forEach(sk=>items.push({typ:"schluessel", typLabel:"Schlüssel", id:sk.id, icon:"🔑", label:sk.bezeichnung, sub:"", text:[sk.bezeichnung].filter(Boolean).join(" ").toLowerCase()}));
+  return items;
+}
+function globalSearchOpenResult(typ, id){
+  closeModal();
+  const routes = {
+    mitarbeiter: ()=>{ location.hash="#mitarbeiter"; route("#mitarbeiter"); openPersonalakte(id); },
+    kunde: ()=>{ const h="#kunden/"+id+"/stammdaten"; location.hash=h; route(h); },
+    subunternehmer: ()=>{ const h="#subunternehmer/"+id+"/stammdaten"; location.hash=h; route(h); },
+    projekt: ()=>{ const h="#projekte/"+id+"/uebersicht"; location.hash=h; route(h); },
+    rechnung: ()=>{ location.hash="#rechnungen"; route("#rechnungen"); openRechnungForm(id); },
+    vertrag: ()=>{ location.hash="#vertraege"; route("#vertraege"); openVertragForm(id); },
+    passwort: ()=>{ location.hash="#passwoerter"; route("#passwoerter"); openPasswortForm(id); },
+    fahrzeug: ()=>{ location.hash="#fuhrpark"; route("#fuhrpark"); openFahrzeugForm(id); },
+    dokument: ()=>{ location.hash="#dokumente"; route("#dokumente"); },
+    aufgabe: ()=>{ location.hash="#aufgaben"; route("#aufgaben"); },
+    schluessel: ()=>{ location.hash="#schluessel"; route("#schluessel"); },
+  };
+  (routes[typ]||(()=>{}))();
+}
+function openGlobalSearch(){
+  openModal(`
+    <div class="modalHead"><div class="modalTitle">🔍 Suche</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
+    <input id="gsInput" type="text" placeholder="Mitarbeiter, Kunden, Projekte, Rechnungen …" autocomplete="off"
+      style="width:100%; padding:12px 14px; font-size:15px; border-radius:var(--radius-sm); border:1px solid var(--border); background:var(--card2); color:var(--text);"
+      oninput="renderGlobalSearchResults(this.value)"
+      onkeydown="if(event.key==='Enter'){ const first=document.querySelector('#gsResults .gsResultItem'); if(first) first.click(); }">
+    <div id="gsResults" style="margin-top:14px; max-height:50vh; overflow-y:auto; display:flex; flex-direction:column; gap:4px;"></div>
+  `);
+  renderGlobalSearchResults("");
+  const input = document.getElementById("gsInput");
+  if(input) input.focus();
+}
+function renderGlobalSearchResults(query){
+  const wrap = document.getElementById("gsResults");
+  if(!wrap) return;
+  const q = query.trim().toLowerCase();
+  if(!q){ wrap.innerHTML = `<div class="empty" style="padding:20px 0;">Tippen, um zu suchen …</div>`; return; }
+  const items = globalSearchIndex().filter(it=>it.text.includes(q)).slice(0,40);
+  if(!items.length){ wrap.innerHTML = `<div class="empty" style="padding:20px 0;">Keine Treffer für „${escHtml(query)}“.</div>`; return; }
+  wrap.innerHTML = items.map(it=>`
+    <button type="button" class="gsResultItem" onclick="globalSearchOpenResult('${escAttr(it.typ)}','${escAttr(it.id)}')">
+      <span class="navIcon">${it.icon}</span>
+      <span style="display:flex; flex-direction:column; align-items:flex-start; overflow:hidden; min-width:0;">
+        <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%;">${escHtml(it.label)}</span>
+        <span class="gsResultType">${escHtml(it.typLabel)}${it.sub?" · "+escHtml(it.sub):""}</span>
+      </span>
+    </button>
+  `).join("");
+}
+document.addEventListener("keydown", e=>{
+  if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==="k"){
+    const shell = document.getElementById("appShell");
+    if(shell && !shell.classList.contains("hidden")){
+      e.preventDefault();
+      openGlobalSearch();
+    }
+  }
+});
 
 /* =========================================================
    VOICE DICTATION (Web Speech API, German)
@@ -837,6 +922,50 @@ function confirmDelete(msg, onYes){
     </div>
   `);
   document.getElementById("confirmDelBtn").onclick = ()=>{ closeModal(); onYes(); };
+}
+function toastUndo(msg, undoFn){
+  const wrap = document.getElementById("toastWrap");
+  const el = document.createElement("div");
+  el.className = "toast success toastUndo";
+  let done = false;
+  const dismiss = ()=>{ el.style.transition="opacity .4s"; el.style.opacity="0"; setTimeout(()=>el.remove(),400); };
+  const span = document.createElement("span");
+  span.textContent = msg;
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.textContent = "Rückgängig";
+  btn.onclick = ()=>{
+    if(done) return;
+    done = true;
+    undoFn();
+    dismiss();
+  };
+  el.appendChild(span);
+  el.appendChild(btn);
+  wrap.appendChild(el);
+  setTimeout(()=>{ if(!done){ done = true; dismiss(); } }, 6000);
+}
+function deleteItemWithUndo(arr, id, label, afterFn){
+  afterFn = afterFn || (()=>route(location.hash));
+  const idx = arr.findIndex(x=>x.id===id);
+  if(idx===-1) return;
+  const removed = arr[idx];
+  arr.splice(idx,1);
+  saveState(); afterFn();
+  toastUndo(label, ()=>{
+    arr.splice(idx,0,removed);
+    saveState(); route(location.hash);
+  });
+}
+function deleteAtIndexWithUndo(arr, idx, label){
+  if(idx<0 || idx>=arr.length) return;
+  const removed = arr[idx];
+  arr.splice(idx,1);
+  saveState(); route(location.hash);
+  toastUndo(label, ()=>{
+    arr.splice(idx,0,removed);
+    saveState(); route(location.hash);
+  });
 }
 
 /* =========================================================
@@ -1427,9 +1556,7 @@ function saveMitarbeiter(id, isEdit){
 }
 function deleteMitarbeiter(id){
   confirmDelete("Mitarbeiter „"+mitarbeiterName(id)+"“ wirklich löschen?", ()=>{
-    S.mitarbeiter = S.mitarbeiter.filter(x=>x.id!==id);
-    saveState(); route(location.hash);
-    toast("Mitarbeiter gelöscht.", "success");
+    deleteItemWithUndo(S.mitarbeiter, id, "Mitarbeiter gelöscht.");
   });
 }
 
@@ -1661,8 +1788,7 @@ function confirmUrlaubGenehmigen(id){
 }
 function deleteUrlaub(id){
   confirmDelete("Urlaubsantrag wirklich löschen?", ()=>{
-    S.urlaubsantraege = S.urlaubsantraege.filter(x=>x.id!==id);
-    saveState(); route(location.hash);
+    deleteItemWithUndo(S.urlaubsantraege, id, "Urlaubsantrag gelöscht.");
   });
 }
 function exportUrlaubantragPDF(id){
@@ -1803,8 +1929,7 @@ function completeOnboarding(id){
 }
 function deleteOnboarding(id){
   confirmDelete("Onboarding-Eintrag löschen?", ()=>{
-    S.onboarding = S.onboarding.filter(x=>x.id!==id);
-    saveState(); route(location.hash);
+    deleteItemWithUndo(S.onboarding, id, "Onboarding-Eintrag gelöscht.");
   });
 }
 function exportOnboardingPDF(id){
@@ -2038,8 +2163,7 @@ function quickUpdateKundeField(id, field, val){
 }
 function deleteKunde(id){
   confirmDelete("Kunde „"+kundeName(id)+"“ wirklich löschen?", ()=>{
-    S.kunden = S.kunden.filter(x=>x.id!==id);
-    saveState(); goTo("#kunden");
+    deleteItemWithUndo(S.kunden, id, "Kunde gelöscht.", ()=>goTo("#kunden"));
   });
 }
 function renderKundeDetail(view, id, tab){
@@ -2276,10 +2400,21 @@ function quickUpdateSubField(id, field, val){
 }
 function deleteSub(id){
   confirmDelete("Subunternehmer wirklich löschen?", ()=>{
-    S.subunternehmer = S.subunternehmer.filter(x=>x.id!==id);
+    const idx = S.subunternehmer.findIndex(x=>x.id===id);
+    if(idx===-1) return;
+    const removed = S.subunternehmer[idx];
+    const affectedProjekte = S.projekte.filter(p=>(p.subunternehmer||[]).includes(id)).map(p=>p.id);
+    S.subunternehmer.splice(idx,1);
     S.projekte.forEach(p=>{ p.subunternehmer = (p.subunternehmer||[]).filter(x=>x!==id); });
     saveState(); goTo("#subunternehmer");
-    toast("Subunternehmer gelöscht.", "success");
+    toastUndo("Subunternehmer gelöscht.", ()=>{
+      S.subunternehmer.splice(idx,0,removed);
+      affectedProjekte.forEach(pid=>{
+        const p = S.projekte.find(x=>x.id===pid);
+        if(p){ if(!p.subunternehmer) p.subunternehmer=[]; if(!p.subunternehmer.includes(id)) p.subunternehmer.push(id); }
+      });
+      saveState(); route(location.hash);
+    });
   });
 }
 function renderSubDetail(view, id, tab){
@@ -2426,7 +2561,7 @@ function toggleTagesaufgabe(id){
   const t = S.tagesaufgaben.find(x=>x.id===id); t.done=!t.done; saveState(); route(location.hash);
 }
 function deleteTagesaufgabe(id){
-  S.tagesaufgaben = S.tagesaufgaben.filter(x=>x.id!==id); saveState(); route(location.hash);
+  deleteItemWithUndo(S.tagesaufgaben, id, "Aufgabe gelöscht.");
 }
 
 /* =========================================================
@@ -2557,8 +2692,7 @@ function saveProjekt(id, isEdit){
 }
 function deleteProjekt(id){
   confirmDelete("Projekt „"+projektName(id)+"“ inkl. aller Fotos/Dokumente wirklich löschen?", ()=>{
-    S.projekte = S.projekte.filter(x=>x.id!==id);
-    saveState(); goTo("#projekte");
+    deleteItemWithUndo(S.projekte, id, "Projekt gelöscht.", ()=>goTo("#projekte"));
   });
 }
 
@@ -2810,8 +2944,7 @@ function saveBauphase(pid, phaseId, isEdit){
 }
 function deleteBauphase(pid, phaseId){
   const p = S.projekte.find(x=>x.id===pid);
-  p.bauzeitenplan = p.bauzeitenplan.filter(x=>x.id!==phaseId);
-  saveState(); route(location.hash);
+  deleteItemWithUndo(p.bauzeitenplan, phaseId, "Phase gelöscht.");
 }
 function exportBauzeitenplanPDF(pid){
   const p = S.projekte.find(x=>x.id===pid);
@@ -2866,8 +2999,7 @@ async function addProjektFotos(pid, input){
 }
 function deleteProjektFoto(pid, fid){
   const p = S.projekte.find(x=>x.id===pid);
-  p.fotos = p.fotos.filter(f=>f.id!==fid);
-  saveState(); route(location.hash);
+  deleteItemWithUndo(p.fotos, fid, "Foto gelöscht.");
 }
 const FOTO_MARK_FARBEN = ["#ef4444","#f59e0b","#22c55e","#3b82f6","#ffffff","#111111"];
 function openFotoMarkierung(pid, fotoId){
@@ -3003,8 +3135,7 @@ async function addProjektDokument(pid, input){
 }
 function deleteProjektDokument(pid, did){
   const p = S.projekte.find(x=>x.id===pid);
-  p.dokumente = p.dokumente.filter(d=>d.id!==did);
-  saveState(); route(location.hash);
+  deleteItemWithUndo(p.dokumente, did, "Dokument gelöscht.");
 }
 
 function renderTabMaterial(body, p){
@@ -3046,8 +3177,7 @@ function saveMaterial(pid){
 }
 function deleteMaterial(pid, mid){
   const p = S.projekte.find(x=>x.id===pid);
-  p.material = p.material.filter(m=>m.id!==mid);
-  saveState(); route(location.hash);
+  deleteItemWithUndo(p.material, mid, "Material-Eintrag gelöscht.");
 }
 
 function renderTabBautagebuch(body, p){
@@ -3094,8 +3224,7 @@ function saveBautagebuch(pid){
 }
 function deleteBautagebuch(pid, eid){
   const p = S.projekte.find(x=>x.id===pid);
-  p.bautagebuch = p.bautagebuch.filter(e=>e.id!==eid);
-  saveState(); route(location.hash);
+  deleteItemWithUndo(p.bautagebuch, eid, "Bautagebuch-Eintrag gelöscht.");
 }
 function exportBautagebuchPDF(pid){
   const p = S.projekte.find(x=>x.id===pid);
@@ -3160,8 +3289,7 @@ function saveZugang(pid){
 }
 function deleteZugang(pid, zid){
   const p = S.projekte.find(x=>x.id===pid);
-  p.zugaenge = p.zugaenge.filter(z=>z.id!==zid);
-  saveState(); route(location.hash);
+  deleteItemWithUndo(p.zugaenge, zid, "Zugang gelöscht.");
 }
 
 function renderTabChecklist(body, p){
@@ -3247,8 +3375,7 @@ function toggleChecklistItem(pid, i){
 }
 function deleteChecklistItem(pid, i){
   const p = S.projekte.find(x=>x.id===pid);
-  p.checkliste.splice(i,1);
-  saveState(); route(location.hash);
+  deleteAtIndexWithUndo(p.checkliste, i, "Checklisten-Punkt gelöscht.");
 }
 
 function renderTabProjektChat(body, p){
@@ -3444,8 +3571,7 @@ function saveRaum(){
 function deleteRaum(pid, rid){
   confirmDelete("Raum wirklich löschen?", ()=>{
     const p = S.projekte.find(x=>x.id===pid);
-    p.aufmasse = p.aufmasse.filter(r=>r.id!==rid);
-    saveState(); route(location.hash);
+    deleteItemWithUndo(p.aufmasse, rid, "Raum gelöscht.");
   });
 }
 function exportAufmassPDF(pid){
@@ -3553,8 +3679,7 @@ function setAufgabeStatus(id, status){
   saveState(); route(location.hash);
 }
 function deleteAufgabe(id){
-  S.aufgaben = S.aufgaben.filter(a=>a.id!==id);
-  saveState(); route(location.hash);
+  deleteItemWithUndo(S.aufgaben, id, "Aufgabe gelöscht.");
 }
 
 /* =========================================================
@@ -3695,8 +3820,7 @@ async function addDokument(input){
   saveState(); route(location.hash);
 }
 function deleteDokument(id){
-  S.dokumente = S.dokumente.filter(d=>d.id!==id);
-  saveState(); route(location.hash);
+  deleteItemWithUndo(S.dokumente, id, "Dokument gelöscht.");
 }
 
 /* =========================================================
@@ -3819,8 +3943,7 @@ function markRechnungBezahlt(id){
 }
 function deleteRechnung(id){
   confirmDelete("Rechnung wirklich löschen?", ()=>{
-    S.rechnungen = S.rechnungen.filter(r=>r.id!==id);
-    saveState(); route(location.hash);
+    deleteItemWithUndo(S.rechnungen, id, "Rechnung gelöscht.");
   });
 }
 function exportRechnungPDF(id){
@@ -3958,8 +4081,7 @@ function saveVertrag(isEditStr){
 }
 function deleteVertrag(id){
   confirmDelete("Vertrag wirklich löschen?", ()=>{
-    S.vertraege = S.vertraege.filter(v=>v.id!==id);
-    saveState(); route(location.hash);
+    deleteItemWithUndo(S.vertraege, id, "Vertrag gelöscht.");
   });
 }
 function exportVertragPDF(id){
@@ -4047,8 +4169,7 @@ function schluesselRueckgabe(id){
   saveState(); closeModal(); route(location.hash);
 }
 function deleteSchluessel(id){
-  S.schluessel = S.schluessel.filter(s=>s.id!==id);
-  saveState(); route(location.hash);
+  deleteItemWithUndo(S.schluessel, id, "Schlüssel-Eintrag gelöscht.");
 }
 function exportSchluesselEinzelPDF(id){
   const s = S.schluessel.find(x=>x.id===id);
@@ -4229,8 +4350,7 @@ function saveVorlageInstanz(){
   toast(v.projektId ? "Vorlage gespeichert und im Projekt hinterlegt." : "Vorlage gespeichert.", "success");
 }
 function deleteVorlageInstanz(id){
-  S.vorlagen = S.vorlagen.filter(v=>v.id!==id);
-  saveState(); route(location.hash);
+  deleteItemWithUndo(S.vorlagen, id, "Vorlage gelöscht.");
 }
 function exportVorlagePDF(id){
   const v = S.vorlagen.find(x=>x.id===id);
@@ -4304,8 +4424,7 @@ function savePasswort(id, isEdit){
 }
 function deletePasswort(id){
   confirmDelete("Eintrag wirklich löschen?", ()=>{
-    S.passwoerter = S.passwoerter.filter(x=>x.id!==id);
-    saveState(); route(location.hash);
+    deleteItemWithUndo(S.passwoerter, id, "Eintrag gelöscht.");
   });
 }
 
@@ -4397,8 +4516,7 @@ function exportFahrzeugPDF(id){
 }
 function deleteFahrzeug(id){
   confirmDelete("Fahrzeug wirklich löschen?", ()=>{
-    S.fuhrpark = S.fuhrpark.filter(x=>x.id!==id);
-    saveState(); route(location.hash);
+    deleteItemWithUndo(S.fuhrpark, id, "Fahrzeug gelöscht.");
   });
 }
 function openTankForm(fid){
