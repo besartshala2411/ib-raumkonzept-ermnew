@@ -483,6 +483,7 @@ function ensureShape(s){
     if(!p.zugaenge) p.zugaenge=[];
     if(!p.checkliste) p.checkliste=[];
     if(!p.aufmasse) p.aufmasse=[];
+    if(!p.bauzeitenplan) p.bauzeitenplan=[];
     if(!p.chat) p.chat=[];
     if(!p.status) p.status="In Planung";
     if(p.fortschritt==null) p.fortschritt=0;
@@ -2501,7 +2502,7 @@ function renderProjekte(view, id, tab){
   `).join("") || `<div class="empty" style="grid-column:1/-1;">Keine Projekte gefunden.</div>`;
 }
 function openProjektForm(id){
-  const p = id ? S.projekte.find(x=>x.id===id) : {id:uid(), name:"", kundeId:"", adresse:"", status:"In Planung", budget:0, deadline:"", fortschritt:0, team:[], fotos:[], dokumente:[], material:[], bautagebuch:[], zugaenge:[], checkliste:[], aufmasse:[], chat:[]};
+  const p = id ? S.projekte.find(x=>x.id===id) : {id:uid(), name:"", kundeId:"", adresse:"", status:"In Planung", budget:0, deadline:"", fortschritt:0, team:[], subunternehmer:[], fotos:[], dokumente:[], material:[], bautagebuch:[], zugaenge:[], checkliste:[], aufmasse:[], bauzeitenplan:[], chat:[]};
   openModal(`
     <div class="modalHead"><div class="modalTitle">${id?"Projekt bearbeiten":"Neues Projekt"}</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
     <div class="formRow"><label>Projektname</label><div class="micWrap"><input id="pName" type="text" value="${escAttr(p.name)}">${fieldMic("pName")}</div></div>
@@ -2540,6 +2541,7 @@ function deleteProjekt(id){
 const PROJEKT_TABS = [
   {id:"uebersicht", label:"Übersicht", icon:"📋"},
   {id:"team", label:"Team", icon:"👷"},
+  {id:"bauzeitenplan", label:"Bauzeitenplan", icon:"📊"},
   {id:"fotos", label:"Fotos", icon:"📷"},
   {id:"dokumente", label:"Dokumente", icon:"📁"},
   {id:"material", label:"Material", icon:"📦"},
@@ -2571,7 +2573,7 @@ function renderProjektDetail(view, id, tab){
   `;
   const body = document.getElementById("projektTabBody");
   const renderers = {
-    uebersicht: renderTabUebersicht, team: renderTabTeam, fotos: renderTabFotos, dokumente: renderTabProjektDokumente,
+    uebersicht: renderTabUebersicht, team: renderTabTeam, bauzeitenplan: renderTabBauzeitenplan, fotos: renderTabFotos, dokumente: renderTabProjektDokumente,
     material: renderTabMaterial, bautagebuch: renderTabBautagebuch, zugaenge: renderTabZugaenge,
     checkliste: renderTabChecklist, aufmass: renderTabAufmass, chat: renderTabProjektChat
   };
@@ -2662,6 +2664,146 @@ function removeTeamMember(pid, mid){
   const p = S.projekte.find(x=>x.id===pid);
   p.team = p.team.filter(x=>x!==mid);
   saveState(); route(location.hash);
+}
+
+/* =========================================================
+   PROJEKT-TAB: BAUZEITENPLAN (Gantt-artige Zeitleiste)
+========================================================= */
+const BAUPHASE_STATI = ["geplant","läuft","fertig"];
+function bauphaseEffectiveStatus(ph){
+  if(ph.status==="fertig") return "fertig";
+  if(ph.bis && ph.bis < todayISO()) return "verzögert";
+  return ph.status || "geplant";
+}
+function bauphaseStatusColor(status){
+  return {geplant:"gray", "läuft":"blue", fertig:"green", "verzögert":"red"}[status] || "gray";
+}
+function bauphaseBarColor(status){
+  return {geplant:"var(--text-dim2)", "läuft":"var(--primary)", fertig:"var(--green)", "verzögert":"var(--red)"}[status] || "var(--text-dim2)";
+}
+function renderTabBauzeitenplan(body, p){
+  const phasen = (p.bauzeitenplan||[]).slice().sort((a,b)=>(a.von||"").localeCompare(b.von||""));
+  let ganttHTML = "";
+  if(phasen.length){
+    const dates = phasen.flatMap(ph=>[ph.von, ph.bis]).filter(Boolean);
+    let minD = dates.reduce((a,b)=>a<b?a:b);
+    let maxD = dates.reduce((a,b)=>a>b?a:b);
+    const minMs = new Date(minD).getTime(), maxMs = new Date(maxD).getTime();
+    const totalMs = Math.max(1, maxMs - minMs);
+    const heuteMs = new Date(todayISO()).getTime();
+    const heutePct = Math.min(100, Math.max(0, (heuteMs-minMs)/totalMs*100));
+    const showHeuteLine = heuteMs>=minMs && heuteMs<=maxMs;
+    ganttHTML = `
+      <div style="margin-bottom:16px;">
+        <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--text-dim); margin-bottom:8px;">
+          <span>${fmtDate(minD)}</span><span>${fmtDate(maxD)}</span>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          ${phasen.map(ph=>{
+            const vMs = new Date(ph.von).getTime(), bMs = new Date(ph.bis).getTime();
+            const leftPct = (vMs-minMs)/totalMs*100;
+            const widthPct = Math.max(1.5, (bMs-vMs)/totalMs*100);
+            const status = bauphaseEffectiveStatus(ph);
+            const barColor = bauphaseBarColor(status);
+            return `
+            <div style="display:grid; grid-template-columns:140px 1fr; gap:10px; align-items:center;">
+              <div style="font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:pointer;" onclick="openBauphaseForm('${escAttr(p.id)}','${escAttr(ph.id)}')" title="${escAttr(ph.bezeichnung)}">${escHtml(ph.bezeichnung)}</div>
+              <div style="position:relative; height:22px; background:var(--bg2); border-radius:6px;">
+                ${showHeuteLine?`<div style="position:absolute; left:${heutePct}%; top:-3px; bottom:-3px; width:2px; background:var(--primary);"></div>`:""}
+                <div style="position:absolute; left:${leftPct}%; width:${widthPct}%; top:2px; bottom:2px; background:${barColor}; opacity:.85; border-radius:5px; min-width:6px; display:flex; align-items:center; padding:0 6px; overflow:hidden;" onclick="openBauphaseForm('${escAttr(p.id)}','${escAttr(ph.id)}')" title="${escAttr(fmtDate(ph.von))} – ${escAttr(fmtDate(ph.bis))}">
+                  <span style="font-size:9.5px; color:#fff; white-space:nowrap;">${ph.fortschritt||0}%</span>
+                </div>
+              </div>
+            </div>`;
+          }).join("")}
+        </div>
+        ${showHeuteLine?`<div class="pageSub" style="margin-top:8px; font-size:11px;">🔵 senkrechte Linie = heute</div>`:""}
+      </div>
+    `;
+  }
+  body.innerHTML = `
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+        <b>Bauzeitenplan (${phasen.length} Phasen)</b>
+        <div style="display:flex; gap:8px;">
+          <button class="btn sm" onclick="exportBauzeitenplanPDF('${escAttr(p.id)}')">📄 PDF Export</button>
+          <button class="btn primary sm" onclick="openBauphaseForm('${escAttr(p.id)}')">➕ Phase</button>
+        </div>
+      </div>
+      ${ganttHTML}
+      <div class="tableWrap"><table>
+        <thead><tr><th>Phase</th><th>Von</th><th>Bis</th><th>Status</th><th>Fortschritt</th><th></th></tr></thead>
+        <tbody>
+        ${phasen.map(ph=>{
+          const status = bauphaseEffectiveStatus(ph);
+          return `<tr>
+            <td>${escHtml(ph.bezeichnung)}</td><td>${fmtDate(ph.von)}</td><td>${fmtDate(ph.bis)}</td>
+            <td><span class="badge ${bauphaseStatusColor(status)}">${escHtml(status)}</span></td>
+            <td>${ph.fortschritt||0}%</td>
+            <td style="text-align:right; white-space:nowrap;">
+              <button class="iconBtn" onclick="openBauphaseForm('${escAttr(p.id)}','${escAttr(ph.id)}')">✏️</button>
+              <button class="iconBtn" onclick="deleteBauphase('${escAttr(p.id)}','${escAttr(ph.id)}')">🗑️</button>
+            </td>
+          </tr>`;
+        }).join("") || `<tr><td colspan="6"><div class="empty">Noch keine Phasen geplant.</div></td></tr>`}
+        </tbody>
+      </table></div>
+    </div>
+  `;
+}
+function openBauphaseForm(pid, phaseId){
+  const p = S.projekte.find(x=>x.id===pid);
+  const ph = phaseId ? p.bauzeitenplan.find(x=>x.id===phaseId) : {id:uid(), bezeichnung:"", von:todayISO(), bis:todayISO(), status:"geplant", fortschritt:0};
+  openModal(`
+    <div class="modalHead"><div class="modalTitle">${phaseId?"Phase bearbeiten":"Phase hinzufügen"}</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
+    <div class="formRow"><label>Bezeichnung (Gewerk/Tätigkeit)</label><div class="micWrap"><input id="bpBez" type="text" value="${escAttr(ph.bezeichnung)}">${fieldMic("bpBez")}</div></div>
+    <div class="grid cols-2">
+      <div class="formRow"><label>Von</label><input id="bpVon" type="date" value="${escAttr(ph.von)}"></div>
+      <div class="formRow"><label>Bis</label><input id="bpBis" type="date" value="${escAttr(ph.bis)}"></div>
+      <div class="formRow"><label>Status</label><select id="bpStatus">${BAUPHASE_STATI.map(s=>`<option value="${s}" ${ph.status===s?"selected":""}>${s}</option>`).join("")}</select></div>
+      <div class="formRow"><label>Fortschritt (%)</label><input id="bpFortschritt" type="number" min="0" max="100" value="${escAttr(ph.fortschritt||0)}"></div>
+    </div>
+    <div class="modalFoot">
+      <button class="btn" onclick="closeModal()">Abbrechen</button>
+      <button class="btn primary" onclick="saveBauphase('${escAttr(pid)}','${escAttr(ph.id)}', ${phaseId?"true":"false"})">Speichern</button>
+    </div>
+  `);
+  if(!phaseId) window._newBauphaseDraft = ph;
+}
+function saveBauphase(pid, phaseId, isEdit){
+  const bezeichnung = document.getElementById("bpBez").value.trim();
+  if(!bezeichnung){ toast("Bezeichnung erforderlich.", "warn"); return; }
+  const von = document.getElementById("bpVon").value, bis = document.getElementById("bpBis").value;
+  if(von && bis && bis<von){ toast("„Bis“ muss nach „Von“ liegen.", "warn"); return; }
+  const p = S.projekte.find(x=>x.id===pid);
+  let ph = isEdit ? p.bauzeitenplan.find(x=>x.id===phaseId) : window._newBauphaseDraft;
+  ph.bezeichnung = bezeichnung; ph.von = von; ph.bis = bis;
+  ph.status = document.getElementById("bpStatus").value;
+  ph.fortschritt = Math.max(0, Math.min(100, Number(document.getElementById("bpFortschritt").value)||0));
+  if(!isEdit){ p.bauzeitenplan.push(ph); window._newBauphaseDraft=null; }
+  saveState(); closeModal(); route(location.hash);
+  toast("Phase gespeichert.", "success");
+}
+function deleteBauphase(pid, phaseId){
+  const p = S.projekte.find(x=>x.id===pid);
+  p.bauzeitenplan = p.bauzeitenplan.filter(x=>x.id!==phaseId);
+  saveState(); route(location.hash);
+}
+function exportBauzeitenplanPDF(pid){
+  const p = S.projekte.find(x=>x.id===pid);
+  if(!p.bauzeitenplan.length){ toast("Keine Phasen zum Exportieren.", "warn"); return; }
+  const doc = pdfNewDoc();
+  let y = pdfHeader(doc, "Bauzeitenplan");
+  doc.setFontSize(10.5);
+  doc.text("Projekt: "+p.name, 15, y); y+=6;
+  doc.text("Adresse: "+(p.adresse||"–"), 15, y); y+=10;
+  const rows = p.bauzeitenplan.slice().sort((a,b)=>(a.von||"").localeCompare(b.von||"")).map(ph=>[
+    ph.bezeichnung, fmtDate(ph.von), fmtDate(ph.bis), bauphaseEffectiveStatus(ph), (ph.fortschritt||0)+"%"
+  ]);
+  y = pdfTable(doc, y, ["Phase","Von","Bis","Status","Fortschritt"], rows, null, [15,90,120,150,195]);
+  pdfFooter(doc);
+  doc.save("Bauzeitenplan_"+p.name.replace(/[^a-z0-9]+/gi,"_")+".pdf");
+  toast("Bauzeitenplan-PDF erstellt.", "success");
 }
 
 function renderTabFotos(body, p){

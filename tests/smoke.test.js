@@ -95,7 +95,7 @@ async function main() {
   assert(window.S.zeiterfassung[0].gehen !== null, "Gehen gebucht");
 
   console.log("\n== Projekte & Aufmaß (Shoelace-Formel) ==");
-  window.S.projekte.push({ id: "p1", name: "Testprojekt", kundeId: "", adresse: "", status: "Aktiv", budget: 1000, deadline: "", fortschritt: 10, team: [], fotos: [], dokumente: [], material: [], bautagebuch: [], zugaenge: [], checkliste: [], aufmasse: [], chat: [] });
+  window.S.projekte.push({ id: "p1", name: "Testprojekt", kundeId: "", adresse: "", status: "Aktiv", budget: 1000, deadline: "", fortschritt: 10, team: [], subunternehmer: [], fotos: [], dokumente: [], material: [], bautagebuch: [], zugaenge: [], checkliste: [], aufmasse: [], bauzeitenplan: [], chat: [] });
   // 4m x 3m Rechteck -> Fläche 12 m², Umfang 14 m
   const raum = { id: "r1", name: "Wohnzimmer", hoehe: 2.5, abzuege: 0, segmente: [
     { laenge: 4, winkel: 90, drehrichtung: "CW" },
@@ -185,6 +185,38 @@ async function main() {
   assert(window.S.projekte.find((p) => p.id === "p1").subunternehmer.includes("sub1"), "Subunternehmer wird dem Projekt zugeordnet");
   window.removeSubFromProjekt("sub1", "p1");
   assert(!window.S.projekte.find((p) => p.id === "p1").subunternehmer.includes("sub1"), "Subunternehmer-Zuordnung wird wieder entfernt");
+
+  console.log("\n== Bauzeitenplan (Gantt, Phasen-Verwaltung, PDF-Export) ==");
+  let bzOk = true, bzMsg = "";
+  try { window.document.getElementById("view").innerHTML = ""; window.renderProjekte(window.document.getElementById("view"), "p1", "bauzeitenplan"); }
+  catch (e) { bzOk = false; bzMsg = e.message; }
+  assert(bzOk, "Bauzeitenplan-Tab rendert ohne Exception (leer)" + (bzOk ? "" : " (" + bzMsg + ")"));
+  const bzTabHtml = window.document.getElementById("view").innerHTML;
+  assert(bzTabHtml.includes("#projekte/p1/bauzeitenplan") && bzTabHtml.includes("Bauzeitenplan"), "Bauzeitenplan ist als Projekt-Tab registriert und verlinkt");
+  assert(bzTabHtml.includes("Noch keine Phasen geplant"), "Leerer Bauzeitenplan zeigt Hinweistext");
+
+  // effective status: fertig überschreibt alles, überfällige Bis-Daten werden "verzögert"
+  assert(window.bauphaseEffectiveStatus({ status: "fertig", bis: "2020-01-01" }) === "fertig", "Status 'fertig' bleibt fertig, auch wenn Bis in Vergangenheit liegt");
+  assert(window.bauphaseEffectiveStatus({ status: "läuft", bis: "2020-01-01" }) === "verzögert", "Überfällige, nicht fertige Phase gilt als 'verzögert'");
+  assert(window.bauphaseEffectiveStatus({ status: "geplant", bis: "2099-01-01" }) === "geplant", "Zukünftige Phase behält ihren Status");
+  assert(window.bauphaseBarColor("läuft") === "var(--primary)" && window.bauphaseBarColor("verzögert") === "var(--red)", "bauphaseBarColor() liefert gültige CSS var()-Ausdrücke (keine erfundenen --gray/--blue Variablen)");
+
+  window.openBauphaseForm("p1");
+  window.document.getElementById("bpBez").value = "Trockenbau EG";
+  window.document.getElementById("bpVon").value = "2026-08-01";
+  window.document.getElementById("bpBis").value = "2026-08-10";
+  window.document.getElementById("bpStatus").value = "läuft";
+  window.document.getElementById("bpFortschritt").value = "40";
+  window.saveBauphase("p1", window._newBauphaseDraft.id, false);
+  assert(window.S.projekte.find((p) => p.id === "p1").bauzeitenplan.length === 1, "Neue Bauphase wird zum Projekt hinzugefügt");
+  window.renderProjekte(window.document.getElementById("view"), "p1", "bauzeitenplan");
+  const bzView = window.document.getElementById("view").innerHTML;
+  assert(bzView.includes("Trockenbau EG") && bzView.includes("40%"), "Gantt/Tabelle zeigt neue Phase mit Bezeichnung und Fortschritt");
+  assert(bzView.includes("exportBauzeitenplanPDF"), "Bauzeitenplan hat PDF-Export-Button");
+
+  const bzPhaseId = window.S.projekte.find((p) => p.id === "p1").bauzeitenplan[0].id;
+  window.deleteBauphase("p1", bzPhaseId);
+  assert(window.S.projekte.find((p) => p.id === "p1").bauzeitenplan.length === 0, "Bauphase kann wieder gelöscht werden");
 
   console.log("\n== Briefkopf Live-Vorschau (Split-Layout) ==");
   window.S.firma.name = "Ma\"ler & <Söhne> GmbH";
