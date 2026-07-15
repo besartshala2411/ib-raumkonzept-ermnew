@@ -236,6 +236,66 @@ async function main() {
   assert(window.location.hash.includes("kunden/kd1"), "Klick auf Suchergebnis 'Kunde' navigiert zur Kunden-Detailseite");
   assert(window.document.getElementById("modalOverlay") === null, "Suche-Modal schließt sich beim Navigieren zu einem Ergebnis");
 
+  console.log("\n== Rollen-basierte Zugriffsrechte (Geschäftsführer/Bauleiter vs. Mitarbeiter) ==");
+  window.S.rechnungen.push({ id: "re-role1", nr: "RE-ROLE-0001", kundeId: "", projektId: "", datum: "2026-01-01", faellig: "", status: "offen", positionen: [], notiz: "" });
+  window.S.vertraege.push({ id: "vt-role1", mitarbeiterId: "m1", typ: "Arbeitsvertrag", inhalt: "", unterschriftAG: "", unterschriftAN: "", datum: "2026-01-01", status: "entwurf" });
+  window.S.passwoerter.push({ id: "pw-role1", bezeichnung: "Testtresor", benutzername: "", passwort: "", url: "", notiz: "" });
+  window.S.mitarbeiter.push({ id: "roleWorker", name: "Rolle Arbeiter", position: "Maler", rolle: "Mitarbeiter", tel: "", email: "", adresse: "", eintritt: "2024-01-01", status: "aktiv", urlaubstageJahr: 30, stundenlohn: 20, dokumente: [] });
+  window.S.mitarbeiter.push({ id: "roleBoss", name: "Rolle Chef", position: "Geschäftsführer", rolle: "Geschäftsführer", tel: "", email: "", adresse: "", eintritt: "2024-01-01", status: "aktiv", urlaubstageJahr: 30, stundenlohn: 20, dokumente: [] });
+
+  window.S.currentUserId = null;
+  assert(window.hasAdminAccess() === true, "Gast/Büro-Login hat vollen Zugriff");
+
+  window.S.currentUserId = "roleWorker";
+  assert(window.hasAdminAccess() === false, "Normaler Mitarbeiter hat keinen Admin-Zugriff");
+  window.buildSidebar();
+  let sidebarHtml = window.document.getElementById("sidebar").innerHTML;
+  assert(!sidebarHtml.includes('data-route="rechnungen"'), "Sidebar blendet 'Rechnungen' für normalen Mitarbeiter aus");
+  assert(!sidebarHtml.includes('data-route="passwoerter"'), "Sidebar blendet 'Passwörter' für normalen Mitarbeiter aus");
+  assert(!sidebarHtml.includes('data-route="einstellungen"'), "Sidebar blendet 'Einstellungen' für normalen Mitarbeiter aus");
+  assert(sidebarHtml.includes('data-route="projekte"'), "Sidebar zeigt weiterhin nicht eingeschränkte Module wie Projekte");
+
+  window.route("#rechnungen");
+  assert(window.document.getElementById("view").innerHTML.includes("nur für Geschäftsführung"), "Direkter Aufruf von #rechnungen wird für normalen Mitarbeiter blockiert");
+
+  const gsIndexWorker = window.globalSearchIndex();
+  assert(!gsIndexWorker.some((it) => it.typ === "rechnung"), "Suchindex enthält für normalen Mitarbeiter keine Rechnungen");
+  assert(!gsIndexWorker.some((it) => it.typ === "vertrag"), "Suchindex enthält für normalen Mitarbeiter keine Verträge");
+  assert(!gsIndexWorker.some((it) => it.typ === "passwort"), "Suchindex enthält für normalen Mitarbeiter keine Passwörter");
+
+  window.document.getElementById("view").innerHTML = "";
+  window.renderDashboard(window.document.getElementById("view"));
+  const dashHtmlWorker = window.document.getElementById("view").innerHTML;
+  assert(!dashHtmlWorker.includes("Offene Beträge"), "Dashboard blendet 'Offene Beträge'-KPI für normalen Mitarbeiter aus");
+
+  window.renderTicker();
+  const tickerHtmlWorker = window.document.getElementById("ticker").innerHTML;
+  assert(!tickerHtmlWorker.includes(">offen<"), "Ticker blendet offene Rechnungsbeträge für normalen Mitarbeiter aus");
+
+  window._pkTab = "lohn";
+  window.openPersonalakte("roleWorker");
+  const pkHtmlWorker = window.document.getElementById("modalOverlay").innerHTML;
+  assert(!pkHtmlWorker.includes("💶 Lohn"), "Personalakte-Tabs zeigen 'Lohn' nicht für normalen Mitarbeiter");
+  assert(!pkHtmlWorker.includes("Geschätzter Stundenlohn"), "Lohn-Tab-Inhalt wird nicht gerendert (Fallback auf Stammdaten)");
+  assert(!pkHtmlWorker.includes('id="mBrutto"') && !pkHtmlWorker.includes('id="mLohn"'), "Brutto/Stundenlohn-Felder fehlen in Stammdaten für normalen Mitarbeiter");
+  window.closeModal();
+
+  window.S.currentUserId = "roleBoss";
+  assert(window.hasAdminAccess() === true, "Geschäftsführer-Rolle hat Admin-Zugriff");
+  window.buildSidebar();
+  const sidebarBossHtml = window.document.getElementById("sidebar").innerHTML;
+  assert(sidebarBossHtml.includes('data-route="rechnungen"'), "Sidebar zeigt 'Rechnungen' für Geschäftsführer");
+  window.route("#rechnungen");
+  assert(!window.document.getElementById("view").innerHTML.includes("nur für Geschäftsführung"), "Geschäftsführer kann #rechnungen normal aufrufen");
+
+  window.S.currentUserId = null;
+  window.S.mitarbeiter = window.S.mitarbeiter.filter((m) => !["roleWorker", "roleBoss"].includes(m.id));
+  window.S.rechnungen = window.S.rechnungen.filter((r) => r.id !== "re-role1");
+  window.S.vertraege = window.S.vertraege.filter((v) => v.id !== "vt-role1");
+  window.S.passwoerter = window.S.passwoerter.filter((p) => p.id !== "pw-role1");
+  window.buildSidebar();
+  window.route("#dashboard");
+
   console.log("\n== Projekt <-> Subunternehmer Zuordnung ==");
   window.addSubToProjekt("sub1", "p1");
   assert(window.S.projekte.find((p) => p.id === "p1").subunternehmer.includes("sub1"), "Subunternehmer wird dem Projekt zugeordnet");

@@ -470,6 +470,7 @@ function ensureShape(s){
     if(m.abteilung==null) m.abteilung = "";
     if(m.brutto==null) m.brutto = 0;
     if(m.vertragstyp==null) m.vertragstyp = "Vollzeit";
+    if(!m.rolle) m.rolle = "Mitarbeiter";
   });
   s.kunden.forEach(k=>{
     if(!k.dokumente) k.dokumente=[];
@@ -633,6 +634,7 @@ function loginAsGast(){
 function enterApp(){
   document.getElementById("loginScreen").classList.add("hidden");
   document.getElementById("appShell").classList.remove("hidden");
+  buildSidebar();
   route(location.hash || "#dashboard");
 }
 function logout(){
@@ -642,6 +644,13 @@ function logout(){
 }
 function currentUser(){
   return S.mitarbeiter.find(m=>m.id===S.currentUserId) || null;
+}
+const ADMIN_ROLLEN = ["Bauleiter","Geschäftsführer"];
+const RESTRICTED_MODULES = ["rechnungen","vertraege","passwoerter","berichte","datev","einstellungen"];
+function hasAdminAccess(){
+  const u = currentUser();
+  if(!u) return true; // Gast/Büro-Login (kein spezifischer Mitarbeiter) sieht alles
+  return ADMIN_ROLLEN.includes(u.rolle);
 }
 
 /* =========================================================
@@ -708,7 +717,8 @@ function reg(id,label,icon,group,render){ MODULES.push({id,label,icon,group,rend
 
 function buildSidebar(){
   const groups = [];
-  MODULES.forEach(m=>{
+  const admin = hasAdminAccess();
+  MODULES.filter(m=>admin || !RESTRICTED_MODULES.includes(m.id)).forEach(m=>{
     let g = groups.find(g=>g.name===m.group);
     if(!g){ g={name:m.group, items:[]}; groups.push(g); }
     g.items.push(m);
@@ -742,6 +752,11 @@ function route(hash){
     el.classList.toggle("active", el.dataset.route===mod.id);
   });
   const view = document.getElementById("view");
+  if(RESTRICTED_MODULES.includes(mod.id) && !hasAdminAccess()){
+    view.innerHTML = `<div class="empty"><div class="emptyIcon">🔒</div>Dieser Bereich ist nur für Geschäftsführung/Bauleitung sichtbar.</div>`;
+    renderTicker();
+    return;
+  }
   try{
     view.innerHTML = "";
     mod.render(view, ...params);
@@ -755,6 +770,7 @@ window.addEventListener("hashchange", ()=>route(location.hash));
 
 function renderTicker(){
   const t = document.getElementById("ticker");
+  const admin = hasAdminAccess();
   const activeMitarbeiter = S.mitarbeiter.filter(m=>m.status==="aktiv").length;
   const aktiveProjekte = S.projekte.filter(p=>p.status==="Aktiv").length;
   const offen = S.rechnungen.filter(r=>r.status!=="bezahlt").reduce((sum,r)=>sum + rechnungSumme(r), 0);
@@ -764,7 +780,7 @@ function renderTicker(){
   t.innerHTML = `
     <div class="tickerItem">👷 <b>${activeMitarbeiter}</b> Mitarbeiter</div>
     <div class="tickerItem">🏢 <b>${aktiveProjekte}</b> aktive Projekte</div>
-    <div class="tickerItem">💶 <b>${fmtCurrency(offen)}</b> offen</div>
+    ${admin?`<div class="tickerItem">💶 <b>${fmtCurrency(offen)}</b> offen</div>`:""}
     <div class="tickerItem">⏱️ <b>${gestempelt}</b> heute gestempelt</div>
     <div class="tickerSpacer"></div>
     <div class="tickerItem">${user? "👤 "+escHtml(user.name) : "👤 Gast/Büro"}</div>
@@ -793,9 +809,11 @@ function globalSearchIndex(){
   S.kunden.forEach(k=>items.push({typ:"kunde", typLabel:"Kunde", id:k.id, icon:"🤝", label:k.name, sub:k.ansprechpartner||"", text:[k.name,k.ansprechpartner,k.email,k.tel,k.adresse].filter(Boolean).join(" ").toLowerCase()}));
   S.subunternehmer.forEach(s=>items.push({typ:"subunternehmer", typLabel:"Subunternehmer", id:s.id, icon:"🏗️", label:s.firma, sub:s.gewerk||"", text:[s.firma,s.ansprechpartner,s.gewerk,s.email].filter(Boolean).join(" ").toLowerCase()}));
   S.projekte.forEach(p=>items.push({typ:"projekt", typLabel:"Projekt", id:p.id, icon:"🏢", label:p.name, sub:p.adresse||"", text:[p.name,p.adresse,p.status].filter(Boolean).join(" ").toLowerCase()}));
-  S.rechnungen.forEach(r=>items.push({typ:"rechnung", typLabel:"Rechnung", id:r.id, icon:"🧾", label:r.nr, sub:kundeName(r.kundeId), text:[r.nr,kundeName(r.kundeId)].filter(Boolean).join(" ").toLowerCase()}));
-  S.vertraege.forEach(v=>items.push({typ:"vertrag", typLabel:"Vertrag", id:v.id, icon:"📜", label:v.typ+" – "+mitarbeiterName(v.mitarbeiterId), sub:v.status||"", text:[v.typ,mitarbeiterName(v.mitarbeiterId),v.status].filter(Boolean).join(" ").toLowerCase()}));
-  S.passwoerter.forEach(pw=>items.push({typ:"passwort", typLabel:"Passwort", id:pw.id, icon:"🔐", label:pw.bezeichnung, sub:pw.benutzername||"", text:[pw.bezeichnung,pw.benutzername,pw.url].filter(Boolean).join(" ").toLowerCase()}));
+  if(hasAdminAccess()){
+    S.rechnungen.forEach(r=>items.push({typ:"rechnung", typLabel:"Rechnung", id:r.id, icon:"🧾", label:r.nr, sub:kundeName(r.kundeId), text:[r.nr,kundeName(r.kundeId)].filter(Boolean).join(" ").toLowerCase()}));
+    S.vertraege.forEach(v=>items.push({typ:"vertrag", typLabel:"Vertrag", id:v.id, icon:"📜", label:v.typ+" – "+mitarbeiterName(v.mitarbeiterId), sub:v.status||"", text:[v.typ,mitarbeiterName(v.mitarbeiterId),v.status].filter(Boolean).join(" ").toLowerCase()}));
+    S.passwoerter.forEach(pw=>items.push({typ:"passwort", typLabel:"Passwort", id:pw.id, icon:"🔐", label:pw.bezeichnung, sub:pw.benutzername||"", text:[pw.bezeichnung,pw.benutzername,pw.url].filter(Boolean).join(" ").toLowerCase()}));
+  }
   S.fuhrpark.forEach(f=>items.push({typ:"fahrzeug", typLabel:"Fahrzeug", id:f.id, icon:"🚐", label:f.kennzeichen, sub:f.typ||"", text:[f.kennzeichen,f.typ].filter(Boolean).join(" ").toLowerCase()}));
   S.dokumente.forEach(d=>items.push({typ:"dokument", typLabel:"Dokument", id:d.id, icon:"📁", label:d.name, sub:"", text:[d.name].filter(Boolean).join(" ").toLowerCase()}));
   S.aufgaben.forEach(a=>items.push({typ:"aufgabe", typLabel:"Aufgabe", id:a.id, icon:"📝", label:a.titel, sub:a.beschreibung||"", text:[a.titel,a.beschreibung].filter(Boolean).join(" ").toLowerCase()}));
@@ -1169,6 +1187,7 @@ function savePflichtDefs(type){
    MODULE: DASHBOARD
 ========================================================= */
 function renderDashboard(view){
+  const admin = hasAdminAccess();
   const activeM = S.mitarbeiter.filter(m=>m.status==="aktiv");
   const aktiveProjekte = S.projekte.filter(p=>p.status==="Aktiv");
   const offen = S.rechnungen.filter(r=>r.status!=="bezahlt").reduce((s,r)=>s+rechnungSumme(r),0);
@@ -1194,7 +1213,7 @@ function renderDashboard(view){
     <div class="grid cols-4" style="margin-bottom:18px;">
       <div class="kpi"><div class="kpiIcon">👷</div><div class="kpiVal">${activeM.length}</div><div class="kpiLabel">Aktive Mitarbeiter</div></div>
       <div class="kpi"><div class="kpiIcon">🏢</div><div class="kpiVal">${aktiveProjekte.length}</div><div class="kpiLabel">Aktive Projekte</div></div>
-      <div class="kpi"><div class="kpiIcon">💶</div><div class="kpiVal">${fmtCurrency(offen)}</div><div class="kpiLabel">Offene Beträge</div></div>
+      ${admin?`<div class="kpi"><div class="kpiIcon">💶</div><div class="kpiVal">${fmtCurrency(offen)}</div><div class="kpiLabel">Offene Beträge</div></div>`:""}
       <div class="kpi"><div class="kpiIcon">⏱️</div><div class="kpiVal">${gestempeltHeute}</div><div class="kpiLabel">Heute gestempelt</div></div>
     </div>
 
@@ -1210,11 +1229,11 @@ function renderDashboard(view){
       <button class="quickTile" onclick="goTo('#stempeluhr')"><div class="qIcon">⏱️</div><div class="qLabel">Stempeln</div></button>
       <button class="quickTile" onclick="goTo('#mitarbeiter')"><div class="qIcon">➕</div><div class="qLabel">Mitarbeiter</div></button>
       <button class="quickTile" onclick="goTo('#projekte')"><div class="qIcon">🏢</div><div class="qLabel">Neues Projekt</div></button>
-      <button class="quickTile" onclick="goTo('#rechnungen')"><div class="qIcon">🧾</div><div class="qLabel">Rechnung</div></button>
+      ${admin?`<button class="quickTile" onclick="goTo('#rechnungen')"><div class="qIcon">🧾</div><div class="qLabel">Rechnung</div></button>`:""}
       <button class="quickTile" onclick="goTo('#aufgaben')"><div class="qIcon">📝</div><div class="qLabel">Aufgabe</div></button>
       <button class="quickTile" onclick="goTo('#schluessel')"><div class="qIcon">🔑</div><div class="qLabel">Schlüssel</div></button>
       <button class="quickTile" onclick="goTo('#dokumente')"><div class="qIcon">📁</div><div class="qLabel">Dokument</div></button>
-      <button class="quickTile" onclick="goTo('#vertraege')"><div class="qIcon">📜</div><div class="qLabel">Vertrag</div></button>
+      ${admin?`<button class="quickTile" onclick="goTo('#vertraege')"><div class="qIcon">📜</div><div class="qLabel">Vertrag</div></button>`:""}
     </div>
 
     <div class="grid cols-2">
@@ -1286,6 +1305,7 @@ function buildDailyOverviewPrompt(){
    MODULE: MITARBEITER (Personalakte)
 ========================================================= */
 const MITARBEITER_ABTEILUNGEN = ["Trockenbau","Malerarbeiten","Fliesenverlegung","Sanitärinstallation","Planung","Büro/Verwaltung","Lager/Fuhrpark"];
+const MITARBEITER_ROLLEN = ["Mitarbeiter","Bauleiter","Geschäftsführer"];
 const MITARBEITER_VERTRAGSTYPEN = ["Vollzeit","Teilzeit","Minijob","Ausbildung","Werkstudent"];
 const PERSONALAKTE_TABS = [
   {id:"stammdaten", label:"Stammdaten", icon:"🧾"},
@@ -1329,7 +1349,7 @@ function statusBadge(status){
 }
 function openMitarbeiterForm(id){
   if(!id){
-    const m = {id:uid(), vorname:"", nachname:"", name:"", position:"", abteilung:"", tel:"", email:"", adresse:"", geburtstag:"", eintritt:todayISO(), brutto:0, urlaubstageJahr:30, stundenlohn:0, vertragstyp:"Vollzeit", status:"aktiv", dokumente:[]};
+    const m = {id:uid(), vorname:"", nachname:"", name:"", position:"", abteilung:"", rolle:"Mitarbeiter", tel:"", email:"", adresse:"", geburtstag:"", eintritt:todayISO(), brutto:0, urlaubstageJahr:30, stundenlohn:0, vertragstyp:"Vollzeit", status:"aktiv", dokumente:[]};
     window._newMitarbeiterDraft = m;
     openModal(`
       <div class="modalHead"><div class="modalTitle">Mitarbeiter anlegen</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
@@ -1347,10 +1367,13 @@ function openMitarbeiterForm(id){
 }
 function openPersonalakte(id){
   const m = S.mitarbeiter.find(x=>x.id===id);
-  const tab = window._pkTab || "stammdaten";
+  const admin = hasAdminAccess();
+  const tabs = PERSONALAKTE_TABS.filter(t=>admin || t.id!=="lohn");
+  let tab = window._pkTab || "stammdaten";
+  if(tab==="lohn" && !admin) tab = "stammdaten";
   openModal(`
     <div class="modalHead"><div class="modalTitle">📋 Personalakte — ${escHtml(m.name)}</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
-    <div class="tabs">${PERSONALAKTE_TABS.map(t=>`<button class="tabBtn ${tab===t.id?"active":""}" onclick="switchPersonalakteTab('${escAttr(id)}','${t.id}')">${t.icon} ${t.label}</button>`).join("")}</div>
+    <div class="tabs">${tabs.map(t=>`<button class="tabBtn ${tab===t.id?"active":""}" onclick="switchPersonalakteTab('${escAttr(id)}','${t.id}')">${t.icon} ${t.label}</button>`).join("")}</div>
     <div id="pkBody"></div>
   `, true);
   renderPersonalakteTab(id, tab);
@@ -1363,6 +1386,7 @@ function renderPersonalakteTab(id, tab){
   const body = document.getElementById("pkBody");
   const m = S.mitarbeiter.find(x=>x.id===id);
   if(!body || !m) return;
+  if(tab==="lohn" && !hasAdminAccess()) tab = "stammdaten";
   if(tab==="dokumente") body.innerHTML = renderPflichtChecklist("mitarbeiter", id) + renderMitarbeiterFreieDokumente(m);
   else if(tab==="stundenzettel") body.innerHTML = renderMitarbeiterStundenzettelTab(m);
   else if(tab==="urlaub") body.innerHTML = renderMitarbeiterUrlaubTab(m);
@@ -1406,6 +1430,7 @@ function exportPersonalakteStammblattPDF(id){
   toast("Stammblatt-PDF erstellt.", "success");
 }
 function renderMitarbeiterStammdatenFields(m){
+  const admin = hasAdminAccess();
   return `
     <div class="grid cols-2">
       <div class="formRow"><label>Vorname</label><div class="micWrap"><input id="mVorname" type="text" value="${escAttr(m.vorname||"")}">${fieldMic("mVorname")}</div></div>
@@ -1415,11 +1440,14 @@ function renderMitarbeiterStammdatenFields(m){
         <option value="">–</option>
         ${MITARBEITER_ABTEILUNGEN.map(a=>`<option value="${escAttr(a)}" ${m.abteilung===a?"selected":""}>${escHtml(a)}</option>`).join("")}
       </select></div>
+      <div class="formRow"><label>Rolle (Zugriffsrechte)</label><select id="mRolle">
+        ${MITARBEITER_ROLLEN.map(r=>`<option value="${escAttr(r)}" ${(m.rolle||"Mitarbeiter")===r?"selected":""}>${escHtml(r)}</option>`).join("")}
+      </select></div>
       <div class="formRow"><label>E-Mail</label><input id="mEmail" type="email" value="${escAttr(m.email||"")}"></div>
       <div class="formRow"><label>Telefon</label><input id="mTel" type="tel" value="${escAttr(m.tel||"")}"></div>
       <div class="formRow"><label>Geburtsdatum</label><input id="mGeburtstag" type="date" value="${escAttr(m.geburtstag||"")}"></div>
       <div class="formRow"><label>Eintritt</label><input id="mEintritt" type="date" value="${escAttr(m.eintritt||"")}"></div>
-      <div class="formRow"><label>Brutto €</label><input id="mBrutto" type="number" step="0.01" value="${escAttr(m.brutto||0)}"></div>
+      ${admin?`<div class="formRow"><label>Brutto €</label><input id="mBrutto" type="number" step="0.01" value="${escAttr(m.brutto||0)}"></div>`:""}
       <div class="formRow"><label>Urlaubstage</label><input id="mUrlaub" type="number" value="${escAttr(m.urlaubstageJahr||30)}"></div>
       <div class="formRow"><label>Vertragstyp</label><select id="mVertragstyp">
         ${MITARBEITER_VERTRAGSTYPEN.map(v=>`<option value="${escAttr(v)}" ${m.vertragstyp===v?"selected":""}>${escHtml(v)}</option>`).join("")}
@@ -1428,7 +1456,7 @@ function renderMitarbeiterStammdatenFields(m){
         ${["aktiv","krank","urlaub","inaktiv"].map(s=>`<option value="${s}" ${m.status===s?"selected":""}>${s}</option>`).join("")}
       </select></div>
       <div class="formRow" style="grid-column:1/-1;"><label>Adresse</label><input id="mAdresse" type="text" value="${escAttr(m.adresse||"")}"></div>
-      <div class="formRow"><label>Stundenlohn (€, für DATEV)</label><input id="mLohn" type="number" step="0.01" value="${escAttr(m.stundenlohn||0)}"></div>
+      ${admin?`<div class="formRow"><label>Stundenlohn (€, für DATEV)</label><input id="mLohn" type="number" step="0.01" value="${escAttr(m.stundenlohn||0)}"></div>`:""}
     </div>
     ${sigPadHTML("mSig", "Unterschrift Mitarbeiter (Stammdaten bestätigt)")}
   `;
@@ -1537,14 +1565,18 @@ function saveMitarbeiter(id, isEdit){
   m.vorname = vorname; m.nachname = nachname; m.name = (vorname+" "+nachname).trim();
   m.position = document.getElementById("mPosition").value.trim();
   m.abteilung = document.getElementById("mAbteilung").value;
+  const rolleField = document.getElementById("mRolle");
+  if(rolleField) m.rolle = rolleField.value;
   m.tel = document.getElementById("mTel").value.trim();
   m.email = document.getElementById("mEmail").value.trim();
   m.adresse = document.getElementById("mAdresse").value.trim();
   m.eintritt = document.getElementById("mEintritt").value;
   m.geburtstag = document.getElementById("mGeburtstag").value;
-  m.brutto = Number(document.getElementById("mBrutto").value)||0;
+  const bruttoField = document.getElementById("mBrutto");
+  if(bruttoField) m.brutto = Number(bruttoField.value)||0;
   m.urlaubstageJahr = Number(document.getElementById("mUrlaub").value)||30;
-  m.stundenlohn = Number(document.getElementById("mLohn").value)||0;
+  const lohnField = document.getElementById("mLohn");
+  if(lohnField) m.stundenlohn = Number(lohnField.value)||0;
   m.vertragstyp = document.getElementById("mVertragstyp").value;
   m.status = document.getElementById("mStatus").value;
   m.unterschrift = window._mitarbeiterSigDraft || m.unterschrift || "";
