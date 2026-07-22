@@ -3107,7 +3107,7 @@ function renderTabFotos(body, p){
     <div class="card">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
         <b>Fotos (${p.fotos.length})</b>
-        <label class="btn primary sm" style="margin:0;">📷 Fotos hinzufügen<input type="file" accept="image/*" multiple capture="environment" style="display:none;" onchange="addProjektFotos('${escAttr(p.id)}', this)"></label>
+        <label class="btn primary sm" style="margin:0;">📷 Fotos hinzufügen<input type="file" accept="image/*" multiple style="display:none;" onchange="addProjektFotos('${escAttr(p.id)}', this)"></label>
       </div>
       <div class="thumbGrid">
         ${p.fotos.map(f=>`
