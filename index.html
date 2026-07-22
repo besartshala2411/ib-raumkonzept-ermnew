@@ -2402,31 +2402,6 @@ function importKundenCSV(input){
   reader.onerror = ()=>toast("CSV konnte nicht gelesen werden.", "error");
   reader.readAsText(file, "utf-8");
 }
-function importKundenCSV(input){
-  const file = input.files[0]; if(!file) return;
-  const reader = new FileReader();
-  reader.onload = ()=>{
-    const text = reader.result.replace(/^﻿/,"");
-    const lines = text.split(/\r?\n/).filter(l=>l.trim());
-    if(!lines.length){ toast("CSV ist leer.", "warn"); return; }
-    const delim = lines[0].includes(";") ? ";" : ",";
-    const header = lines[0].split(delim).map(h=>h.trim().toLowerCase());
-    let count = 0;
-    for(let i=1;i<lines.length;i++){
-      const cols = lines[i].split(delim);
-      const row = {};
-      header.forEach((h,idx)=>row[h]=(cols[idx]||"").trim());
-      const name = row.name || row.firma || row.kunde;
-      if(!name) continue;
-      S.kunden.push({id:uid(), name, ansprechpartner:row.ansprechpartner||row.kontakt||"", tel:row.telefon||row.tel||"", email:row.email||row["e-mail"]||"", adresse:row.adresse||"", notizen:""});
-      count++;
-    }
-    saveState(); route(location.hash);
-    toast(count + " Kunden importiert.", "success");
-  };
-  reader.onerror = ()=>toast("CSV konnte nicht gelesen werden.", "error");
-  reader.readAsText(file, "utf-8");
-}
 
 /* =========================================================
    MODULE: SUBUNTERNEHMER
