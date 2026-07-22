@@ -74,6 +74,8 @@ a{color:var(--primary);}
 .tickerBtn{background:none;border:none;font-size:18px;padding:4px 8px;border-radius:8px;color:var(--text-dim);}
 .tickerBtn:hover{background:var(--card2); color:var(--text);}
 .tickerBtn:disabled{opacity:.6; cursor:default;}
+#hamburgerBtn{display:none;}
+#sidebarBackdrop{display:none;}
 .tickerBtn.spinning{animation:spin .8s linear infinite;}
 @keyframes spin{from{transform:rotate(0deg);}to{transform:rotate(360deg);}}
 
@@ -218,6 +220,22 @@ tr:hover td{background:var(--card2);}
   #view{padding:16px;}
   .grid.cols-3,.grid.cols-4{grid-template-columns:repeat(2,1fr);}
 }
+@media(max-width:768px){
+  #hamburgerBtn{display:inline-flex;}
+  #sidebar{
+    position:fixed; top:var(--ticker-h); left:0; bottom:0; z-index:520;
+    width:min(82vw,300px); transform:translateX(-100%); transition:transform .25s ease;
+    box-shadow:var(--shadow);
+  }
+  #sidebar.open{transform:translateX(0);}
+  #sidebarBackdrop{
+    display:block; position:fixed; top:var(--ticker-h); left:0; right:0; bottom:0;
+    background:rgba(0,0,0,.5); z-index:510; opacity:0; pointer-events:none; transition:opacity .25s ease;
+  }
+  #sidebarBackdrop.open{opacity:1; pointer-events:auto;}
+  #view{padding:14px;}
+  .grid.cols-2,.grid.cols-3,.grid.cols-4,.grid.cols-6{grid-template-columns:1fr 1fr;}
+}
 </style>
 </head>
 <body>
@@ -234,6 +252,7 @@ tr:hover td{background:var(--card2);}
   <div id="ticker"></div>
   <div id="body">
     <div id="sidebar"></div>
+    <div id="sidebarBackdrop" onclick="closeSidebar()"></div>
     <div id="view"></div>
   </div>
 </div>
@@ -791,12 +810,20 @@ function buildSidebar(){
   groups.forEach(g=>{
     if(g.name) html += `<div class="navGroupLabel">${escHtml(g.name)}</div>`;
     g.items.forEach(m=>{
-      html += `<button class="navItem" data-route="${escAttr(m.id)}" onclick="location.hash='#${escAttr(m.id)}'">
+      html += `<button class="navItem" data-route="${escAttr(m.id)}" onclick="location.hash='#${escAttr(m.id)}'; closeSidebar();">
         <span class="navIcon">${m.icon}</span><span>${escHtml(m.label)}</span>
       </button>`;
     });
   });
   sidebar.innerHTML = html;
+}
+function toggleSidebar(){
+  document.getElementById("sidebar").classList.toggle("open");
+  document.getElementById("sidebarBackdrop").classList.toggle("open");
+}
+function closeSidebar(){
+  document.getElementById("sidebar").classList.remove("open");
+  document.getElementById("sidebarBackdrop").classList.remove("open");
 }
 function route(hash){
   const raw = (hash||"#dashboard").replace("#","") || "dashboard";
@@ -834,6 +861,7 @@ function renderTicker(){
   const gestempelt = S.zeiterfassung.filter(z=>z.datum===heute && z.kommen).length;
   const user = currentUser();
   t.innerHTML = `
+    <button class="tickerBtn" id="hamburgerBtn" title="Menü" onclick="toggleSidebar()">☰</button>
     <div class="tickerItem">👷 <b>${activeMitarbeiter}</b> Mitarbeiter</div>
     <div class="tickerItem">🏢 <b>${aktiveProjekte}</b> aktive Projekte</div>
     ${admin?`<div class="tickerItem">💶 <b>${fmtCurrency(offen)}</b> offen</div>`:""}
