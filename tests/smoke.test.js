@@ -43,13 +43,14 @@ async function main() {
   const { window } = dom;
   window.onerror = (msg) => { console.log("  WINDOW ERROR: " + msg); failures++; };
 
-  // wait for DOMContentLoaded-driven boot() to finish (it's async)
+  // wait for DOMContentLoaded-driven boot() to finish (it's async: waits briefly for the
+  // Supabase SDK, then checks for a session before deciding what to render into #loginBody)
   await new Promise((resolve) => {
     let tries = 0;
     const iv = setInterval(() => {
       tries++;
-      const grid = window.document.getElementById("userPickGrid");
-      if ((grid && grid.innerHTML.includes("Noch keine")) || tries > 100) { clearInterval(iv); resolve(); }
+      const body = window.document.getElementById("loginBody");
+      if ((body && !body.innerHTML.includes("Lädt")) || tries > 100) { clearInterval(iv); resolve(); }
     }, 50);
   });
 
@@ -58,8 +59,55 @@ async function main() {
   assert(window.MODULES && window.MODULES.length >= 20, "Alle Module registriert (" + (window.MODULES ? window.MODULES.length : 0) + ")");
   assert(typeof window.S === "object", "State S initialisiert");
 
-  window.loginAsGast();
+  window.S.mitarbeiter.push({ id: "m1", name: "Max Mustermann", position: "Vorarbeiter", rolle: "Geschäftsführer", tel: "", email: "max@example.com", adresse: "", eintritt: "2024-01-01", status: "aktiv", urlaubstageJahr: 30, stundenlohn: 20, dokumente: [] });
+  window.S.currentUserId = "m1";
+  window.enterApp();
   assert(window.document.getElementById("appShell").classList.contains("hidden") === false, "App-Shell nach Login sichtbar");
+  assert(window.hasAdminAccess() === true, "Simulierter Geschäftsführer-Login hat Admin-Zugriff (für restliche Testsuite)");
+
+  console.log("\n== Login: E-Mail/Passwort, Konto-Zuordnung ==");
+  window.renderLogin();
+  assert(window.document.getElementById("loginBody").innerHTML.includes("nicht verfügbar"), "Login zeigt 'nicht verfügbar', wenn window.supabase fehlt (CDN im Test entfernt)");
+
+  const fakeSbClient = {
+    auth: {
+      getSession: async () => ({ data: { session: null } }),
+      signInWithPassword: async () => ({ data: {}, error: null }),
+      signOut: async () => ({}),
+    },
+    // Vollständig genug, damit initCloudSyncIfEnabled()/subscribeRealtime() (von enterApp()
+    // im Hintergrund angestoßen) nicht mit einer unbehandelten Exception/Rejection abbrechen.
+    from: () => ({
+      select: () => ({ eq: () => ({ single: async () => ({ data: null, error: null }) }) }),
+      update: () => ({ eq: async () => ({ error: null }) }),
+    }),
+    channel: () => ({ on: () => ({ subscribe: () => {} }) }),
+    removeChannel: () => {},
+  };
+  window.supabase = { createClient: () => fakeSbClient };
+  window.renderLogin();
+  assert(window.document.getElementById("loginEmail") !== null && window.document.getElementById("loginPassword") !== null, "Login zeigt E-Mail/Passwort-Formular, wenn Supabase verfügbar ist");
+
+  const wasCloudSyncEnabled = window.LC.cloudSyncEnabled;
+  window.LC.cloudSyncEnabled = false; // isoliert resolveAndEnter() von echten Netzwerk-Pulls im Test
+
+  await window.resolveAndEnter({ user: { email: "MAX@EXAMPLE.COM" } });
+  assert(window.S.currentUserId === "m1", "resolveAndEnter() matched E-Mail case-insensitiv gegen aktiven Mitarbeiter");
+
+  await window.resolveAndEnter({ user: { email: "nobody@example.com" } });
+  assert(window.document.getElementById("loginBody").innerHTML.includes("keinem aktiven Mitarbeiter zugeordnet"), "resolveAndEnter() ohne Treffer zeigt Sperrbildschirm");
+
+  window.S.mitarbeiter.push({ id: "inaktivTest", name: "Ex Mitarbeiter", position: "", rolle: "Mitarbeiter", tel: "", email: "ex@example.com", adresse: "", eintritt: "2024-01-01", status: "inaktiv", urlaubstageJahr: 30, stundenlohn: 20, dokumente: [] });
+  await window.resolveAndEnter({ user: { email: "ex@example.com" } });
+  assert(window.document.getElementById("loginBody").innerHTML.includes("keinem aktiven Mitarbeiter zugeordnet"), "resolveAndEnter() blockiert Konten inaktiver Mitarbeiter");
+  window.S.mitarbeiter = window.S.mitarbeiter.filter((m) => m.id !== "inaktivTest");
+
+  window.LC.cloudSyncEnabled = wasCloudSyncEnabled;
+  window.S.currentUserId = "m1";
+  window.enterApp();
+  delete window.supabase;
+
+  assert(window.ensureShape({ mitarbeiter: [{ id: "old1", name: "Alt" }] }).mitarbeiter[0].authUserId === null, "ensureShape() backfillt authUserId:null bei alten Mitarbeiter-Datensätzen");
 
   console.log("\n== Escaping-Regression (kritischer Bug aus der Praxis) ==");
   // Name enthält doppelte Anführungszeichen, einfache Anführungszeichen und < > &
@@ -83,7 +131,6 @@ async function main() {
   window.S.kunden = window.S.kunden.filter((k) => k.id !== "test-evil-1");
 
   console.log("\n== CRUD: Mitarbeiter ==");
-  window.S.mitarbeiter.push({ id: "m1", name: "Max Mustermann", position: "Vorarbeiter", tel: "", email: "", adresse: "", eintritt: "2024-01-01", status: "aktiv", urlaubstageJahr: 30, stundenlohn: 20, dokumente: [] });
   assert(window.S.mitarbeiter.length === 1, "Mitarbeiter hinzugefügt");
   window.route("#mitarbeiter");
   assert(window.document.getElementById("view").innerHTML.includes("Max Mustermann"), "Mitarbeiter erscheint in Liste");
@@ -240,11 +287,11 @@ async function main() {
   window.S.rechnungen.push({ id: "re-role1", nr: "RE-ROLE-0001", kundeId: "", projektId: "", datum: "2026-01-01", faellig: "", status: "offen", positionen: [], notiz: "" });
   window.S.vertraege.push({ id: "vt-role1", mitarbeiterId: "m1", typ: "Arbeitsvertrag", inhalt: "", unterschriftAG: "", unterschriftAN: "", datum: "2026-01-01", status: "entwurf" });
   window.S.passwoerter.push({ id: "pw-role1", bezeichnung: "Testtresor", benutzername: "", passwort: "", url: "", notiz: "" });
-  window.S.mitarbeiter.push({ id: "roleWorker", name: "Rolle Arbeiter", position: "Maler", rolle: "Mitarbeiter", tel: "", email: "", adresse: "", eintritt: "2024-01-01", status: "aktiv", urlaubstageJahr: 30, stundenlohn: 20, dokumente: [] });
+  window.S.mitarbeiter.push({ id: "roleWorker", name: "Rolle Arbeiter", position: "Maler", rolle: "Mitarbeiter", tel: "", email: "arbeiter@example.com", adresse: "", eintritt: "2024-01-01", status: "aktiv", urlaubstageJahr: 30, stundenlohn: 20, dokumente: [] });
   window.S.mitarbeiter.push({ id: "roleBoss", name: "Rolle Chef", position: "Geschäftsführer", rolle: "Geschäftsführer", tel: "", email: "", adresse: "", eintritt: "2024-01-01", status: "aktiv", urlaubstageJahr: 30, stundenlohn: 20, dokumente: [] });
 
   window.S.currentUserId = null;
-  assert(window.hasAdminAccess() === true, "Gast/Büro-Login hat vollen Zugriff");
+  assert(window.hasAdminAccess() === false, "Kein eingeloggter Mitarbeiter -> kein Admin-Zugriff (fail closed)");
 
   window.S.currentUserId = "roleWorker";
   assert(window.hasAdminAccess() === false, "Normaler Mitarbeiter hat keinen Admin-Zugriff");
@@ -278,17 +325,24 @@ async function main() {
   assert(!pkHtmlWorker.includes("💶 Lohn"), "Personalakte-Tabs zeigen 'Lohn' nicht für normalen Mitarbeiter");
   assert(!pkHtmlWorker.includes("Geschätzter Stundenlohn"), "Lohn-Tab-Inhalt wird nicht gerendert (Fallback auf Stammdaten)");
   assert(!pkHtmlWorker.includes('id="mBrutto"') && !pkHtmlWorker.includes('id="mLohn"'), "Brutto/Stundenlohn-Felder fehlen in Stammdaten für normalen Mitarbeiter");
+  assert(window.renderMitarbeiterAccountBlock(window.S.mitarbeiter.find((x) => x.id === "roleWorker")) === "", "Konto-Block ist für normale Mitarbeiter (nicht-Admin) leer");
   window.closeModal();
 
   window.S.currentUserId = "roleBoss";
   assert(window.hasAdminAccess() === true, "Geschäftsführer-Rolle hat Admin-Zugriff");
+  const roleWorkerRecord = window.S.mitarbeiter.find((x) => x.id === "roleWorker");
+  let acctBlockHtml = window.renderMitarbeiterAccountBlock(roleWorkerRecord);
+  assert(acctBlockHtml.includes("Konto erstellen") && !acctBlockHtml.includes("Passwort zurücksetzen"), "Konto-Block zeigt 'Konto erstellen' für Admins bei Mitarbeitern ohne Konto");
+  roleWorkerRecord.authUserId = "fake-auth-user-id";
+  acctBlockHtml = window.renderMitarbeiterAccountBlock(roleWorkerRecord);
+  assert(acctBlockHtml.includes("Passwort zurücksetzen") && !acctBlockHtml.includes("Konto erstellen"), "Konto-Block zeigt 'Passwort zurücksetzen', sobald ein Konto existiert");
   window.buildSidebar();
   const sidebarBossHtml = window.document.getElementById("sidebar").innerHTML;
   assert(sidebarBossHtml.includes('data-route="rechnungen"'), "Sidebar zeigt 'Rechnungen' für Geschäftsführer");
   window.route("#rechnungen");
   assert(!window.document.getElementById("view").innerHTML.includes("nur für Geschäftsführung"), "Geschäftsführer kann #rechnungen normal aufrufen");
 
-  window.S.currentUserId = null;
+  window.S.currentUserId = "m1";
   window.S.mitarbeiter = window.S.mitarbeiter.filter((m) => !["roleWorker", "roleBoss"].includes(m.id));
   window.S.rechnungen = window.S.rechnungen.filter((r) => r.id !== "re-role1");
   window.S.vertraege = window.S.vertraege.filter((v) => v.id !== "vt-role1");

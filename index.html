@@ -59,11 +59,7 @@ a{color:var(--primary);}
 .loginLogo img{width:100%;height:100%;object-fit:cover;}
 .loginTitle{font-size:20px; font-weight:700; margin-bottom:4px;}
 .loginSub{color:var(--text-dim); font-size:13px; margin-bottom:22px;}
-.userPickGrid{display:grid; grid-template-columns:repeat(auto-fill,minmax(110px,1fr)); gap:10px; margin-bottom:16px; max-height:280px; overflow-y:auto;}
-.userPickBtn{background:var(--card2); border:1px solid var(--border); border-radius:var(--radius-sm); padding:14px 8px; text-align:center;}
-.userPickBtn:hover{border-color:var(--primary);}
 .userPickAvatar{width:40px;height:40px;border-radius:50%;background:var(--primary-bg);color:var(--primary);display:flex;align-items:center;justify-content:center;font-weight:700;margin:0 auto 6px;}
-.userPickName{font-size:12.5px; font-weight:600;}
 
 /* ---- App Shell ---- */
 #appShell{position:fixed; inset:0; display:flex; flex-direction:column;}
@@ -227,9 +223,7 @@ tr:hover td{background:var(--card2);}
   <div class="loginCard">
     <div class="loginLogo" id="loginLogo">IB</div>
     <div class="loginTitle" id="loginTitle">IB Raumkonzept GmbH</div>
-    <div class="loginSub">Wer nutzt das Gerät gerade?</div>
-    <div class="userPickGrid" id="userPickGrid"></div>
-    <button class="btn primary" style="width:100%; justify-content:center;" onclick="loginAsGast()">👤 Als Büro/Gast fortfahren</button>
+    <div id="loginBody"></div>
   </div>
 </div>
 
@@ -423,10 +417,12 @@ var S = defaultState();
 
 /** Per-device local-only config: never synced to cloud (secrets, connection settings, device prefs). */
 const LC_KEY = "erm_local_config_v1";
+const SUPABASE_URL = "https://xjakyqspikcelsawenmk.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_PhPdtkXi4xlclfGyUYdfjA_0QgUteZm";
 function defaultLC(){
   return {
     theme:"dark",
-    cloudSyncEnabled:false, supabaseUrl:"", supabaseAnonKey:"", freigabeCode:"",
+    cloudSyncEnabled:true,
     pushEnabled:false, vapidPublicKey:"",
     geminiApiKey:"",
   };
@@ -471,6 +467,7 @@ function ensureShape(s){
     if(m.brutto==null) m.brutto = 0;
     if(m.vertragstyp==null) m.vertragstyp = "Vollzeit";
     if(!m.rolle) m.rolle = "Mitarbeiter";
+    if(m.authUserId===undefined) m.authUserId = null;
   });
   s.kunden.forEach(k=>{
     if(!k.dokumente) k.dokumente=[];
@@ -611,24 +608,58 @@ async function loadState(){
    AUTH / LOGIN (device-shared, per-Mitarbeiter profile pick)
 ========================================================= */
 function renderLogin(){
-  const grid = document.getElementById("userPickGrid");
-  const active = S.mitarbeiter.filter(m=>m.status!=="inaktiv");
-  grid.innerHTML = active.length ? active.map(m=>`
-    <button class="userPickBtn" onclick="loginAs('${escAttr(m.id)}')">
-      <div class="userPickAvatar">${escHtml(initialsOf(m.name))}</div>
-      <div class="userPickName">${escHtml(m.name)}</div>
-    </button>
-  `).join("") : `<div class="empty" style="grid-column:1/-1; padding:10px;">Noch keine Mitarbeiter angelegt.</div>`;
-
   document.getElementById("loginTitle").textContent = S.firma.name || "IB Raumkonzept GmbH";
   applyBranding();
+  const body = document.getElementById("loginBody");
+  if(!body) return;
+  if(!getSupabaseClient()){
+    body.innerHTML = `<div class="empty" style="padding:10px 0;">⚠️ Anmeldung derzeit nicht verfügbar.<br>Bitte Internetverbindung prüfen und Seite neu laden.</div>`;
+    return;
+  }
+  body.innerHTML = `
+    <div class="loginSub">Bitte anmelden</div>
+    <div class="formRow"><label>E-Mail</label><input id="loginEmail" type="email" autocomplete="username" onkeydown="if(event.key==='Enter'){ event.preventDefault(); document.getElementById('loginPassword').focus(); }"></div>
+    <div class="formRow"><label>Passwort</label><input id="loginPassword" type="password" autocomplete="current-password" onkeydown="if(event.key==='Enter'){ event.preventDefault(); handleLoginSubmit(); }"></div>
+    <div id="loginMsg" style="min-height:20px; font-size:12.5px; color:var(--red); margin-bottom:6px;"></div>
+    <button class="btn primary" style="width:100%; justify-content:center;" onclick="handleLoginSubmit()">Anmelden</button>
+  `;
 }
-function loginAs(id){
-  S.currentUserId = id;
-  enterApp();
+async function handleLoginSubmit(){
+  const email = document.getElementById("loginEmail").value.trim();
+  const password = document.getElementById("loginPassword").value;
+  const msg = document.getElementById("loginMsg");
+  if(!email || !password){ msg.style.color = "var(--red)"; msg.textContent = "Bitte E-Mail und Passwort eingeben."; return; }
+  const sb = getSupabaseClient();
+  if(!sb){ msg.style.color = "var(--red)"; msg.textContent = "Anmeldung derzeit nicht verfügbar."; return; }
+  msg.style.color = "var(--text-dim)"; msg.textContent = "Anmeldung läuft…";
+  try{
+    const { data, error } = await sb.auth.signInWithPassword({ email, password });
+    if(error){
+      msg.style.color = "var(--red)";
+      if(/invalid.*credentials/i.test(error.message||"")) msg.textContent = "E-Mail oder Passwort falsch.";
+      else if(!navigator.onLine) msg.textContent = "Keine Internetverbindung. Anmeldung braucht einmalig Netz.";
+      else msg.textContent = "Anmeldung fehlgeschlagen: " + error.message;
+      return;
+    }
+    await resolveAndEnter(data.session);
+  }catch(e){
+    msg.style.color = "var(--red)";
+    msg.textContent = navigator.onLine ? ("Anmeldung fehlgeschlagen: "+e.message) : "Keine Internetverbindung. Anmeldung braucht einmalig Netz.";
+  }
 }
-function loginAsGast(){
-  S.currentUserId = null;
+async function resolveAndEnter(session){
+  if(!session || !session.user || !session.user.email){ renderLogin(); return; }
+  if(LC.cloudSyncEnabled){
+    try{ await cloudSyncPull(true); }catch(e){ /* offline-tolerant: weiter mit lokalen Daten */ }
+  }
+  const email = session.user.email.trim().toLowerCase();
+  const m = S.mitarbeiter.find(x=>x.status!=="inaktiv" && (x.email||"").trim().toLowerCase()===email);
+  if(!m){
+    const body = document.getElementById("loginBody");
+    if(body) body.innerHTML = `<div class="empty" style="padding:10px 0;">🔒 Dieses Konto ist keinem aktiven Mitarbeiter zugeordnet.<br>Bitte Geschäftsführung kontaktieren.</div><button class="btn" style="width:100%; justify-content:center; margin-top:10px;" onclick="logout()">Abmelden</button>`;
+    return;
+  }
+  S.currentUserId = m.id;
   enterApp();
 }
 function enterApp(){
@@ -636,20 +667,24 @@ function enterApp(){
   document.getElementById("appShell").classList.remove("hidden");
   buildSidebar();
   route(location.hash || "#dashboard");
+  initCloudSyncIfEnabled();
 }
-function logout(){
+async function logout(){
+  const sb = getSupabaseClient();
+  if(sb){ try{ await sb.auth.signOut(); }catch(e){} }
+  S.currentUserId = null;
   document.getElementById("appShell").classList.add("hidden");
   document.getElementById("loginScreen").classList.remove("hidden");
   renderLogin();
 }
 function currentUser(){
-  return S.mitarbeiter.find(m=>m.id===S.currentUserId) || null;
+  return S.mitarbeiter.find(m=>m.id===S.currentUserId && m.status!=="inaktiv") || null;
 }
 const ADMIN_ROLLEN = ["Bauleiter","Geschäftsführer"];
 const RESTRICTED_MODULES = ["rechnungen","vertraege","passwoerter","berichte","datev","einstellungen"];
 function hasAdminAccess(){
   const u = currentUser();
-  if(!u) return true; // Gast/Büro-Login (kein spezifischer Mitarbeiter) sieht alles
+  if(!u) return false;
   return ADMIN_ROLLEN.includes(u.rolle);
 }
 
@@ -1392,13 +1427,77 @@ function renderPersonalakteTab(id, tab){
   else if(tab==="urlaub") body.innerHTML = renderMitarbeiterUrlaubTab(m);
   else if(tab==="lohn") body.innerHTML = renderMitarbeiterLohnTab(m);
   else{
-    body.innerHTML = renderMitarbeiterStammdatenFields(m) + `
+    body.innerHTML = renderMitarbeiterStammdatenFields(m) + renderMitarbeiterAccountBlock(m) + `
     <div class="modalFoot">
       <button class="btn" onclick="closeModal()">Schließen</button>
       <button class="btn" onclick="exportPersonalakteStammblattPDF('${escAttr(id)}')">📄 Stammblatt-PDF</button>
       <button class="btn primary" onclick="saveMitarbeiter('${escAttr(id)}', true)">Speichern</button>
     </div>`;
     initMitarbeiterSigPad(m);
+  }
+}
+function renderMitarbeiterAccountBlock(m){
+  if(!hasAdminAccess() || !m.email) return "";
+  if(!m.authUserId){
+    return `
+    <div class="card" style="margin-top:14px;">
+      <b>🔐 Konto (Login)</b>
+      <div class="pageSub" style="margin:6px 0 12px;">Kein Konto erstellt — kann sich noch nicht anmelden.</div>
+      <div class="grid cols-2">
+        <div class="formRow"><label>Start-Passwort</label><input id="acctNewPassword" type="text" placeholder="mind. 6 Zeichen"></div>
+      </div>
+      <button class="btn primary sm" onclick="createEmployeeAccount('${escAttr(m.id)}')">Konto erstellen</button>
+    </div>`;
+  }
+  return `
+    <div class="card" style="margin-top:14px;">
+      <b>🔐 Konto (Login)</b>
+      <div class="pageSub" style="margin:6px 0 12px;"><span class="badge green">aktiv</span></div>
+      <div class="grid cols-2">
+        <div class="formRow"><label>Neues Passwort</label><input id="acctResetPassword" type="text" placeholder="mind. 6 Zeichen"></div>
+      </div>
+      <button class="btn sm" onclick="resetEmployeePassword('${escAttr(m.id)}')">Passwort zurücksetzen</button>
+    </div>`;
+}
+async function callAccountFunction(body){
+  const sb = getSupabaseClient();
+  if(!sb) throw new Error("Cloud-Verbindung derzeit nicht verfügbar.");
+  const { data } = await sb.auth.getSession();
+  const token = data && data.session && data.session.access_token;
+  if(!token) throw new Error("Nicht angemeldet.");
+  const res = await fetch("/.netlify/functions/manage-employee-account", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": "Bearer "+token },
+    body: JSON.stringify(body)
+  });
+  const json = await res.json().catch(()=>({}));
+  if(!res.ok) throw new Error(json.error || ("Fehler ("+res.status+")"));
+  return json;
+}
+async function createEmployeeAccount(mitarbeiterId){
+  const m = S.mitarbeiter.find(x=>x.id===mitarbeiterId);
+  const password = document.getElementById("acctNewPassword").value;
+  if(!password || password.length<6){ toast("Bitte ein Passwort mit mind. 6 Zeichen eingeben.", "warn"); return; }
+  try{
+    const json = await callAccountFunction({ action:"create", mitarbeiterId, email:m.email, password });
+    m.authUserId = json.authUserId;
+    saveState();
+    renderPersonalakteTab(mitarbeiterId, "stammdaten");
+    toast("Konto erstellt.", "success");
+  }catch(e){
+    toast("Konto konnte nicht erstellt werden: "+e.message, "error");
+  }
+}
+async function resetEmployeePassword(mitarbeiterId){
+  const m = S.mitarbeiter.find(x=>x.id===mitarbeiterId);
+  const password = document.getElementById("acctResetPassword").value;
+  if(!password || password.length<6){ toast("Bitte ein Passwort mit mind. 6 Zeichen eingeben.", "warn"); return; }
+  try{
+    await callAccountFunction({ action:"reset_password", mitarbeiterId, authUserId:m.authUserId, password });
+    toast("Passwort zurückgesetzt.", "success");
+    renderPersonalakteTab(mitarbeiterId, "stammdaten");
+  }catch(e){
+    toast("Passwort konnte nicht zurückgesetzt werden: "+e.message, "error");
   }
 }
 function exportPersonalakteStammblattPDF(id){
@@ -1578,6 +1677,7 @@ function saveMitarbeiter(id, isEdit){
   const lohnField = document.getElementById("mLohn");
   if(lohnField) m.stundenlohn = Number(lohnField.value)||0;
   m.vertragstyp = document.getElementById("mVertragstyp").value;
+  const wasActive = m.status !== "inaktiv";
   m.status = document.getElementById("mStatus").value;
   m.unterschrift = window._mitarbeiterSigDraft || m.unterschrift || "";
   if(!isEdit){ if(!m.dokumente) m.dokumente=[]; S.mitarbeiter.push(m); window._newMitarbeiterDraft=null; }
@@ -1585,6 +1685,13 @@ function saveMitarbeiter(id, isEdit){
   closeModal();
   route(location.hash);
   toast("Mitarbeiter gespeichert.", "success");
+  if(wasActive && m.status==="inaktiv" && m.authUserId){
+    disableEmployeeAccount(m.id).catch(e=>toast("Konto konnte nicht automatisch gesperrt werden: "+e.message, "warn"));
+  }
+}
+async function disableEmployeeAccount(mitarbeiterId){
+  const m = S.mitarbeiter.find(x=>x.id===mitarbeiterId);
+  await callAccountFunction({ action:"disable", mitarbeiterId, authUserId:m.authUserId });
 }
 function deleteMitarbeiter(id){
   confirmDelete("Mitarbeiter „"+mitarbeiterName(id)+"“ wirklich löschen?", ()=>{
@@ -4725,19 +4832,16 @@ async function callGemini(prompt, apiKey){
 }
 
 /* =========================================================
-   CLOUD SYNC (Supabase, Freigabe-Code statt Nutzerkonten)
+   CLOUD SYNC (Supabase, RLS über echte Nutzerkonten/auth.uid())
 ========================================================= */
-let _sbClient = null, _sbClientKey = "", _rtChannel = null, _cloudPushTimer = null;
+let _sbClient = null, _rtChannel = null, _cloudPushTimer = null;
 let cloudSyncStatus = {state:"idle", msg:""};
 function getSupabaseClient(){
-  if(!LC.cloudSyncEnabled || !LC.supabaseUrl || !LC.supabaseAnonKey) return null;
   if(!window.supabase || !window.supabase.createClient) return null;
-  const key = LC.supabaseUrl+"|"+LC.supabaseAnonKey+"|"+LC.freigabeCode;
-  if(!_sbClient || _sbClientKey!==key){
-    _sbClient = window.supabase.createClient(LC.supabaseUrl, LC.supabaseAnonKey, {
-      global: { headers: { "x-erm-token": LC.freigabeCode || "" } }
+  if(!_sbClient){
+    _sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: { persistSession: true, autoRefreshToken: true }
     });
-    _sbClientKey = key;
   }
   return _sbClient;
 }
@@ -4779,7 +4883,9 @@ async function cloudSyncPull(initial){
       if(typeof data.payload !== "object" || Array.isArray(data.payload)){
         throw new Error("Cloud-Daten haben ein ungültiges Format (payload ist kein Objekt, sondern " + typeof data.payload + "). Bitte in Supabase die Spalte 'payload' der Zeile mit id=1 in Tabelle erm_data auf '{}' zurücksetzen.");
       }
+      const localCurrentUserId = S.currentUserId;
       S = ensureShape(data.payload);
+      S.currentUserId = localCurrentUserId;
       try{ await idbSet("main", JSON.stringify(S)); }catch(e){}
       try{ localStorage.setItem(LS_KEY, JSON.stringify(S)); }catch(e){}
       if(!initial){ buildSidebar(); route(location.hash); }
@@ -4797,7 +4903,9 @@ function subscribeRealtime(){
   _rtChannel = sb.channel("erm_data_changes")
     .on("postgres_changes", {event:"UPDATE", schema:"public", table:"erm_data"}, payload=>{
       if(payload.new && payload.new.payload && typeof payload.new.payload==="object" && !Array.isArray(payload.new.payload)){
+        const localCurrentUserId = S.currentUserId;
         S = ensureShape(payload.new.payload);
+        S.currentUserId = localCurrentUserId;
         idbSet("main", JSON.stringify(S)).catch(()=>{});
         try{ localStorage.setItem(LS_KEY, JSON.stringify(S)); }catch(e){}
         buildSidebar(); route(location.hash);
@@ -4817,7 +4925,7 @@ async function initCloudSyncIfEnabled(){
 }
 async function testCloudConnection(){
   const sb = getSupabaseClient();
-  if(!sb){ toast("Bitte Supabase-URL, Anon-Key und Freigabe-Code eintragen.", "warn"); return; }
+  if(!sb){ toast("Cloud-Verbindung derzeit nicht verfügbar.", "warn"); return; }
   setCloudStatus("syncing");
   try{
     const { error } = await sb.from("erm_data").select("id").eq("id",1).single();
@@ -4987,55 +5095,42 @@ function doReset(){
 /* =========================================================
    MODULE: EINSTELLUNGEN
 ========================================================= */
-const SUPABASE_SQL_SETUP = `-- ERM IB Raumkonzept: Supabase Setup
-create extension if not exists pgcrypto;
+const SUPABASE_SQL_SETUP = `-- ERM IB Raumkonzept: Umstieg auf echte Nutzerkonten — TEIL 1
+-- Jetzt ausführen. Sicher erneut ausführbar. Der alte Freigabe-Code
+-- funktioniert währenddessen weiter, damit Geräte mit alter App-Version
+-- nicht sofort ausgesperrt werden.
 
-create table if not exists erm_access (
-  id int primary key default 1,
-  code_hash text not null
-);
-
-create table if not exists erm_data (
-  id int primary key default 1,
-  org_id text not null default 'ib_raumkonzept',
-  payload jsonb not null default '{}'::jsonb,
-  updated_at timestamptz not null default now()
-);
-insert into erm_data (id, org_id, payload) values (1, 'ib_raumkonzept', '{}'::jsonb)
-  on conflict (id) do nothing;
-
-create table if not exists push_subscriptions (
-  endpoint text primary key,
-  p256dh text not null,
-  auth text not null,
-  org_id text not null default 'ib_raumkonzept',
-  created_at timestamptz not null default now()
-);
-
-create or replace function erm_check_token(token text)
-returns boolean language sql security definer as $$
-  select exists(
-    select 1 from erm_access
-    where id = 1 and code_hash = encode(digest(coalesce(token,''), 'sha256'), 'hex')
-  );
-$$;
-
-alter table erm_data enable row level security;
-alter table push_subscriptions enable row level security;
-
+drop policy if exists "erm_data_access" on erm_data;
 create policy "erm_data_access" on erm_data for all
-  using ( erm_check_token(current_setting('request.headers', true)::json->>'x-erm-token') )
-  with check ( erm_check_token(current_setting('request.headers', true)::json->>'x-erm-token') );
+  using ( erm_check_token(current_setting('request.headers', true)::json->>'x-erm-token')
+          or (select auth.role()) = 'authenticated' )
+  with check ( erm_check_token(current_setting('request.headers', true)::json->>'x-erm-token')
+          or (select auth.role()) = 'authenticated' );
 
+drop policy if exists "push_subscriptions_access" on push_subscriptions;
 create policy "push_subscriptions_access" on push_subscriptions for all
-  using ( erm_check_token(current_setting('request.headers', true)::json->>'x-erm-token') )
-  with check ( erm_check_token(current_setting('request.headers', true)::json->>'x-erm-token') );
+  using ( erm_check_token(current_setting('request.headers', true)::json->>'x-erm-token')
+          or (select auth.role()) = 'authenticated' )
+  with check ( erm_check_token(current_setting('request.headers', true)::json->>'x-erm-token')
+          or (select auth.role()) = 'authenticated' );
 
-alter publication supabase_realtime add table erm_data;
-
--- Freigabe-Code setzen/ändern (ERSETZEN Sie 'IhrFreigabeCode123' und führen Sie dies erneut aus, um ihn zu ändern):
-insert into erm_access (id, code_hash) values (1, encode(digest('IhrFreigabeCode123', 'sha256'), 'hex'))
-  on conflict (id) do update set code_hash = excluded.code_hash;
+-- ============================================================
+-- TEIL 2 — ERST ausführen, wenn alle Mitarbeiter erfolgreich mit
+-- ihrem neuen Konto eingeloggt waren. Entfernt den alten
+-- Freigabe-Code-Mechanismus endgültig.
+-- ============================================================
+-- drop policy if exists "erm_data_access" on erm_data;
+-- create policy "erm_data_access" on erm_data for all
+--   using ( (select auth.role()) = 'authenticated' )
+--   with check ( (select auth.role()) = 'authenticated' );
+--
+-- drop policy if exists "push_subscriptions_access" on push_subscriptions;
+-- create policy "push_subscriptions_access" on push_subscriptions for all
+--   using ( (select auth.role()) = 'authenticated' )
+--   with check ( (select auth.role()) = 'authenticated' );
+--
+-- drop function if exists erm_check_token(text);
+-- drop table if exists erm_access;
 `;
 const EINSTELLUNGEN_TABS = [
   {id:"profil", label:"Mein Profil", icon:"👤"},
@@ -5287,28 +5382,17 @@ function renderSetCloud(body){
         <b>☁️ Cloud Sync (Supabase)</b>
         <div id="cloudStatusOut">${cloudStatusHTML()}</div>
       </div>
-      <div class="pageSub" style="margin:8px 0 16px;">Optional: alle Mitarbeiter sehen dieselben Daten in Echtzeit. Kein Nutzerkonto nötig – Schutz per gemeinsamem Freigabe-Code.</div>
+      <div class="pageSub" style="margin:8px 0 16px;">Alle Mitarbeiter mit eigenem Konto sehen dieselben Daten in Echtzeit.</div>
       <label style="display:flex; align-items:center; gap:10px; margin-bottom:16px;">
         <input type="checkbox" id="csEnabled" ${LC.cloudSyncEnabled?"checked":""}> Cloud-Sync aktivieren
       </label>
-      <div class="formRow"><label>Supabase Projekt-URL</label><input id="csUrl" type="text" placeholder="https://xxxx.supabase.co" value="${escAttr(LC.supabaseUrl)}"></div>
-      <div class="formRow"><label>Supabase Anon Key</label><input id="csAnonKey" type="text" value="${escAttr(LC.supabaseAnonKey)}"></div>
-      <div class="formRow"><label>Freigabe-Code (frei wählbar, wie ein gemeinsames Team-Passwort)</label><input id="csCode" type="text" value="${escAttr(LC.freigabeCode)}"></div>
       <div style="display:flex; gap:8px; margin-bottom:20px;">
         <button class="btn primary" onclick="saveCloudSettings()">Speichern</button>
         <button class="btn" onclick="testCloudConnection()">Verbindung testen</button>
         <button class="btn" onclick="cloudSyncPull(false)">🔄 Jetzt abrufen</button>
       </div>
-      <div id="cloudQR" style="margin-bottom:20px;"></div>
       <details>
-        <summary style="cursor:pointer; font-weight:700; padding:8px 0;">📋 Schritt-für-Schritt-Anleitung &amp; SQL-Setup</summary>
-        <ol style="font-size:13px; line-height:1.9; color:var(--text-dim); padding-left:20px;">
-          <li>Kostenloses Projekt auf <a href="https://supabase.com" target="_blank" rel="noopener">supabase.com</a> anlegen.</li>
-          <li>Im Supabase-Dashboard: <b>SQL Editor</b> öffnen, unten stehenden Code einfügen, <b>eigenen Freigabe-Code</b> in der letzten Zeile eintragen, ausführen.</li>
-          <li><b>Project Settings → API</b>: „Project URL" und „anon public key" kopieren und oben eintragen.</li>
-          <li>Freigabe-Code oben eintragen (denselben wie im SQL-Skript), Häkchen „Cloud-Sync aktivieren" setzen, speichern.</li>
-          <li>QR-Code oder Freigabe-Code an Kollegen weitergeben – diese tragen dieselben drei Werte auf ihrem Gerät ein.</li>
-        </ol>
+        <summary style="cursor:pointer; font-weight:700; padding:8px 0;">📋 SQL-Setup (nur einmalig, in Supabase SQL Editor)</summary>
         <div style="position:relative;">
           <button class="btn sm" style="position:absolute; top:8px; right:8px;" onclick="copySQL()">📋 Kopieren</button>
           <pre id="sqlSetupOut" style="background:var(--bg2); border:1px solid var(--border); border-radius:10px; padding:14px; font-size:11px; overflow-x:auto; max-height:320px;">${escHtml(SUPABASE_SQL_SETUP)}</pre>
@@ -5316,24 +5400,9 @@ function renderSetCloud(body){
       </details>
     </div>
   `;
-  renderCloudQR();
-}
-function renderCloudQR(){
-  const el = document.getElementById("cloudQR");
-  if(!el || !LC.supabaseUrl || !LC.supabaseAnonKey) { if(el) el.innerHTML=""; return; }
-  const payload = JSON.stringify({url:LC.supabaseUrl, key:LC.supabaseAnonKey, code:LC.freigabeCode});
-  if(window.QRCode && window.QRCode.toCanvas){
-    el.innerHTML = `<div class="pageSub" style="margin-bottom:8px;">QR-Code zum Teilen der Zugangsdaten (bitte nur an Kollegen weitergeben):</div><canvas id="qrCanvas"></canvas>`;
-    window.QRCode.toCanvas(document.getElementById("qrCanvas"), payload, {width:180}, (err)=>{ if(err) el.innerHTML = "<div class='pageSub'>QR-Code konnte nicht erzeugt werden (offline?).</div>"; });
-  }else{
-    el.innerHTML = `<div class="pageSub">QR-Bibliothek lädt noch oder ist offline nicht verfügbar. Zugangsdaten können auch manuell weitergegeben werden.</div>`;
-  }
 }
 function saveCloudSettings(){
   LC.cloudSyncEnabled = document.getElementById("csEnabled").checked;
-  LC.supabaseUrl = document.getElementById("csUrl").value.trim();
-  LC.supabaseAnonKey = document.getElementById("csAnonKey").value.trim();
-  LC.freigabeCode = document.getElementById("csCode").value.trim();
   saveLC();
   if(LC.cloudSyncEnabled) initCloudSyncIfEnabled();
   renderEinstellungen(document.getElementById("view"), "cloud");
@@ -5410,7 +5479,7 @@ function renderSetInstall(body){
       <div class="card">
         <b>👥 Verteilung an Mitarbeiter</b>
         <div style="font-size:13px; color:var(--text-dim); line-height:1.8;">
-          Diese App liegt auf Netlify und wird per Git-Push automatisch aktualisiert. Einfach den Netlify-Link (z.B. <code>https://ib-raumkonzept.netlify.app</code>) per WhatsApp/E-Mail an das Team senden – jeder installiert ihn wie oben beschrieben auf dem eigenen Gerät. Für Cloud-Sync zusätzlich den Freigabe-Code oder QR-Code aus „Cloud Sync" teilen.
+          Diese App liegt auf Netlify und wird per Git-Push automatisch aktualisiert. Einfach den Netlify-Link (z.B. <code>https://ib-raumkonzept.netlify.app</code>) per WhatsApp/E-Mail an das Team senden – jeder installiert ihn wie oben beschrieben auf dem eigenen Gerät und meldet sich mit seinem persönlichen Konto (E-Mail + Passwort) an. Konten legt eine Geschäftsführung/Bauleitung in der Personalakte des jeweiligen Mitarbeiters an.
         </div>
       </div>
     </div>
@@ -5446,18 +5515,37 @@ reg("einstellungen","Einstellungen","⚙️","System",renderEinstellungen);
 /* =========================================================
    INIT
 ========================================================= */
+function waitForSupabaseSDK(){
+  return new Promise(resolve=>{
+    let tries = 0;
+    const iv = setInterval(()=>{
+      tries++;
+      if((window.supabase && window.supabase.createClient) || tries>20){ clearInterval(iv); resolve(); }
+    }, 100);
+  });
+}
 async function boot(){
   loadLC();
   await loadState();
   document.documentElement.setAttribute("data-theme", LC.theme || "dark");
   buildSidebar();
-  renderLogin();
   applyBranding();
+  document.getElementById("loginTitle").textContent = S.firma.name || "IB Raumkonzept GmbH";
+  const loginBody = document.getElementById("loginBody");
+  if(loginBody) loginBody.innerHTML = `<div class="empty" style="padding:10px 0;">Lädt…</div>`;
   if("serviceWorker" in navigator){
     navigator.serviceWorker.register("./sw.js").catch(()=>{ /* offline-first still works without SW */ });
   }
-  initCloudSyncIfEnabled();
   startLocalReminderLoop();
+  await waitForSupabaseSDK();
+  const sb = getSupabaseClient();
+  if(sb){
+    try{
+      const { data } = await sb.auth.getSession();
+      if(data && data.session){ await resolveAndEnter(data.session); return; }
+    }catch(e){ /* fällt durch auf Login-Formular */ }
+  }
+  renderLogin();
 }
 document.addEventListener("DOMContentLoaded", boot);
 </script>
