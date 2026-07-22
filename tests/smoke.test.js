@@ -388,6 +388,28 @@ async function main() {
   window.deleteBauphase("p1", bzPhaseId);
   assert(window.S.projekte.find((p) => p.id === "p1").bauzeitenplan.length === 0, "Bauphase kann wieder gelöscht werden");
 
+  console.log("\n== Projekt-Übersicht: verknüpfte Aufgaben & Rechnungen ==");
+  window.S.aufgaben.push({ id: "ag-ueb1", titel: "Fenster bestellen", beschreibung: "", faellig: "", prioritaet: "mittel", projektId: "p1", zugeordnet: null, status: "offen" });
+  window.S.rechnungen.push({ id: "re-ueb1", nr: "RE-UEB-0001", kundeId: "", projektId: "p1", datum: "2026-01-01", faellig: "2099-01-01", status: "offen", positionen: [{ beschreibung: "Trockenbau", menge: 5, einheit: "m²", preis: 40 }], notiz: "" });
+  window.document.getElementById("view").innerHTML = "";
+  window.renderProjekte(window.document.getElementById("view"), "p1", "uebersicht");
+  let uebHtml = window.document.getElementById("view").innerHTML;
+  assert(uebHtml.includes("Fenster bestellen"), "Übersicht zeigt verknüpfte offene Aufgabe des Projekts");
+  assert(uebHtml.includes("RE-UEB-0001"), "Übersicht zeigt verknüpfte Rechnung des Projekts (als Admin)");
+
+  window.S.mitarbeiter.push({ id: "uebWorker", name: "Übersicht Arbeiter", position: "Maler", rolle: "Mitarbeiter", tel: "", email: "uebworker@example.com", adresse: "", eintritt: "2024-01-01", status: "aktiv", urlaubstageJahr: 30, stundenlohn: 20, dokumente: [] });
+  window.S.currentUserId = "uebWorker";
+  window.document.getElementById("view").innerHTML = "";
+  window.renderProjekte(window.document.getElementById("view"), "p1", "uebersicht");
+  uebHtml = window.document.getElementById("view").innerHTML;
+  assert(uebHtml.includes("Fenster bestellen"), "Übersicht zeigt Aufgaben weiterhin für normale Mitarbeiter");
+  assert(!uebHtml.includes("RE-UEB-0001"), "Übersicht blendet Rechnungen für normale Mitarbeiter aus");
+  window.S.currentUserId = "m1";
+
+  window.S.aufgaben = window.S.aufgaben.filter((a) => a.id !== "ag-ueb1");
+  window.S.rechnungen = window.S.rechnungen.filter((r) => r.id !== "re-ueb1");
+  window.S.mitarbeiter = window.S.mitarbeiter.filter((m) => m.id !== "uebWorker");
+
   console.log("\n== Briefkopf Live-Vorschau (Split-Layout) ==");
   window.S.firma.name = "Ma\"ler & <Söhne> GmbH";
   window.S.firma.slogan = "Test-Slogan";

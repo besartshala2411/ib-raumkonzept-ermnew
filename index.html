@@ -2797,6 +2797,11 @@ function renderProjektDetail(view, id, tab){
 }
 
 function renderTabUebersicht(body, p){
+  const admin = hasAdminAccess();
+  const offeneAufgaben = S.aufgaben.filter(a=>a.projektId===p.id && a.status!=="erledigt");
+  const projektRechnungen = admin ? S.rechnungen.filter(r=>r.projektId===p.id) : [];
+  const offenerBetrag = projektRechnungen.filter(r=>rechnungEffectiveStatus(r)!=="bezahlt").reduce((s,r)=>s+rechnungSumme(r),0);
+  const aktuelleBauphase = (p.bauzeitenplan||[]).slice().sort((a,b)=>(a.von||"").localeCompare(b.von||"")).find(ph=>bauphaseEffectiveStatus(ph)!=="fertig");
   body.innerHTML = `
     <div class="grid cols-2">
       <div class="card">
@@ -2806,6 +2811,7 @@ function renderTabUebersicht(body, p){
           <div style="display:flex; justify-content:space-between;"><span class="pageSub">Budget</span><b>${fmtCurrency(p.budget)}</b></div>
           <div style="display:flex; justify-content:space-between;"><span class="pageSub">Deadline</span><b>${fmtDate(p.deadline)}</b></div>
           <div style="display:flex; justify-content:space-between;"><span class="pageSub">Kunde</span><b>${escHtml(kundeName(p.kundeId))}</b></div>
+          ${aktuelleBauphase?`<div style="display:flex; justify-content:space-between;"><span class="pageSub">Aktuelle Bauphase</span><b>${escHtml(aktuelleBauphase.bezeichnung)} <span class="badge ${bauphaseStatusColor(bauphaseEffectiveStatus(aktuelleBauphase))}">${escHtml(bauphaseEffectiveStatus(aktuelleBauphase))}</span></b></div>`:""}
         </div>
         <div style="margin-top:14px;">
           <label style="font-size:12px; color:var(--text-dim);">Fortschritt: ${p.fortschritt||0}%</label>
@@ -2822,6 +2828,40 @@ function renderTabUebersicht(body, p){
           <div>📐 ${p.aufmasse.length} Aufmaß-Räume</div>
         </div>
       </div>
+    </div>
+    <div class="grid cols-2" style="margin-top:16px;">
+      <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+          <b>📝 Offene Aufgaben (${offeneAufgaben.length})</b>
+          <button class="btn sm" onclick="goTo('#aufgaben')">Alle Aufgaben</button>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          ${offeneAufgaben.map(a=>`
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; background:var(--card2); padding:8px 12px; border-radius:8px; font-size:13px;">
+              <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escHtml(a.titel)}</span>
+              <select onchange="setAufgabeStatus('${escAttr(a.id)}', this.value)" style="font-size:11px; padding:3px 6px; flex-shrink:0;">
+                ${["offen","in Arbeit","erledigt"].map(s2=>`<option value="${s2}" ${a.status===s2?"selected":""}>${s2}</option>`).join("")}
+              </select>
+            </div>
+          `).join("") || `<div class="empty" style="padding:10px;">Keine offenen Aufgaben für dieses Projekt.</div>`}
+        </div>
+      </div>
+      ${admin?`
+      <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+          <b>🧾 Rechnungen (${projektRechnungen.length})</b>
+          <button class="btn sm" onclick="goTo('#rechnungen')">Alle Rechnungen</button>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          ${projektRechnungen.map(r=>`
+            <div style="display:flex; justify-content:space-between; align-items:center; background:var(--card2); padding:8px 12px; border-radius:8px; font-size:13px; cursor:pointer;" onclick="openRechnungForm('${escAttr(r.id)}')">
+              <span>${escHtml(r.nr)}</span>
+              <span style="display:flex; align-items:center; gap:6px;"><b>${fmtCurrency(rechnungSumme(r))}</b>${rechnungBadge(rechnungEffectiveStatus(r))}</span>
+            </div>
+          `).join("") || `<div class="empty" style="padding:10px;">Keine Rechnungen für dieses Projekt.</div>`}
+        </div>
+        ${projektRechnungen.length?`<div class="pageSub" style="margin-top:10px;">Offen: <b>${fmtCurrency(offenerBetrag)}</b></div>`:""}
+      </div>`:""}
     </div>
   `;
 }
