@@ -73,6 +73,9 @@ a{color:var(--primary);}
 .tickerSpacer{flex:1;}
 .tickerBtn{background:none;border:none;font-size:18px;padding:4px 8px;border-radius:8px;color:var(--text-dim);}
 .tickerBtn:hover{background:var(--card2); color:var(--text);}
+.tickerBtn:disabled{opacity:.6; cursor:default;}
+.tickerBtn.spinning{animation:spin .8s linear infinite;}
+@keyframes spin{from{transform:rotate(0deg);}to{transform:rotate(360deg);}}
 
 #body{flex:1; display:flex; min-height:0;}
 #sidebar{
@@ -819,10 +822,28 @@ function renderTicker(){
     <div class="tickerItem">⏱️ <b>${gestempelt}</b> heute gestempelt</div>
     <div class="tickerSpacer"></div>
     <div class="tickerItem">${user? "👤 "+escHtml(user.name) : "👤 Gast/Büro"}</div>
+    <button class="tickerBtn" id="refreshBtn" title="Daten aktualisieren" onclick="manualRefresh()">🔄</button>
     <button class="tickerBtn" title="Suche (Strg/Cmd+K)" onclick="openGlobalSearch()">🔍</button>
     <button class="tickerBtn" title="Theme wechseln" onclick="toggleTheme()">🌗</button>
     <button class="tickerBtn" title="Abmelden" onclick="logout()">🚪</button>
   `;
+}
+async function manualRefresh(){
+  const btn = document.getElementById("refreshBtn");
+  if(btn){ btn.disabled = true; btn.classList.add("spinning"); }
+  try{
+    if(!LC.cloudSyncEnabled){
+      buildSidebar(); route(location.hash);
+      toast("Ansicht aktualisiert (Cloud-Sync ist ausgeschaltet).", "success");
+      return;
+    }
+    const ok = await cloudSyncPull(false);
+    if(ok) toast("✅ Daten aktualisiert.", "success");
+  }catch(e){
+    toast("Aktualisieren fehlgeschlagen: "+String(e.message||e).slice(0,180), "error");
+  }finally{
+    if(btn){ btn.disabled = false; btn.classList.remove("spinning"); }
+  }
 }
 function toggleTheme(){
   LC.theme = LC.theme==="light" ? "dark" : "light";
@@ -1166,7 +1187,7 @@ function renderPflichtChecklist(type, id){
             <div style="display:flex; align-items:center; gap:10px; padding:10px 14px; background:var(--card2); border-radius:10px; flex-wrap:wrap;">
               ${statusIcon}
               <span>${d.icon||"📄"}</span>
-              <a href="${escAttr(doc.dataURL)}" download="${escAttr(doc.name)}" style="flex:1; font-size:13px; min-width:140px;">${escHtml(d.name)}</a>
+              <a href="${escAttr(doc.dataURL)}" target="_blank" rel="noopener" style="flex:1; font-size:13px; min-width:140px;">${escHtml(d.name)}</a>
               <label style="display:flex; align-items:center; gap:6px; font-size:11px; color:var(--text-dim);">Gültig bis
                 <input type="date" value="${escAttr(doc.gueltigBis||"")}" onchange="setPflichtDokGueltigkeit('${type}','${escAttr(id)}','${escAttr(doc.id)}',this.value)" style="background:var(--bg2); border:1px solid var(--border); border-radius:6px; padding:4px 6px; font-size:11px; color:var(--text);">
               </label>
@@ -1573,7 +1594,7 @@ function renderMitarbeiterFreieDokumente(m){
         <label class="btn sm" style="margin:0;">⬆ Hochladen<input type="file" multiple style="display:none;" onchange="addMitarbeiterDoc('${escAttr(m.id)}', this)"></label>
       </div>
       <div style="display:flex; flex-direction:column; gap:6px;">
-        ${freie.map(d=>`<div style="display:flex; justify-content:space-between; align-items:center; background:var(--card2); padding:8px 12px; border-radius:8px; font-size:12.5px;"><a href="${escAttr(d.dataURL)}" download="${escAttr(d.name)}">📄 ${escHtml(d.name)}</a><button class="iconBtn" onclick="removeMitarbeiterDoc('${escAttr(m.id)}','${escAttr(d.id)}')">🗑️</button></div>`).join("") || `<div class="empty" style="padding:10px;">Keine weiteren Dokumente.</div>`}
+        ${freie.map(d=>`<div style="display:flex; justify-content:space-between; align-items:center; background:var(--card2); padding:8px 12px; border-radius:8px; font-size:12.5px;"><a href="${escAttr(d.dataURL)}" target="_blank" rel="noopener">📄 ${escHtml(d.name)}</a><button class="iconBtn" onclick="removeMitarbeiterDoc('${escAttr(m.id)}','${escAttr(d.id)}')">🗑️</button></div>`).join("") || `<div class="empty" style="padding:10px;">Keine weiteren Dokumente.</div>`}
       </div>
     </div>
   `;
@@ -2343,7 +2364,7 @@ function renderKundeFreieDokumente(k){
         <label class="btn sm" style="margin:0;">⬆ Hochladen<input type="file" multiple style="display:none;" onchange="addKundeDoc('${escAttr(k.id)}', this)"></label>
       </div>
       <div style="display:flex; flex-direction:column; gap:6px;">
-        ${freie.map(d=>`<div style="display:flex; justify-content:space-between; align-items:center; background:var(--card2); padding:8px 12px; border-radius:8px; font-size:12.5px;"><a href="${escAttr(d.dataURL)}" download="${escAttr(d.name)}">📄 ${escHtml(d.name)}</a><button class="iconBtn" onclick="removeKundeDoc('${escAttr(k.id)}','${escAttr(d.id)}')">🗑️</button></div>`).join("") || `<div class="empty" style="padding:10px;">Keine weiteren Dokumente.</div>`}
+        ${freie.map(d=>`<div style="display:flex; justify-content:space-between; align-items:center; background:var(--card2); padding:8px 12px; border-radius:8px; font-size:12.5px;"><a href="${escAttr(d.dataURL)}" target="_blank" rel="noopener">📄 ${escHtml(d.name)}</a><button class="iconBtn" onclick="removeKundeDoc('${escAttr(k.id)}','${escAttr(d.id)}')">🗑️</button></div>`).join("") || `<div class="empty" style="padding:10px;">Keine weiteren Dokumente.</div>`}
       </div>
     </div>
   `;
@@ -2569,7 +2590,7 @@ function renderSubFreieDokumente(s){
         <label class="btn sm" style="margin:0;">⬆ Hochladen<input type="file" multiple style="display:none;" onchange="addSubDoc('${escAttr(s.id)}', this)"></label>
       </div>
       <div style="display:flex; flex-direction:column; gap:6px;">
-        ${freie.map(d=>`<div style="display:flex; justify-content:space-between; align-items:center; background:var(--card2); padding:8px 12px; border-radius:8px; font-size:12.5px;"><a href="${escAttr(d.dataURL)}" download="${escAttr(d.name)}">📄 ${escHtml(d.name)}</a><button class="iconBtn" onclick="removeSubDoc('${escAttr(s.id)}','${escAttr(d.id)}')">🗑️</button></div>`).join("") || `<div class="empty" style="padding:10px;">Keine weiteren Dokumente.</div>`}
+        ${freie.map(d=>`<div style="display:flex; justify-content:space-between; align-items:center; background:var(--card2); padding:8px 12px; border-radius:8px; font-size:12.5px;"><a href="${escAttr(d.dataURL)}" target="_blank" rel="noopener">📄 ${escHtml(d.name)}</a><button class="iconBtn" onclick="removeSubDoc('${escAttr(s.id)}','${escAttr(d.id)}')">🗑️</button></div>`).join("") || `<div class="empty" style="padding:10px;">Keine weiteren Dokumente.</div>`}
       </div>
     </div>
   `;
@@ -3213,7 +3234,7 @@ function renderTabProjektDokumente(body, p){
       <div style="display:flex; flex-direction:column; gap:8px;">
         ${p.dokumente.map(d=>`
           <div style="display:flex; justify-content:space-between; align-items:center; background:var(--card2); padding:10px 14px; border-radius:10px;">
-            <a href="${escAttr(d.dataURL)}" download="${escAttr(d.name)}">📄 ${escHtml(d.name)}</a>
+            <a href="${escAttr(d.dataURL)}" target="_blank" rel="noopener">📄 ${escHtml(d.name)}</a>
             <button class="iconBtn" onclick="deleteProjektDokument('${escAttr(p.id)}','${escAttr(d.id)}')">🗑️</button>
           </div>
         `).join("") || `<div class="empty">Noch keine Dokumente.</div>`}
@@ -3897,7 +3918,7 @@ function renderDokumente(view){
       <div style="display:flex; flex-direction:column; gap:8px;">
         ${S.dokumente.filter(d=>{const f=document.getElementById("dokProjektFilter")?.value; return !f||d.projektId===f;}).map(d=>`
           <div style="display:flex; justify-content:space-between; align-items:center; background:var(--card2); padding:10px 14px; border-radius:10px;">
-            <a href="${escAttr(d.dataURL)}" download="${escAttr(d.name)}">📄 ${escHtml(d.name)}</a>
+            <a href="${escAttr(d.dataURL)}" target="_blank" rel="noopener">📄 ${escHtml(d.name)}</a>
             <div style="display:flex; align-items:center; gap:10px;">
               ${d.projektId?`<span class="badge blue">${escHtml(projektName(d.projektId))}</span>`:""}
               <button class="iconBtn" onclick="deleteDokument('${escAttr(d.id)}')">🗑️</button>
@@ -4833,7 +4854,7 @@ function cloudSyncPush(){
 }
 async function cloudSyncPull(initial){
   const sb = getSupabaseClient();
-  if(!sb) return;
+  if(!sb) return false;
   setCloudStatus("syncing");
   try{
     const { data, error } = await sb.from("erm_data").select("payload,updated_at").eq("id",1).single();
@@ -4850,9 +4871,11 @@ async function cloudSyncPull(initial){
       if(!initial){ buildSidebar(); route(location.hash); }
     }
     setCloudStatus("ok");
+    return true;
   }catch(e){
     setCloudStatus("error", e.message);
     if(!initial) toast("Cloud-Sync Abruf fehlgeschlagen: "+String(e.message).slice(0,180), "error");
+    return false;
   }
 }
 function subscribeRealtime(){
