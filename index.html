@@ -257,6 +257,24 @@ function escAttr(v){
   return String(v==null?"":v).replace(/[&<>'"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]));
 }
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,9); }
+function openDataUrlDoc(dataURL){
+  try{
+    const comma = dataURL.indexOf(",");
+    const meta = dataURL.slice(0, comma);
+    const base64 = dataURL.slice(comma+1);
+    const mimeMatch = /data:(.*?);base64/.exec(meta);
+    const mime = mimeMatch ? mimeMatch[1] : "application/octet-stream";
+    const byteChars = atob(base64);
+    const byteNumbers = new Array(byteChars.length);
+    for(let i=0;i<byteChars.length;i++){ byteNumbers[i] = byteChars.charCodeAt(i); }
+    const blob = new Blob([new Uint8Array(byteNumbers)], {type: mime});
+    const url = URL.createObjectURL(blob);
+    window.open(url, "_blank", "noopener");
+    setTimeout(()=>URL.revokeObjectURL(url), 60000);
+  }catch(e){
+    toast("Dokument konnte nicht geöffnet werden: "+String(e.message||e).slice(0,150), "error");
+  }
+}
 function todayISO(){ return new Date().toISOString().slice(0,10); }
 function nowHM(){ const d=new Date(); return String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0"); }
 function fmtDate(iso){
@@ -1187,7 +1205,7 @@ function renderPflichtChecklist(type, id){
             <div style="display:flex; align-items:center; gap:10px; padding:10px 14px; background:var(--card2); border-radius:10px; flex-wrap:wrap;">
               ${statusIcon}
               <span>${d.icon||"📄"}</span>
-              <a href="${escAttr(doc.dataURL)}" target="_blank" rel="noopener" style="flex:1; font-size:13px; min-width:140px;">${escHtml(d.name)}</a>
+              <a href="javascript:void(0)" data-docurl="${escAttr(doc.dataURL)}" onclick="openDataUrlDoc(this.dataset.docurl)" style="flex:1; font-size:13px; min-width:140px; cursor:pointer;">${escHtml(d.name)}</a>
               <label style="display:flex; align-items:center; gap:6px; font-size:11px; color:var(--text-dim);">Gültig bis
                 <input type="date" value="${escAttr(doc.gueltigBis||"")}" onchange="setPflichtDokGueltigkeit('${type}','${escAttr(id)}','${escAttr(doc.id)}',this.value)" style="background:var(--bg2); border:1px solid var(--border); border-radius:6px; padding:4px 6px; font-size:11px; color:var(--text);">
               </label>
@@ -1594,7 +1612,7 @@ function renderMitarbeiterFreieDokumente(m){
         <label class="btn sm" style="margin:0;">⬆ Hochladen<input type="file" multiple style="display:none;" onchange="addMitarbeiterDoc('${escAttr(m.id)}', this)"></label>
       </div>
       <div style="display:flex; flex-direction:column; gap:6px;">
-        ${freie.map(d=>`<div style="display:flex; justify-content:space-between; align-items:center; background:var(--card2); padding:8px 12px; border-radius:8px; font-size:12.5px;"><a href="${escAttr(d.dataURL)}" target="_blank" rel="noopener">📄 ${escHtml(d.name)}</a><button class="iconBtn" onclick="removeMitarbeiterDoc('${escAttr(m.id)}','${escAttr(d.id)}')">🗑️</button></div>`).join("") || `<div class="empty" style="padding:10px;">Keine weiteren Dokumente.</div>`}
+        ${freie.map(d=>`<div style="display:flex; justify-content:space-between; align-items:center; background:var(--card2); padding:8px 12px; border-radius:8px; font-size:12.5px;"><a href="javascript:void(0)" data-docurl="${escAttr(d.dataURL)}" onclick="openDataUrlDoc(this.dataset.docurl)" style="cursor:pointer;">📄 ${escHtml(d.name)}</a><button class="iconBtn" onclick="removeMitarbeiterDoc('${escAttr(m.id)}','${escAttr(d.id)}')">🗑️</button></div>`).join("") || `<div class="empty" style="padding:10px;">Keine weiteren Dokumente.</div>`}
       </div>
     </div>
   `;
@@ -2364,7 +2382,7 @@ function renderKundeFreieDokumente(k){
         <label class="btn sm" style="margin:0;">⬆ Hochladen<input type="file" multiple style="display:none;" onchange="addKundeDoc('${escAttr(k.id)}', this)"></label>
       </div>
       <div style="display:flex; flex-direction:column; gap:6px;">
-        ${freie.map(d=>`<div style="display:flex; justify-content:space-between; align-items:center; background:var(--card2); padding:8px 12px; border-radius:8px; font-size:12.5px;"><a href="${escAttr(d.dataURL)}" target="_blank" rel="noopener">📄 ${escHtml(d.name)}</a><button class="iconBtn" onclick="removeKundeDoc('${escAttr(k.id)}','${escAttr(d.id)}')">🗑️</button></div>`).join("") || `<div class="empty" style="padding:10px;">Keine weiteren Dokumente.</div>`}
+        ${freie.map(d=>`<div style="display:flex; justify-content:space-between; align-items:center; background:var(--card2); padding:8px 12px; border-radius:8px; font-size:12.5px;"><a href="javascript:void(0)" data-docurl="${escAttr(d.dataURL)}" onclick="openDataUrlDoc(this.dataset.docurl)" style="cursor:pointer;">📄 ${escHtml(d.name)}</a><button class="iconBtn" onclick="removeKundeDoc('${escAttr(k.id)}','${escAttr(d.id)}')">🗑️</button></div>`).join("") || `<div class="empty" style="padding:10px;">Keine weiteren Dokumente.</div>`}
       </div>
     </div>
   `;
@@ -2590,7 +2608,7 @@ function renderSubFreieDokumente(s){
         <label class="btn sm" style="margin:0;">⬆ Hochladen<input type="file" multiple style="display:none;" onchange="addSubDoc('${escAttr(s.id)}', this)"></label>
       </div>
       <div style="display:flex; flex-direction:column; gap:6px;">
-        ${freie.map(d=>`<div style="display:flex; justify-content:space-between; align-items:center; background:var(--card2); padding:8px 12px; border-radius:8px; font-size:12.5px;"><a href="${escAttr(d.dataURL)}" target="_blank" rel="noopener">📄 ${escHtml(d.name)}</a><button class="iconBtn" onclick="removeSubDoc('${escAttr(s.id)}','${escAttr(d.id)}')">🗑️</button></div>`).join("") || `<div class="empty" style="padding:10px;">Keine weiteren Dokumente.</div>`}
+        ${freie.map(d=>`<div style="display:flex; justify-content:space-between; align-items:center; background:var(--card2); padding:8px 12px; border-radius:8px; font-size:12.5px;"><a href="javascript:void(0)" data-docurl="${escAttr(d.dataURL)}" onclick="openDataUrlDoc(this.dataset.docurl)" style="cursor:pointer;">📄 ${escHtml(d.name)}</a><button class="iconBtn" onclick="removeSubDoc('${escAttr(s.id)}','${escAttr(d.id)}')">🗑️</button></div>`).join("") || `<div class="empty" style="padding:10px;">Keine weiteren Dokumente.</div>`}
       </div>
     </div>
   `;
@@ -3234,7 +3252,7 @@ function renderTabProjektDokumente(body, p){
       <div style="display:flex; flex-direction:column; gap:8px;">
         ${p.dokumente.map(d=>`
           <div style="display:flex; justify-content:space-between; align-items:center; background:var(--card2); padding:10px 14px; border-radius:10px;">
-            <a href="${escAttr(d.dataURL)}" target="_blank" rel="noopener">📄 ${escHtml(d.name)}</a>
+            <a href="javascript:void(0)" data-docurl="${escAttr(d.dataURL)}" onclick="openDataUrlDoc(this.dataset.docurl)" style="cursor:pointer;">📄 ${escHtml(d.name)}</a>
             <button class="iconBtn" onclick="deleteProjektDokument('${escAttr(p.id)}','${escAttr(d.id)}')">🗑️</button>
           </div>
         `).join("") || `<div class="empty">Noch keine Dokumente.</div>`}
@@ -3918,7 +3936,7 @@ function renderDokumente(view){
       <div style="display:flex; flex-direction:column; gap:8px;">
         ${S.dokumente.filter(d=>{const f=document.getElementById("dokProjektFilter")?.value; return !f||d.projektId===f;}).map(d=>`
           <div style="display:flex; justify-content:space-between; align-items:center; background:var(--card2); padding:10px 14px; border-radius:10px;">
-            <a href="${escAttr(d.dataURL)}" target="_blank" rel="noopener">📄 ${escHtml(d.name)}</a>
+            <a href="javascript:void(0)" data-docurl="${escAttr(d.dataURL)}" onclick="openDataUrlDoc(this.dataset.docurl)" style="cursor:pointer;">📄 ${escHtml(d.name)}</a>
             <div style="display:flex; align-items:center; gap:10px;">
               ${d.projektId?`<span class="badge blue">${escHtml(projektName(d.projektId))}</span>`:""}
               <button class="iconBtn" onclick="deleteDokument('${escAttr(d.id)}')">🗑️</button>
