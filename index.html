@@ -2624,61 +2624,6 @@ function removeSubFromProjekt(subId, projektId){
 }
 
 /* =========================================================
-   MODULE: TAGESAUFGABEN
-========================================================= */
-function renderTagesaufgaben(view){
-  const heute = todayISO();
-  const relevant = S.tagesaufgaben.filter(t=>t.wiederholung!=="keine" || t.datum===heute).sort((a,b)=>(a.done-b.done)||(a.datum||"").localeCompare(b.datum||""));
-  view.innerHTML = `
-    <div class="pageHead">
-      <div><div class="pageTitle">Tagesaufgaben</div><div class="pageSub">${fmtDate(heute)}</div></div>
-      <button class="btn primary" onclick="openTagesaufgabeForm()">➕ Aufgabe</button>
-    </div>
-    <div class="card">
-      <div style="display:flex; flex-direction:column; gap:8px;">
-        ${relevant.map(t=>`
-          <div style="display:flex; align-items:center; gap:10px; padding:10px; border-radius:10px; background:var(--card2);">
-            <input type="checkbox" ${t.done?"checked":""} onchange="toggleTagesaufgabe('${escAttr(t.id)}')">
-            <div style="flex:1; ${t.done?'text-decoration:line-through; color:var(--text-dim);':''}">
-              ${escHtml(t.text)} ${t.wiederholung!=="keine"?`<span class="badge blue">${escHtml(t.wiederholung)}</span>`:""} ${t.zugeordnet?`<span class="badge gray">${escHtml(mitarbeiterName(t.zugeordnet))}</span>`:""}
-            </div>
-            <button class="iconBtn" onclick="deleteTagesaufgabe('${escAttr(t.id)}')">🗑️</button>
-          </div>
-        `).join("") || `<div class="empty">Keine Tagesaufgaben.</div>`}
-      </div>
-    </div>
-  `;
-}
-function openTagesaufgabeForm(){
-  openModal(`
-    <div class="modalHead"><div class="modalTitle">Tagesaufgabe</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
-    <div class="formRow"><label>Text</label><div class="micWrap"><input id="taText" type="text">${fieldMic("taText")}</div></div>
-    <div class="grid cols-2">
-      <div class="formRow"><label>Datum</label><input id="taDatum" type="date" value="${todayISO()}"></div>
-      <div class="formRow"><label>Wiederholung</label>
-        <select id="taWieder"><option value="keine">Keine</option><option value="täglich">Täglich</option><option value="wöchentlich">Wöchentlich</option><option value="monatlich">Monatlich</option></select>
-      </div>
-      <div class="formRow" style="grid-column:1/-1;"><label>Zugeordnet an</label>
-        <select id="taZuge"><option value="">–</option>${S.mitarbeiter.map(m=>`<option value="${escAttr(m.id)}">${escHtml(m.name)}</option>`).join("")}</select>
-      </div>
-    </div>
-    <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="saveTagesaufgabe()">Speichern</button></div>
-  `);
-}
-function saveTagesaufgabe(){
-  const text = document.getElementById("taText").value.trim();
-  if(!text){ toast("Text erforderlich.", "warn"); return; }
-  S.tagesaufgaben.push({id:uid(), text, datum:document.getElementById("taDatum").value, wiederholung:document.getElementById("taWieder").value, zugeordnet:document.getElementById("taZuge").value||null, done:false});
-  saveState(); closeModal(); route(location.hash);
-}
-function toggleTagesaufgabe(id){
-  const t = S.tagesaufgaben.find(x=>x.id===id); t.done=!t.done; saveState(); route(location.hash);
-}
-function deleteTagesaufgabe(id){
-  deleteItemWithUndo(S.tagesaufgaben, id, "Aufgabe gelöscht.");
-}
-
-/* =========================================================
    MODULE: PLANTAFEL
 ========================================================= */
 function renderPlantafel(view){
@@ -2732,7 +2677,6 @@ function savePlantafelCell(mid, datum){
 
 reg("kunden","Kunden","🤝","Kunden & Projekte",renderKunden);
 reg("subunternehmer","Subunternehmer","🏗️","Kunden & Projekte",renderSubunternehmer);
-reg("tagesaufgaben","Tagesaufgaben","✅","Kunden & Projekte",renderTagesaufgaben);
 reg("plantafel","Plantafel","📅","Kunden & Projekte",renderPlantafel);
 
 /* =========================================================
@@ -4476,7 +4420,7 @@ function exportVorlagePDF(id){
 reg("dokumente","Dokumente","📁","Verwaltung",renderDokumente);
 reg("rechnungen","Rechnungen","🧾","Verwaltung",renderRechnungen);
 reg("vertraege","Arbeitsverträge","📜","Verwaltung",renderVertraege);
-reg("schluessel","Schlüsselprotokoll","🔑","Verwaltung",renderSchluessel);
+reg("schluessel","Schlüsselprotokoll","🔑","Baustelle & Zugänge",renderSchluessel);
 reg("vorlagen","Vorlagen","📄","Verwaltung",renderVorlagen);
 
 /* =========================================================
