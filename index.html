@@ -276,23 +276,56 @@ function escAttr(v){
   return String(v==null?"":v).replace(/[&<>'"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]));
 }
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,9); }
-function openDataUrlDoc(dataURL){
+function dataUrlToFile(dataURL, filename){
+  const comma = dataURL.indexOf(",");
+  const meta = dataURL.slice(0, comma);
+  const base64 = dataURL.slice(comma+1);
+  const mimeMatch = /data:(.*?);base64/.exec(meta);
+  const mime = mimeMatch ? mimeMatch[1] : "application/octet-stream";
+  const byteChars = atob(base64);
+  const byteNumbers = new Array(byteChars.length);
+  for(let i=0;i<byteChars.length;i++){ byteNumbers[i] = byteChars.charCodeAt(i); }
+  return new File([new Uint8Array(byteNumbers)], filename||"Dokument", {type: mime});
+}
+function openDataUrlDoc(dataURL, name){
   try{
-    const comma = dataURL.indexOf(",");
-    const meta = dataURL.slice(0, comma);
-    const base64 = dataURL.slice(comma+1);
-    const mimeMatch = /data:(.*?);base64/.exec(meta);
-    const mime = mimeMatch ? mimeMatch[1] : "application/octet-stream";
-    const byteChars = atob(base64);
-    const byteNumbers = new Array(byteChars.length);
-    for(let i=0;i<byteChars.length;i++){ byteNumbers[i] = byteChars.charCodeAt(i); }
-    const blob = new Blob([new Uint8Array(byteNumbers)], {type: mime});
-    const url = URL.createObjectURL(blob);
+    const file = dataUrlToFile(dataURL, name);
+    const url = URL.createObjectURL(file);
     window.open(url, "_blank", "noopener");
     setTimeout(()=>URL.revokeObjectURL(url), 60000);
   }catch(e){
     toast("Dokument konnte nicht geöffnet werden: "+String(e.message||e).slice(0,150), "error");
   }
+}
+function shareDataUrlDoc(dataURL, name){
+  try{
+    const file = dataUrlToFile(dataURL, name);
+    if(navigator.share && navigator.canShare && navigator.canShare({files:[file]})){
+      navigator.share({files:[file], title:name}).catch(e=>{
+        if(!e || e.name!=="AbortError") toast("Teilen fehlgeschlagen: "+String(e && e.message || e).slice(0,150), "error");
+      });
+    }else{
+      openDataUrlDoc(dataURL, name);
+      toast("Teilen wird auf diesem Gerät nicht unterstützt – Dokument wurde stattdessen geöffnet.", "warn");
+    }
+  }catch(e){
+    toast("Dokument konnte nicht geteilt werden: "+String(e.message||e).slice(0,150), "error");
+  }
+}
+function saveOrSharePdf(doc, filename){
+  if(navigator.share && navigator.canShare){
+    try{
+      const blob = doc.output("blob");
+      const file = new File([blob], filename, {type:"application/pdf"});
+      if(navigator.canShare({files:[file]})){
+        navigator.share({files:[file], title:filename}).catch(e=>{
+          if(!e || e.name!=="AbortError") toast("Teilen fehlgeschlagen: "+String(e && e.message || e).slice(0,150), "error");
+        });
+        return;
+      }
+    }catch(e){ /* Web-Share nicht nutzbar, weiter unten normaler Download */ }
+  }
+  doc.save(filename);
 }
 function todayISO(){ return new Date().toISOString().slice(0,10); }
 function nowHM(){ const d=new Date(); return String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0"); }
@@ -1233,10 +1266,11 @@ function renderPflichtChecklist(type, id){
             <div style="display:flex; align-items:center; gap:10px; padding:10px 14px; background:var(--card2); border-radius:10px; flex-wrap:wrap;">
               ${statusIcon}
               <span>${d.icon||"📄"}</span>
-              <a href="javascript:void(0)" data-docurl="${escAttr(doc.dataURL)}" onclick="openDataUrlDoc(this.dataset.docurl)" style="flex:1; font-size:13px; min-width:140px; cursor:pointer;">${escHtml(d.name)}</a>
+              <a href="javascript:void(0)" data-docurl="${escAttr(doc.dataURL)}" data-docname="${escAttr(doc.name)}" onclick="openDataUrlDoc(this.dataset.docurl,this.dataset.docname)" style="flex:1; font-size:13px; min-width:140px; cursor:pointer;">${escHtml(d.name)}</a>
               <label style="display:flex; align-items:center; gap:6px; font-size:11px; color:var(--text-dim);">Gültig bis
                 <input type="date" value="${escAttr(doc.gueltigBis||"")}" onchange="setPflichtDokGueltigkeit('${type}','${escAttr(id)}','${escAttr(doc.id)}',this.value)" style="background:var(--bg2); border:1px solid var(--border); border-radius:6px; padding:4px 6px; font-size:11px; color:var(--text);">
               </label>
+              <button class="iconBtn" title="Teilen" data-docurl="${escAttr(doc.dataURL)}" data-docname="${escAttr(doc.name)}" onclick="shareDataUrlDoc(this.dataset.docurl,this.dataset.docname)">📤</button>
               <button class="iconBtn" onclick="removePflichtDok('${type}','${escAttr(id)}','${escAttr(doc.id)}')">🗑️</button>
             </div>`;
         }).join("") || `<div class="empty" style="padding:14px;">Keine Pflichtdokumente definiert.</div>`}
@@ -1592,7 +1626,7 @@ function exportPersonalakteStammblattPDF(id){
     doc.setFontSize(9); doc.text("Unterschrift Mitarbeiter",15,y);
   }
   pdfFooter(doc);
-  doc.save("Personalstammblatt_"+m.name.replace(/[^a-z0-9]+/gi,"_")+".pdf");
+  saveOrSharePdf(doc, "Personalstammblatt_"+m.name.replace(/[^a-z0-9]+/gi,"_")+".pdf");
   toast("Stammblatt-PDF erstellt.", "success");
 }
 function renderMitarbeiterStammdatenFields(m){
@@ -1640,7 +1674,7 @@ function renderMitarbeiterFreieDokumente(m){
         <label class="btn sm" style="margin:0;">⬆ Hochladen<input type="file" multiple style="display:none;" onchange="addMitarbeiterDoc('${escAttr(m.id)}', this)"></label>
       </div>
       <div style="display:flex; flex-direction:column; gap:6px;">
-        ${freie.map(d=>`<div style="display:flex; justify-content:space-between; align-items:center; background:var(--card2); padding:8px 12px; border-radius:8px; font-size:12.5px;"><a href="javascript:void(0)" data-docurl="${escAttr(d.dataURL)}" onclick="openDataUrlDoc(this.dataset.docurl)" style="cursor:pointer;">📄 ${escHtml(d.name)}</a><button class="iconBtn" onclick="removeMitarbeiterDoc('${escAttr(m.id)}','${escAttr(d.id)}')">🗑️</button></div>`).join("") || `<div class="empty" style="padding:10px;">Keine weiteren Dokumente.</div>`}
+        ${freie.map(d=>`<div style="display:flex; justify-content:space-between; align-items:center; background:var(--card2); padding:8px 12px; border-radius:8px; font-size:12.5px;"><a href="javascript:void(0)" data-docurl="${escAttr(d.dataURL)}" data-docname="${escAttr(d.name)}" onclick="openDataUrlDoc(this.dataset.docurl,this.dataset.docname)" style="cursor:pointer;">📄 ${escHtml(d.name)}</a><button class="iconBtn" title="Teilen" data-docurl="${escAttr(d.dataURL)}" data-docname="${escAttr(d.name)}" onclick="shareDataUrlDoc(this.dataset.docurl,this.dataset.docname)">📤</button><button class="iconBtn" onclick="removeMitarbeiterDoc('${escAttr(m.id)}','${escAttr(d.id)}')">🗑️</button></div>`).join("") || `<div class="empty" style="padding:10px;">Keine weiteren Dokumente.</div>`}
       </div>
     </div>
   `;
@@ -1888,7 +1922,7 @@ function exportStundenzettelPDF(){
   const colX = [15, 68, 86, 104, 122, 140, 158, 176, 195];
   y = pdfTable(doc, y, headers, rows, null, colX);
   pdfFooter(doc);
-  doc.save("Stundenzettel_"+window._szWoche+".pdf");
+  saveOrSharePdf(doc, "Stundenzettel_"+window._szWoche+".pdf");
   toast("Stundenzettel-PDF erstellt.", "success");
 }
 
@@ -2021,7 +2055,7 @@ function exportUrlaubantragPDF(id){
   doc.text("Unterschrift Arbeitnehmer",15,y);
   doc.text("Unterschrift Arbeitgeber",115,y);
   pdfFooter(doc);
-  doc.save("Urlaubsantrag_"+(m?m.name.replace(/[^a-z0-9]+/gi,"_"):"")+"_"+u.von+".pdf");
+  saveOrSharePdf(doc, "Urlaubsantrag_"+(m?m.name.replace(/[^a-z0-9]+/gi,"_"):"")+"_"+u.von+".pdf");
   toast("Urlaubsantrag-PDF erstellt.", "success");
 }
 function exportUrlaubUebersichtPDF(){
@@ -2033,7 +2067,7 @@ function exportUrlaubUebersichtPDF(){
   ]);
   y = pdfTable(doc, y, ["Mitarbeiter","Von","Bis","Tage","Status"], rows, null, [15,90,120,150,195]);
   pdfFooter(doc);
-  doc.save("Urlaubsuebersicht_"+jahr+".pdf");
+  saveOrSharePdf(doc, "Urlaubsuebersicht_"+jahr+".pdf");
   toast("Übersicht-PDF erstellt.", "success");
 }
 
@@ -2159,7 +2193,7 @@ function exportOnboardingPDF(id){
     doc.setFontSize(9); doc.text("Unterschrift Mitarbeiter",15,y);
   }
   pdfFooter(doc);
-  doc.save("Onboarding_"+mitarbeiterName(o.mitarbeiterId).replace(/[^a-z0-9]+/gi,"_")+".pdf");
+  saveOrSharePdf(doc, "Onboarding_"+mitarbeiterName(o.mitarbeiterId).replace(/[^a-z0-9]+/gi,"_")+".pdf");
   toast("Onboarding-PDF erstellt.", "success");
 }
 
@@ -2359,7 +2393,7 @@ function exportKundeStammdatenPDF(id){
     doc.setFontSize(9); doc.text("Unterschrift Kunde",15,y);
   }
   pdfFooter(doc);
-  doc.save("Kundenstammdaten_"+k.name.replace(/[^a-z0-9]+/gi,"_")+".pdf");
+  saveOrSharePdf(doc, "Kundenstammdaten_"+k.name.replace(/[^a-z0-9]+/gi,"_")+".pdf");
   toast("Stammdaten-PDF erstellt.", "success");
 }
 function quickUpdateKundeField(id, field, val){
@@ -2410,7 +2444,7 @@ function renderKundeFreieDokumente(k){
         <label class="btn sm" style="margin:0;">⬆ Hochladen<input type="file" multiple style="display:none;" onchange="addKundeDoc('${escAttr(k.id)}', this)"></label>
       </div>
       <div style="display:flex; flex-direction:column; gap:6px;">
-        ${freie.map(d=>`<div style="display:flex; justify-content:space-between; align-items:center; background:var(--card2); padding:8px 12px; border-radius:8px; font-size:12.5px;"><a href="javascript:void(0)" data-docurl="${escAttr(d.dataURL)}" onclick="openDataUrlDoc(this.dataset.docurl)" style="cursor:pointer;">📄 ${escHtml(d.name)}</a><button class="iconBtn" onclick="removeKundeDoc('${escAttr(k.id)}','${escAttr(d.id)}')">🗑️</button></div>`).join("") || `<div class="empty" style="padding:10px;">Keine weiteren Dokumente.</div>`}
+        ${freie.map(d=>`<div style="display:flex; justify-content:space-between; align-items:center; background:var(--card2); padding:8px 12px; border-radius:8px; font-size:12.5px;"><a href="javascript:void(0)" data-docurl="${escAttr(d.dataURL)}" data-docname="${escAttr(d.name)}" onclick="openDataUrlDoc(this.dataset.docurl,this.dataset.docname)" style="cursor:pointer;">📄 ${escHtml(d.name)}</a><button class="iconBtn" title="Teilen" data-docurl="${escAttr(d.dataURL)}" data-docname="${escAttr(d.name)}" onclick="shareDataUrlDoc(this.dataset.docurl,this.dataset.docname)">📤</button><button class="iconBtn" onclick="removeKundeDoc('${escAttr(k.id)}','${escAttr(d.id)}')">🗑️</button></div>`).join("") || `<div class="empty" style="padding:10px;">Keine weiteren Dokumente.</div>`}
       </div>
     </div>
   `;
@@ -2571,7 +2605,7 @@ function exportSubStammdatenPDF(id){
     doc.setFontSize(9); doc.text("Unterschrift Subunternehmer",15,y);
   }
   pdfFooter(doc);
-  doc.save("Subunternehmer_"+s.firma.replace(/[^a-z0-9]+/gi,"_")+".pdf");
+  saveOrSharePdf(doc, "Subunternehmer_"+s.firma.replace(/[^a-z0-9]+/gi,"_")+".pdf");
   toast("Stammdaten-PDF erstellt.", "success");
 }
 function quickUpdateSubField(id, field, val){
@@ -2636,7 +2670,7 @@ function renderSubFreieDokumente(s){
         <label class="btn sm" style="margin:0;">⬆ Hochladen<input type="file" multiple style="display:none;" onchange="addSubDoc('${escAttr(s.id)}', this)"></label>
       </div>
       <div style="display:flex; flex-direction:column; gap:6px;">
-        ${freie.map(d=>`<div style="display:flex; justify-content:space-between; align-items:center; background:var(--card2); padding:8px 12px; border-radius:8px; font-size:12.5px;"><a href="javascript:void(0)" data-docurl="${escAttr(d.dataURL)}" onclick="openDataUrlDoc(this.dataset.docurl)" style="cursor:pointer;">📄 ${escHtml(d.name)}</a><button class="iconBtn" onclick="removeSubDoc('${escAttr(s.id)}','${escAttr(d.id)}')">🗑️</button></div>`).join("") || `<div class="empty" style="padding:10px;">Keine weiteren Dokumente.</div>`}
+        ${freie.map(d=>`<div style="display:flex; justify-content:space-between; align-items:center; background:var(--card2); padding:8px 12px; border-radius:8px; font-size:12.5px;"><a href="javascript:void(0)" data-docurl="${escAttr(d.dataURL)}" data-docname="${escAttr(d.name)}" onclick="openDataUrlDoc(this.dataset.docurl,this.dataset.docname)" style="cursor:pointer;">📄 ${escHtml(d.name)}</a><button class="iconBtn" title="Teilen" data-docurl="${escAttr(d.dataURL)}" data-docname="${escAttr(d.name)}" onclick="shareDataUrlDoc(this.dataset.docurl,this.dataset.docname)">📤</button><button class="iconBtn" onclick="removeSubDoc('${escAttr(s.id)}','${escAttr(d.id)}')">🗑️</button></div>`).join("") || `<div class="empty" style="padding:10px;">Keine weiteren Dokumente.</div>`}
       </div>
     </div>
   `;
@@ -3124,7 +3158,7 @@ function exportBauzeitenplanPDF(pid){
   ]);
   y = pdfTable(doc, y, ["Phase","Von","Bis","Status","Fortschritt"], rows, null, [15,90,120,150,195]);
   pdfFooter(doc);
-  doc.save("Bauzeitenplan_"+p.name.replace(/[^a-z0-9]+/gi,"_")+".pdf");
+  saveOrSharePdf(doc, "Bauzeitenplan_"+p.name.replace(/[^a-z0-9]+/gi,"_")+".pdf");
   toast("Bauzeitenplan-PDF erstellt.", "success");
 }
 
@@ -3280,7 +3314,7 @@ function renderTabProjektDokumente(body, p){
       <div style="display:flex; flex-direction:column; gap:8px;">
         ${p.dokumente.map(d=>`
           <div style="display:flex; justify-content:space-between; align-items:center; background:var(--card2); padding:10px 14px; border-radius:10px;">
-            <a href="javascript:void(0)" data-docurl="${escAttr(d.dataURL)}" onclick="openDataUrlDoc(this.dataset.docurl)" style="cursor:pointer;">📄 ${escHtml(d.name)}</a>
+            <a href="javascript:void(0)" data-docurl="${escAttr(d.dataURL)}" data-docname="${escAttr(d.name)}" onclick="openDataUrlDoc(this.dataset.docurl,this.dataset.docname)" style="cursor:pointer;">📄 ${escHtml(d.name)}</a><button class="iconBtn" title="Teilen" data-docurl="${escAttr(d.dataURL)}" data-docname="${escAttr(d.name)}" onclick="shareDataUrlDoc(this.dataset.docurl,this.dataset.docname)">📤</button>
             <button class="iconBtn" onclick="deleteProjektDokument('${escAttr(p.id)}','${escAttr(d.id)}')">🗑️</button>
           </div>
         `).join("") || `<div class="empty">Noch keine Dokumente.</div>`}
@@ -3415,7 +3449,7 @@ function exportBautagebuchPDF(pid){
     y += 6;
   });
   pdfFooter(doc);
-  doc.save("Bautagebuch_"+p.name.replace(/[^a-z0-9]+/gi,"_")+".pdf");
+  saveOrSharePdf(doc, "Bautagebuch_"+p.name.replace(/[^a-z0-9]+/gi,"_")+".pdf");
   toast("Bautagebuch-PDF erstellt.", "success");
 }
 
@@ -3516,7 +3550,7 @@ function exportChecklistePDF(pid){
   doc.setFontSize(9);
   doc.text("Unterschrift Kunde/Auftraggeber",15,y);
   pdfFooter(doc);
-  doc.save("Abnahme-Checkliste_"+p.name.replace(/[^a-z0-9]+/gi,"_")+".pdf");
+  saveOrSharePdf(doc, "Abnahme-Checkliste_"+p.name.replace(/[^a-z0-9]+/gi,"_")+".pdf");
   toast("Checkliste-PDF erstellt.", "success");
 }
 function openChecklistItemForm(pid){
@@ -3772,7 +3806,7 @@ function exportAufmassPDF(pid){
     doc.text("Unterschrift (Bestätigung Aufmaß)",15,y);
   }
   pdfFooter(doc);
-  doc.save("Aufmass_"+p.name.replace(/[^a-z0-9]+/gi,"_")+".pdf");
+  saveOrSharePdf(doc, "Aufmass_"+p.name.replace(/[^a-z0-9]+/gi,"_")+".pdf");
 }
 
 /* =========================================================
@@ -3964,7 +3998,7 @@ function renderDokumente(view){
       <div style="display:flex; flex-direction:column; gap:8px;">
         ${S.dokumente.filter(d=>{const f=document.getElementById("dokProjektFilter")?.value; return !f||d.projektId===f;}).map(d=>`
           <div style="display:flex; justify-content:space-between; align-items:center; background:var(--card2); padding:10px 14px; border-radius:10px;">
-            <a href="javascript:void(0)" data-docurl="${escAttr(d.dataURL)}" onclick="openDataUrlDoc(this.dataset.docurl)" style="cursor:pointer;">📄 ${escHtml(d.name)}</a>
+            <a href="javascript:void(0)" data-docurl="${escAttr(d.dataURL)}" data-docname="${escAttr(d.name)}" onclick="openDataUrlDoc(this.dataset.docurl,this.dataset.docname)" style="cursor:pointer;">📄 ${escHtml(d.name)}</a><button class="iconBtn" title="Teilen" data-docurl="${escAttr(d.dataURL)}" data-docname="${escAttr(d.name)}" onclick="shareDataUrlDoc(this.dataset.docurl,this.dataset.docname)">📤</button>
             <div style="display:flex; align-items:center; gap:10px;">
               ${d.projektId?`<span class="badge blue">${escHtml(projektName(d.projektId))}</span>`:""}
               <button class="iconBtn" onclick="deleteDokument('${escAttr(d.id)}')">🗑️</button>
@@ -4138,7 +4172,7 @@ function exportRechnungPDF(id){
     doc.setFontSize(9); doc.text("Unterschrift",15,y);
   }
   pdfFooter(doc);
-  doc.save(r.nr+".pdf");
+  saveOrSharePdf(doc, r.nr+".pdf");
 }
 function exportDatevCSV(){
   const rows = S.rechnungen.map(r=>[r.nr, fmtDate(r.datum), kundeName(r.kundeId), rechnungNetto(r).toFixed(2), rechnungMwst(r).toFixed(2), rechnungSumme(r).toFixed(2), rechnungEffectiveStatus(r)]);
@@ -4263,7 +4297,7 @@ function exportVertragPDF(id){
   doc.text("Arbeitgeber", 15, y+32);
   doc.text("Arbeitnehmer", 120, y+32);
   pdfFooter(doc);
-  doc.save("Vertrag_"+mitarbeiterName(v.mitarbeiterId).replace(/[^a-z0-9]+/gi,"_")+".pdf");
+  saveOrSharePdf(doc, "Vertrag_"+mitarbeiterName(v.mitarbeiterId).replace(/[^a-z0-9]+/gi,"_")+".pdf");
 }
 
 /* =========================================================
@@ -4362,7 +4396,7 @@ function exportSchluesselEinzelPDF(id){
     y += 28; doc.line(15,y,80,y); y+=5; doc.setFontSize(9); doc.text("Unterschrift Rückgabe",15,y); doc.setFontSize(10.5);
   }
   pdfFooter(doc);
-  doc.save("Schluesseluebergabe_"+s.bezeichnung.replace(/[^a-z0-9]+/gi,"_")+".pdf");
+  saveOrSharePdf(doc, "Schluesseluebergabe_"+s.bezeichnung.replace(/[^a-z0-9]+/gi,"_")+".pdf");
   toast("Übergabeprotokoll-PDF erstellt.", "success");
 }
 function exportSchluesselPDF(){
@@ -4374,7 +4408,7 @@ function exportSchluesselPDF(){
   ]);
   y = pdfTable(doc, y, ["Bezeichnung","Baustelle","Ausgegeben an","Ausgabe","Rückgabe","Status"], rows, null, [15,60,100,135,160,195]);
   pdfFooter(doc);
-  doc.save("Schluesselprotokoll_"+todayISO()+".pdf");
+  saveOrSharePdf(doc, "Schluesselprotokoll_"+todayISO()+".pdf");
   toast("Schlüsselprotokoll-PDF erstellt.", "success");
 }
 
@@ -4521,7 +4555,7 @@ function exportVorlagePDF(id){
   const v = S.vorlagen.find(x=>x.id===id);
   const def = VORLAGEN_DEFS.find(x=>x.id===v.defId);
   const doc = buildVorlagePDFDoc(v);
-  doc.save((def?def.name:"Vorlage").replace(/[^a-z0-9]+/gi,"_")+"_"+v.datum+".pdf");
+  saveOrSharePdf(doc, (def?def.name:"Vorlage").replace(/[^a-z0-9]+/gi,"_")+"_"+v.datum+".pdf");
 }
 
 reg("dokumente","Dokumente","📁","Verwaltung",renderDokumente);
@@ -4676,7 +4710,7 @@ function exportFahrzeugPDF(id){
     doc.setFontSize(9); doc.text("Übernahmebestätigung Fahrer",15,y);
   }
   pdfFooter(doc);
-  doc.save("Fahrzeug_"+f.kennzeichen.replace(/[^a-z0-9]+/gi,"_")+".pdf");
+  saveOrSharePdf(doc, "Fahrzeug_"+f.kennzeichen.replace(/[^a-z0-9]+/gi,"_")+".pdf");
   toast("Fahrzeug-PDF erstellt.", "success");
 }
 function deleteFahrzeug(id){
@@ -4795,7 +4829,7 @@ function exportKundenportalPDF(kid){
     doc.setFontSize(10); doc.text(`Status: ${p.status}   Fortschritt: ${p.fortschritt||0}%   Adresse: ${p.adresse||"–"}`, 15, y); y+=10; doc.setFontSize(11);
   });
   pdfFooter(doc);
-  doc.save("Kundenportal_"+k.name.replace(/[^a-z0-9]+/gi,"_")+".pdf");
+  saveOrSharePdf(doc, "Kundenportal_"+k.name.replace(/[^a-z0-9]+/gi,"_")+".pdf");
 }
 
 /* =========================================================
@@ -5363,7 +5397,7 @@ function exportTestPDF(){
   doc.text("Mit freundlichen Grüßen", 15, y); y+=6;
   doc.text("Ihr Team von " + S.firma.name, 15, y);
   pdfFooter(doc);
-  doc.save("Test-Briefkopf.pdf");
+  saveOrSharePdf(doc, "Test-Briefkopf.pdf");
   toast("Test-PDF erstellt.", "success");
 }
 function openBriefSchreiben(){
@@ -5400,7 +5434,7 @@ function exportBriefPDF(){
   if(d.empfaenger){ const lines = doc.splitTextToSize(d.empfaenger,90); doc.text(lines, 15, y); y += lines.length*5+10; }
   doc.text(doc.splitTextToSize(d.text||"",180), 15, y);
   pdfFooter(doc);
-  doc.save((d.betreff||"Brief").replace(/[^a-z0-9]+/gi,"_")+".pdf");
+  saveOrSharePdf(doc, (d.betreff||"Brief").replace(/[^a-z0-9]+/gi,"_")+".pdf");
   toast("Brief-PDF erstellt.", "success");
 }
 function renderSetCloud(body){
