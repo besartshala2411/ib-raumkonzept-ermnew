@@ -2793,7 +2793,10 @@ function renderProjekte(view, id, tab){
   view.innerHTML = `
     <div class="pageHead">
       <div><div class="pageTitle">Projekte</div><div class="pageSub">${S.projekte.length} Projekte</div></div>
-      <button class="btn primary" onclick="openProjektForm()">➕ Neues Projekt</button>
+      <div style="display:flex; gap:8px;">
+        <button class="btn" onclick="openLvImportForm()">📄 Aus PDF erstellen</button>
+        <button class="btn primary" onclick="openProjektForm()">➕ Neues Projekt</button>
+      </div>
     </div>
     <div class="filterBar">
       <input type="text" id="pjFilter" placeholder="🔍 Suchen..." oninput="renderProjekte(document.getElementById('view'))" style="min-width:220px;">
@@ -3338,6 +3341,7 @@ function deleteProjektDokument(pid, did){
 }
 
 function renderTabMaterial(body, p){
+  const summe = p.material.reduce((s,m)=>s+(Number(m.preis)||0),0);
   body.innerHTML = `
     <div class="card">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
@@ -3345,14 +3349,15 @@ function renderTabMaterial(body, p){
         <button class="btn primary sm" onclick="openMaterialForm('${escAttr(p.id)}')">➕ Material</button>
       </div>
       <div class="tableWrap"><table>
-        <thead><tr><th>Bezeichnung</th><th>Menge</th><th>Einheit</th><th>Datum</th><th></th></tr></thead>
+        <thead><tr><th>Bezeichnung</th><th>Menge</th><th>Einheit</th><th>Preis (€)</th><th>Datum</th><th></th></tr></thead>
         <tbody>
         ${p.material.map(m=>`
-          <tr><td>${escHtml(m.bezeichnung)}</td><td>${escHtml(m.menge)}</td><td>${escHtml(m.einheit)}</td><td>${fmtDate(m.datum)}</td>
+          <tr><td>${escHtml(m.bezeichnung)}</td><td>${escHtml(m.menge)}</td><td>${escHtml(m.einheit)}</td><td>${m.preis?fmtCurrency(m.preis):"–"}</td><td>${fmtDate(m.datum)}</td>
           <td style="text-align:right;"><button class="iconBtn" onclick="deleteMaterial('${escAttr(p.id)}','${escAttr(m.id)}')">🗑️</button></td></tr>
-        `).join("") || `<tr><td colspan="5"><div class="empty">Kein Material erfasst.</div></td></tr>`}
+        `).join("") || `<tr><td colspan="6"><div class="empty">Kein Material erfasst.</div></td></tr>`}
         </tbody>
       </table></div>
+      ${summe ? `<div style="text-align:right; font-weight:700; margin-top:10px;">Summe: ${fmtCurrency(summe)}</div>` : ""}
     </div>
   `;
 }
@@ -3363,6 +3368,7 @@ function openMaterialForm(pid){
     <div class="grid cols-2">
       <div class="formRow"><label>Menge</label><input id="matMenge" type="number" step="0.01"></div>
       <div class="formRow"><label>Einheit</label><input id="matEinheit" type="text" placeholder="m², Stk, kg..."></div>
+      <div class="formRow" style="grid-column:1/-1;"><label>Preis (€, optional)</label><input id="matPreis" type="number" step="0.01"></div>
     </div>
     <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="saveMaterial('${escAttr(pid)}')">Speichern</button></div>
   `);
@@ -3371,7 +3377,7 @@ function saveMaterial(pid){
   const bezeichnung = document.getElementById("matBez").value.trim();
   if(!bezeichnung){ toast("Bezeichnung erforderlich.", "warn"); return; }
   const p = S.projekte.find(x=>x.id===pid);
-  p.material.push({id:uid(), bezeichnung, menge:document.getElementById("matMenge").value, einheit:document.getElementById("matEinheit").value.trim(), datum:todayISO()});
+  p.material.push({id:uid(), bezeichnung, menge:document.getElementById("matMenge").value, einheit:document.getElementById("matEinheit").value.trim(), preis:Number(document.getElementById("matPreis").value)||0, datum:todayISO()});
   saveState(); closeModal(); route(location.hash);
 }
 function deleteMaterial(pid, mid){
@@ -4889,6 +4895,147 @@ async function callGemini(prompt, apiKey){
     ? data.candidates[0].content.parts.map(p=>p.text).join("")
     : "Keine Antwort erhalten.";
   return text;
+}
+async function callGeminiWithFile(prompt, apiKey, base64Data, mimeType){
+  const url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=" + encodeURIComponent(apiKey);
+  const res = await fetch(url, {
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({contents:[{parts:[{text:prompt},{inline_data:{mime_type:mimeType||"application/pdf", data:base64Data}}]}]})
+  });
+  if(!res.ok){
+    const t = await res.text().catch(()=> "");
+    throw new Error("HTTP "+res.status+" – "+t.slice(0,200));
+  }
+  const data = await res.json();
+  const text = data && data.candidates && data.candidates[0] && data.candidates[0].content
+    ? data.candidates[0].content.parts.map(p=>p.text).join("")
+    : "";
+  if(!text) throw new Error("Keine Antwort von der KI erhalten.");
+  return text;
+}
+function extractJsonFromText(text){
+  let t = String(text||"").trim();
+  const fenceMatch = t.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if(fenceMatch) t = fenceMatch[1].trim();
+  const start = t.indexOf("{");
+  const end = t.lastIndexOf("}");
+  if(start===-1 || end===-1) throw new Error("Antwort der KI enthielt kein auswertbares JSON.");
+  return JSON.parse(t.slice(start, end+1));
+}
+
+/* =========================================================
+   PROJEKT AUS PDF (LV/ANGEBOT) ERSTELLEN — KI-gestützt
+========================================================= */
+function openLvImportForm(){
+  openModal(`
+    <div class="modalHead"><div class="modalTitle">📄 Projekt aus LV/Angebot erstellen</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
+    <div class="pageSub" style="margin-bottom:14px;">Lade ein Leistungsverzeichnis oder Angebot als PDF hoch. Die KI liest Projektdaten und Positionen aus – du prüfst und bestätigst danach alles, bevor etwas angelegt wird.</div>
+    <div class="formRow"><label>PDF-Datei</label><input id="lvFile" type="file" accept="application/pdf"></div>
+    <div id="lvImportStatus" style="font-size:13px; color:var(--text-dim); margin-top:8px;"></div>
+    <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="analyzeLvPdf()">🔍 Analysieren</button></div>
+  `, true);
+}
+async function analyzeLvPdf(){
+  const input = document.getElementById("lvFile");
+  const statusEl = document.getElementById("lvImportStatus");
+  const file = input.files && input.files[0];
+  if(!file){ statusEl.textContent = "Bitte zuerst eine PDF-Datei auswählen."; return; }
+  const apiKey = getGeminiKey();
+  if(!apiKey){ statusEl.innerHTML = "Kein Gemini API-Key hinterlegt. Bitte zuerst in <b>Einstellungen → KI-Assistent</b> eintragen."; return; }
+  statusEl.textContent = "Lese PDF und analysiere mit KI … das kann einen Moment dauern.";
+  try{
+    const dataURL = await fileToDataURL(file);
+    const base64 = dataURL.slice(dataURL.indexOf(",")+1);
+    const prompt = `Du bist Assistent eines deutschen Handwerksbetriebs (Trockenbau/Maler/Fliesen/Sanitär). Analysiere das beigefügte Leistungsverzeichnis oder Angebot als PDF und extrahiere die Projektdaten. Antworte AUSSCHLIESSLICH mit validem JSON in genau diesem Format, ohne Erklärtext, ohne Markdown-Codeblock: {"name":"kurzer Projektname/Titel","adresse":"Bauadresse falls vorhanden, sonst leer","kunde":"Kundenname/Auftraggeber falls vorhanden, sonst leer","positionen":[{"bezeichnung":"...","menge":0,"einheit":"...","einzelpreis":0,"gesamtpreis":0}],"budgetSchaetzung":0}. Wenn ein Wert nicht im Dokument steht, benutze "" bzw. 0. budgetSchaetzung ist die im Dokument genannte Gesamtsumme bzw. die Summe aller Positionen.`;
+    const text = await callGeminiWithFile(prompt, apiKey, base64, file.type||"application/pdf");
+    const result = extractJsonFromText(text);
+    openLvReviewForm(result);
+  }catch(e){
+    statusEl.textContent = "Fehler bei der Analyse: " + e.message;
+  }
+}
+function openLvReviewForm(result){
+  const positionen = Array.isArray(result.positionen) ? result.positionen : [];
+  window._lvImportDraft = {
+    name: String(result.name||"").slice(0,120),
+    adresse: String(result.adresse||"").slice(0,200),
+    kundeName: String(result.kunde||"").slice(0,120),
+    budgetSchaetzung: Number(result.budgetSchaetzung)||0,
+    positionen: positionen.map(p=>({
+      bezeichnung: String(p.bezeichnung||"Position").slice(0,200),
+      menge: Number(p.menge)||0,
+      einheit: String(p.einheit||"").slice(0,20),
+      preis: Number(p.gesamtpreis||p.einzelpreis)||0,
+    })),
+  };
+  renderLvReviewForm();
+}
+function renderLvReviewForm(){
+  const d = window._lvImportDraft;
+  if(!d) return;
+  const summe = d.positionen.reduce((s,p)=>s+(Number(p.preis)||0),0);
+  const matchedKunde = d.kundeName ? S.kunden.find(k=>k.name.toLowerCase()===d.kundeName.toLowerCase()) : null;
+  openModal(`
+    <div class="modalHead"><div class="modalTitle">📄 Projektvorschlag prüfen</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
+    <div class="pageSub" style="margin-bottom:12px;">Von der KI aus dem PDF erkannt – bitte prüfen und bei Bedarf anpassen, bevor das Projekt angelegt wird.</div>
+    <div class="formRow"><label>Projektname</label><input id="lvName" type="text" value="${escAttr(d.name)}"></div>
+    <div class="grid cols-2">
+      <div class="formRow"><label>Adresse</label><input id="lvAdresse" type="text" value="${escAttr(d.adresse)}"></div>
+      <div class="formRow"><label>Kunde</label><select id="lvKunde"><option value="">–</option>${S.kunden.map(k=>`<option value="${escAttr(k.id)}" ${matchedKunde&&matchedKunde.id===k.id?"selected":""}>${escHtml(k.name)}</option>`).join("")}</select></div>
+    </div>
+    ${d.kundeName && !matchedKunde ? `<div class="pageSub" style="color:var(--amber); margin:-6px 0 12px;">Im PDF erkannter Kunde „${escHtml(d.kundeName)}“ wurde nicht in deiner Kundenliste gefunden – bitte manuell auswählen oder leer lassen.</div>` : ""}
+    <b style="display:block; margin:16px 0 8px;">Positionen (${d.positionen.length})</b>
+    <div class="tableWrap" style="max-height:280px; overflow-y:auto;"><table>
+      <thead><tr><th>Bezeichnung</th><th>Menge</th><th>Einheit</th><th>Preis (€)</th><th></th></tr></thead>
+      <tbody id="lvPosBody">${d.positionen.map((p,i)=>lvPosRowHTML(p,i)).join("") || `<tr><td colspan="5"><div class="empty">Keine Positionen erkannt.</div></td></tr>`}</tbody>
+    </table></div>
+    <div style="text-align:right; font-weight:700; margin-top:10px;">Geschätztes Budget: <span id="lvSumme">${fmtCurrency(summe||d.budgetSchaetzung)}</span></div>
+    <div class="modalFoot"><button class="btn" onclick="openLvImportForm()">← Zurück</button><button class="btn primary" onclick="confirmLvImport()">✅ Projekt erstellen</button></div>
+  `, true);
+}
+function lvPosRowHTML(p,i){
+  return `<tr>
+    <td><input type="text" value="${escAttr(p.bezeichnung)}" oninput="updateLvPos(${i},'bezeichnung',this.value)" style="width:100%; background:var(--bg2); border:1px solid var(--border); border-radius:6px; padding:4px 6px; color:var(--text);"></td>
+    <td><input type="number" step="0.01" value="${escAttr(p.menge)}" oninput="updateLvPos(${i},'menge',this.value)" style="width:70px; background:var(--bg2); border:1px solid var(--border); border-radius:6px; padding:4px 6px; color:var(--text);"></td>
+    <td><input type="text" value="${escAttr(p.einheit)}" oninput="updateLvPos(${i},'einheit',this.value)" style="width:60px; background:var(--bg2); border:1px solid var(--border); border-radius:6px; padding:4px 6px; color:var(--text);"></td>
+    <td><input type="number" step="0.01" value="${escAttr(p.preis)}" oninput="updateLvPos(${i},'preis',this.value)" style="width:90px; background:var(--bg2); border:1px solid var(--border); border-radius:6px; padding:4px 6px; color:var(--text);"></td>
+    <td><button class="iconBtn" onclick="removeLvPos(${i})">🗑️</button></td>
+  </tr>`;
+}
+function updateLvPos(i, field, val){
+  const d = window._lvImportDraft;
+  if(!d || !d.positionen[i]) return;
+  d.positionen[i][field] = (field==="menge"||field==="preis") ? Number(val)||0 : val;
+  const summe = d.positionen.reduce((s,p)=>s+(Number(p.preis)||0),0);
+  const summeEl = document.getElementById("lvSumme");
+  if(summeEl) summeEl.textContent = fmtCurrency(summe||d.budgetSchaetzung);
+}
+function removeLvPos(i){
+  const d = window._lvImportDraft;
+  if(!d) return;
+  d.positionen.splice(i,1);
+  renderLvReviewForm();
+}
+function confirmLvImport(){
+  const d = window._lvImportDraft;
+  if(!d) return;
+  const name = document.getElementById("lvName").value.trim();
+  if(!name){ toast("Projektname erforderlich.", "warn"); return; }
+  const adresse = document.getElementById("lvAdresse").value.trim();
+  const kundeId = document.getElementById("lvKunde").value;
+  const summe = d.positionen.reduce((s,p)=>s+(Number(p.preis)||0),0);
+  const budget = summe || d.budgetSchaetzung || 0;
+  const p = {
+    id:uid(), name, kundeId, adresse, status:"In Planung", budget, deadline:"", fortschritt:0,
+    team:[], subunternehmer:[], fotos:[], dokumente:[],
+    material: d.positionen.map(pos=>({id:uid(), bezeichnung:pos.bezeichnung||"Position", menge:pos.menge||0, einheit:pos.einheit||"", preis:pos.preis||0, datum:todayISO()})),
+    bautagebuch:[], zugaenge:[], checkliste:[], aufmasse:[], bauzeitenplan:[], chat:[],
+  };
+  S.projekte.push(p);
+  saveState(); closeModal();
+  window._lvImportDraft = null;
+  goTo("#projekte/"+p.id);
+  toast("Projekt aus PDF erstellt – bitte Daten kurz gegenprüfen.", "success");
 }
 
 /* =========================================================
