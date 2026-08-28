@@ -78,6 +78,39 @@ function deferred(){ let resolve,reject; const promise=new Promise((res,rej)=>{r
   assert(bootstrap.getVisibleTasks(legacyTasks)[0].id==='legacy',
     'verspäteter WRITE-Abschluss macht keine alten Runtime-Tasks sichtbar');
 
+  // Regression: Ein finally() aus Generation N darf nach Reset nicht den Lock eines
+  // neuen Writes in Generation N+1 mit derselben Task-ID entfernen.
+  const oldWrite=deferred(), newWrite=deferred();
+  let oldCalls=0, newCalls=0;
+  const oldRepo={
+    list:async()=>[{id:'task-lock',titel:'Alt',status:'offen'}],
+    update:async(id,changes)=>{ oldCalls++; await oldWrite.promise; return {id,titel:'Alt',...changes}; },
+  };
+  global.TaskRuntimeGate.prepareTaskSupabaseRuntime=async()=>({mode:'supabase',reason:'ready',tasks:await oldRepo.list(),repository:oldRepo,mapper:{}});
+  await bootstrap.initializeTaskRuntime({legacyTasks,client:{from(){}}});
+  global.setAufgabeStatus('task-lock','erledigt');
+  await tick();
+  assert(oldCalls===1,'alter Write wurde gestartet');
+
+  bootstrap.resetTaskRuntime('auth-transition',legacyTasks);
+  const newRepo={
+    list:async()=>[{id:'task-lock',titel:'Neu',status:'offen'}],
+    update:async(id,changes)=>{ newCalls++; await newWrite.promise; return {id,titel:'Neu',...changes}; },
+  };
+  global.TaskRuntimeGate.prepareTaskSupabaseRuntime=async()=>({mode:'supabase',reason:'ready',tasks:await newRepo.list(),repository:newRepo,mapper:{}});
+  await bootstrap.initializeTaskRuntime({legacyTasks,client:{from(){}}});
+  global.setAufgabeStatus('task-lock','in_bearbeitung');
+  await tick();
+  assert(newCalls===1,'neuer Write derselben Task-ID startet in neuer Auth-Generation');
+
+  oldWrite.resolve();
+  await tick(); await tick();
+  global.setAufgabeStatus('task-lock','erledigt');
+  await tick();
+  assert(newCalls===1,'altes finally entfernt den Lock des neuen Writes nicht');
+  newWrite.resolve();
+  await tick(); await tick();
+
   console.log(`\n${passed} Tests bestanden, ${failed} fehlgeschlagen.`);
   process.exit(failed?1:0);
 })().catch(e=>{console.error(e);process.exit(1);});
