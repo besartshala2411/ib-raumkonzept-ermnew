@@ -1,6 +1,6 @@
-// Phase 3B – Runtime-Gate für einen späteren kontrollierten Aufgaben-Cutover.
-// Dieses Modul schaltet NICHT selbst um. Default ist OFF und jede unvollständige
-// Referenzauflösung fällt geschlossen auf den Legacy-Pfad zurück.
+// Phase 3C – Runtime-Gate für einen kontrollierten Aufgaben-Cutover.
+// Default ist OFF. Unvollständige oder mehrdeutige Referenzauflösung fällt
+// geschlossen auf den Legacy-Pfad zurück.
 
 const TASK_RUNTIME_FLAG = 'IB_TASKS_SUPABASE_PILOT';
 
@@ -46,6 +46,8 @@ function createTaskReferenceMapper({ projects = [], employees = [] } = {}) {
   return {
     ok: errors.length === 0,
     errors,
+    hasProjectLegacyId(value) { return !value || projectLegacyToUuid.has(value); },
+    hasEmployeeLegacyId(value) { return !value || employeeLegacyToUuid.has(value); },
     toDbTask(task) {
       if (!this.ok) throw new Error('TaskReferenceMapper: Mapping ist nicht eindeutig.');
       return {
@@ -53,6 +55,17 @@ function createTaskReferenceMapper({ projects = [], employees = [] } = {}) {
         projektId: requireMapped(task && task.projektId, projectLegacyToUuid, 'Projekt-Legacy-ID'),
         zugeordnet: requireMapped(task && task.zugeordnet, employeeLegacyToUuid, 'Mitarbeiter-Legacy-ID'),
       };
+    },
+    toDbTaskPatch(changes) {
+      if (!this.ok) throw new Error('TaskReferenceMapper: Mapping ist nicht eindeutig.');
+      const patch = { ...changes };
+      if (Object.prototype.hasOwnProperty.call(patch, 'projektId')) {
+        patch.projektId = requireMapped(patch.projektId, projectLegacyToUuid, 'Projekt-Legacy-ID');
+      }
+      if (Object.prototype.hasOwnProperty.call(patch, 'zugeordnet')) {
+        patch.zugeordnet = requireMapped(patch.zugeordnet, employeeLegacyToUuid, 'Mitarbeiter-Legacy-ID');
+      }
+      return patch;
     },
     toLegacyTask(task) {
       if (!this.ok) throw new Error('TaskReferenceMapper: Mapping ist nicht eindeutig.');
@@ -65,6 +78,47 @@ function createTaskReferenceMapper({ projects = [], employees = [] } = {}) {
   };
 }
 
+function createMappedTaskRepository(rawRepository, mapper) {
+  if (!rawRepository || !mapper || !mapper.ok) {
+    throw new Error('MappedTaskRepository: Repository oder Mapping ungültig.');
+  }
+  return {
+    async list() {
+      const rows = await rawRepository.list();
+      return (rows || []).map((task) => mapper.toLegacyTask(task));
+    },
+    async create(data) {
+      const created = await rawRepository.create(mapper.toDbTask(data || {}));
+      return mapper.toLegacyTask(created);
+    },
+    async update(id, changes) {
+      const updated = await rawRepository.update(id, mapper.toDbTaskPatch(changes || {}));
+      return mapper.toLegacyTask(updated);
+    },
+    async remove(id) {
+      const removed = await rawRepository.remove(id);
+      return mapper.toLegacyTask(removed);
+    },
+    async restore(id) {
+      const restored = await rawRepository.restore(id);
+      return mapper.toLegacyTask(restored);
+    },
+  };
+}
+
+function validateLegacyTaskCoverage(legacyTasks, mapper) {
+  const errors = [];
+  for (const task of Array.isArray(legacyTasks) ? legacyTasks : []) {
+    if (task && task.projektId && !mapper.hasProjectLegacyId(task.projektId)) {
+      errors.push(`Aufgabe ${task.id || '(ohne ID)'}: Projekt ${task.projektId} ist nicht relational gemappt.`);
+    }
+    if (task && task.zugeordnet && !mapper.hasEmployeeLegacyId(task.zugeordnet)) {
+      errors.push(`Aufgabe ${task.id || '(ohne ID)'}: Mitarbeiter ${task.zugeordnet} ist nicht relational gemappt.`);
+    }
+  }
+  return errors;
+}
+
 async function prepareTaskSupabaseRuntime({ storage, client, createRepository, legacyTasks = [] } = {}) {
   if (!isTaskSupabasePilotEnabled(storage)) {
     return { mode: 'legacy', reason: 'feature-flag-off', tasks: legacyTasks };
@@ -74,8 +128,10 @@ async function prepareTaskSupabaseRuntime({ storage, client, createRepository, l
   }
 
   try {
+    // Live-Pilot-Schema 004: projects besitzt bewusst kein deleted_at. RLS liefert
+    // ausschließlich sichtbare Projekte; daher nur die Mapping-Spalten selektieren.
     const [projectsResult, employeesResult] = await Promise.all([
-      client.from('projects').select('id,legacy_id').is('deleted_at', null),
+      client.from('projects').select('id,legacy_id'),
       client.from('employees').select('id,legacy_id').eq('status', 'aktiv'),
     ]);
     if (projectsResult.error) throw projectsResult.error;
@@ -87,9 +143,14 @@ async function prepareTaskSupabaseRuntime({ storage, client, createRepository, l
     });
     if (!mapper.ok) return { mode: 'legacy', reason: 'mapping-invalid', errors: mapper.errors, tasks: legacyTasks };
 
-    const repository = createRepository(client);
-    const dbTasks = await repository.list();
-    const tasks = dbTasks.map((task) => mapper.toLegacyTask(task));
+    const coverageErrors = validateLegacyTaskCoverage(legacyTasks, mapper);
+    if (coverageErrors.length) {
+      return { mode: 'legacy', reason: 'legacy-reference-gap', errors: coverageErrors, tasks: legacyTasks, mapper };
+    }
+
+    const rawRepository = createRepository(client);
+    const repository = createMappedTaskRepository(rawRepository, mapper);
+    const tasks = await repository.list();
     return { mode: 'supabase', reason: 'ready', tasks, repository, mapper };
   } catch (error) {
     return { mode: 'legacy', reason: 'preflight-failed', error, tasks: legacyTasks };
@@ -97,8 +158,8 @@ async function prepareTaskSupabaseRuntime({ storage, client, createRepository, l
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { TASK_RUNTIME_FLAG, isTaskSupabasePilotEnabled, createTaskReferenceMapper, prepareTaskSupabaseRuntime };
+  module.exports = { TASK_RUNTIME_FLAG, isTaskSupabasePilotEnabled, createTaskReferenceMapper, createMappedTaskRepository, validateLegacyTaskCoverage, prepareTaskSupabaseRuntime };
 }
 if (typeof window !== 'undefined') {
-  window.TaskRuntimeGate = { TASK_RUNTIME_FLAG, isTaskSupabasePilotEnabled, createTaskReferenceMapper, prepareTaskSupabaseRuntime };
+  window.TaskRuntimeGate = { TASK_RUNTIME_FLAG, isTaskSupabasePilotEnabled, createTaskReferenceMapper, createMappedTaskRepository, validateLegacyTaskCoverage, prepareTaskSupabaseRuntime };
 }

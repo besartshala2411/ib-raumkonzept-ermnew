@@ -1,12 +1,15 @@
-name: Phase 3B CI
+name: Phase 3B/3C CI
 
 on:
   push:
     branches:
       - phase3b-prep
+      - 'phase3c-*'
   pull_request:
     branches:
       - phase3a-preflight
+      - phase3b-prep
+      - phase3c-task-runtime-flag
   workflow_dispatch:
 
 permissions:
@@ -44,3 +47,15 @@ jobs:
 
       - name: Task runtime gate tests
         run: npm run test:task-runtime-gate
+
+      - name: Task runtime browser bridge tests
+        run: npm run test:task-runtime-bootstrap
+
+      - name: Task runtime auth race tests
+        run: npm run test:task-runtime-auth-race
+
+      - name: Task runtime write tab-scope tests
+        run: npm run test:task-runtime-write-tab-scope
+
+      - name: Task WRITE pilot lifecycle dry-run
+        run: npm run test:task-write-pilot-lifecycle
