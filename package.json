@@ -11,7 +11,8 @@
     "test:task-runtime-gate": "node tests/task-runtime-gate.test.js",
     "test:task-runtime-bootstrap": "node tests/task-runtime-bootstrap.test.js",
     "test:task-runtime-auth-race": "node tests/task-runtime-auth-race.test.js",
-    "test:task-runtime-write-tab-scope": "node tests/task-runtime-write-tab-scope.test.js"
+    "test:task-runtime-write-tab-scope": "node tests/task-runtime-write-tab-scope.test.js",
+    "test:task-write-pilot-lifecycle": "node tests/task-write-pilot-lifecycle.test.js"
   },
   "dependencies": {
     "web-push": "^3.6.7"
