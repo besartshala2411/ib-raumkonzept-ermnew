@@ -12,7 +12,9 @@ Status: **PLANUNG.** Kein RLS live geändert, kein Storage-Bucket angelegt.
 
 ---
 
-## 11. Passwörter & Zugänge – Security-Risiko (kritisch, ausdrücklich markiert)
+## 11. 🔴 KRITISCH / PRIORITÄT 0 — Passwörter & Zugänge – Security-Risiko
+
+**Einstufung ausdrücklich auf Anweisung als KRITISCH / PRIORITÄT 0 markiert.** Vollständige Verbreitungswege-Analyse (Cloud-Sync, Realtime, Backup-Export/-Import, globale Suche, Netlify Functions, CSV/PDF-Export) siehe `phase2-00-abschlussbericht.md`, Abschnitt „KRITISCH / PRIORITÄT 0" (dort am weitesten ausgearbeitet). Diese Stelle bleibt als ursprünglicher Fundort erhalten.
 
 **Ist-Zustand, verifiziert** (`openPasswortForm`/`savePasswort`, Zeile 5422ff.): `S.passwoerter[]` speichert `{id, bezeichnung, benutzername, passwort, url, notiz}` – das Feld `passwort` wird als **reiner Klartext-String** erfasst (`<input type="text">`, keine Verschlüsselung, kein Hashing, keine client-seitige Verschlüsselung vor dem Speichern) und landet im selben `erm_data.payload`, der:
 
