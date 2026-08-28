@@ -29,6 +29,14 @@
     return storageFlagEnabled(storage, TASK_WRITE_FLAG);
   }
 
+  function getTaskWriteStorage() {
+    // WRITE ist absichtlich ausschließlich tab-lokal. Wenn sessionStorage nicht
+    // verfügbar oder gesperrt ist, muss der Pilot fail-closed bleiben; ein
+    // origin-weites localStorage-Flag darf niemals als Ersatz dienen.
+    try { return global && global.sessionStorage ? global.sessionStorage : null; }
+    catch (_) { return null; }
+  }
+
   function resetTaskRuntime(reason, legacyTasks) {
     runtimeGeneration++;
     runtime = {
@@ -126,10 +134,7 @@
 
   function mutationMode() {
     if (runtime.mode === 'supabase') {
-      // WRITE muss absichtlich nur im aktiven Browser-Tab freigegeben werden. localStorage
-      // wäre origin-weit und könnte parallel geöffnete Tabs ungewollt mitschalten.
-      // Der Fallback existiert nur für nicht-browserbasierte Test-Harnesses ohne sessionStorage.
-      const writeStorage = global.sessionStorage || global.localStorage;
+      const writeStorage = getTaskWriteStorage();
       return isTaskWritePilotEnabled(writeStorage) ? 'supabase-write' : 'supabase-readonly';
     }
     // Sobald der READ-Pilot ausdrücklich angefordert wurde, ist Legacy-Schreiben kein
