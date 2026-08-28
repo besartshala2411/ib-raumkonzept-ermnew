@@ -2,24 +2,13 @@
 -- PHASE 3B – PRE-LIVE DRAFT – NICHT OHNE EXPLIZITE FREIGABE AUSFÜHREN
 -- Stand: 2026-08-28
 -- Grundlage: verifizierte Live-Baseline + Auth-/Aufgaben-Preflight.
---
--- Dieser Draft:
---   * verändert erm_data / erm_access / push_subscriptions NICHT
---   * verändert erm_data.allow_all NICHT
---   * aktiviert Realtime für tasks NICHT
---   * migriert KEINE Passwörter / Dokumente / HR-Daten
---   * mappt genau EIN verifiziertes Auth-Konto
---   * lässt das zweite, nicht gemappte Auth-Konto vollständig unberührt
---   * importiert keine Legacy-Aufgaben, weil S.aufgaben aktuell leer ist
 -- ============================================================================
 
 begin;
 
--- Fester Firmenanker für diese Migration. Kein Client-Vertrauensanker.
--- RLS leitet die Firma serverseitig aus auth.uid() -> employees ab.
 -- company_id: 02165c75-59fa-4aa5-bb45-b2f3c4145761
+-- Kein Client-Vertrauensanker: RLS leitet die Firma aus auth.uid() -> employees ab.
 
--- Fail closed, falls der verifizierte Ausgangszustand nicht mehr gilt.
 do $$
 begin
   if not exists (
@@ -42,7 +31,6 @@ create table public.companies (
   name text not null,
   created_at timestamptz not null default now()
 );
-
 insert into public.companies (id, name)
 values ('02165c75-59fa-4aa5-bb45-b2f3c4145761', 'IB Raumkonzept GmbH');
 
@@ -53,13 +41,9 @@ create table public.profiles (
 );
 create index idx_profiles_company on public.profiles(company_id);
 
-create table public.roles (
-  id text primary key,
-  label text not null
-);
+create table public.roles (id text primary key, label text not null);
 insert into public.roles (id, label) values
-  ('mitarbeiter', 'Mitarbeiter'),
-  ('bauleiter', 'Bauleiter'),
+  ('mitarbeiter', 'Mitarbeiter'), ('bauleiter', 'Bauleiter'),
   ('geschaeftsfuehrer', 'Geschäftsführer');
 
 create table public.permissions (id text primary key);
@@ -92,25 +76,12 @@ create unique index idx_employees_legacy_unique
   on public.employees(company_id, legacy_id) where legacy_id is not null;
 create index idx_employees_company on public.employees(company_id, status);
 
--- Genau das read-only verifizierte Pilotkonto wird gemappt.
 insert into public.profiles (id, company_id)
-values (
-  '236dabb3-f962-4c27-b6d0-db93699a2643',
-  '02165c75-59fa-4aa5-bb45-b2f3c4145761'
-);
-
+values ('236dabb3-f962-4c27-b6d0-db93699a2643','02165c75-59fa-4aa5-bb45-b2f3c4145761');
 insert into public.employees (legacy_id, company_id, auth_user_id, name, rolle, status)
-values (
-  'mrwbp45ien9rg83',
-  '02165c75-59fa-4aa5-bb45-b2f3c4145761',
-  '236dabb3-f962-4c27-b6d0-db93699a2643',
-  'Berat Shala',
-  'geschaeftsfuehrer',
-  'aktiv'
-);
-
--- Das zweite Auth-Konto 7d775c6a-3809-4b3a-b133-e38dbb98fd1a wird absichtlich
--- NICHT in profiles/employees eingetragen, solange keine verifizierte Zuordnung existiert.
+values ('mrwbp45ien9rg83','02165c75-59fa-4aa5-bb45-b2f3c4145761',
+  '236dabb3-f962-4c27-b6d0-db93699a2643','Berat Shala','geschaeftsfuehrer','aktiv');
+-- 7d775c6a-3809-4b3a-b133-e38dbb98fd1a bleibt absichtlich ungemappt.
 
 create table public.projects (
   id uuid primary key default gen_random_uuid(),
@@ -130,36 +101,17 @@ create table public.project_members (
 );
 create index idx_project_members_employee on public.project_members(employee_id, project_id);
 
--- Server-seitige Identitätsauflösung. Security Definer + fixer search_path.
-create function public.current_employee_id()
-returns uuid
-language sql stable security definer
-set search_path = public
-as $$
-  select e.id from public.employees e
-  where e.auth_user_id = auth.uid() and e.status = 'aktiv'
-  limit 1
-$$;
-
-create function public.current_employee_company_id()
-returns uuid
-language sql stable security definer
-set search_path = public
-as $$
-  select e.company_id from public.employees e
-  where e.auth_user_id = auth.uid() and e.status = 'aktiv'
-  limit 1
-$$;
-
-create function public.current_employee_role()
-returns text
-language sql stable security definer
-set search_path = public
-as $$
-  select e.rolle from public.employees e
-  where e.auth_user_id = auth.uid() and e.status = 'aktiv'
-  limit 1
-$$;
+-- SECURITY DEFINER nur für caller-eigene Identitätswerte. Leerer search_path und
+-- vollständig qualifizierte Namen verhindern Object-Shadowing.
+create function public.current_employee_id() returns uuid
+language sql stable security definer set search_path = ''
+as $$ select e.id from public.employees e where e.auth_user_id = auth.uid() and e.status='aktiv' limit 1 $$;
+create function public.current_employee_company_id() returns uuid
+language sql stable security definer set search_path = ''
+as $$ select e.company_id from public.employees e where e.auth_user_id = auth.uid() and e.status='aktiv' limit 1 $$;
+create function public.current_employee_role() returns text
+language sql stable security definer set search_path = ''
+as $$ select e.rolle from public.employees e where e.auth_user_id = auth.uid() and e.status='aktiv' limit 1 $$;
 
 revoke all on function public.current_employee_id() from public;
 revoke all on function public.current_employee_company_id() from public;
@@ -177,11 +129,9 @@ create table public.tasks (
   titel text not null check (length(btrim(titel)) > 0),
   beschreibung text,
   faellig date,
-  prioritaet text not null default 'mittel'
-    check (prioritaet in ('niedrig','mittel','hoch')),
+  prioritaet text not null default 'mittel' check (prioritaet in ('niedrig','mittel','hoch')),
   zugeordnet_employee_id uuid references public.employees(id) on delete set null,
-  status text not null default 'offen'
-    check (status in ('offen','in Arbeit','erledigt')),
+  status text not null default 'offen' check (status in ('offen','in Arbeit','erledigt')),
   created_by uuid default auth.uid() references public.profiles(id) on delete set null,
   updated_by uuid default auth.uid() references public.profiles(id) on delete set null,
   created_at timestamptz not null default now(),
@@ -189,46 +139,56 @@ create table public.tasks (
   deleted_at timestamptz,
   constraint tasks_deleted_after_created check (deleted_at is null or deleted_at >= created_at)
 );
-create unique index idx_tasks_legacy_unique
-  on public.tasks(company_id, legacy_id) where legacy_id is not null;
-create index idx_tasks_company_active
-  on public.tasks(company_id, status) where deleted_at is null;
-create index idx_tasks_project_active
-  on public.tasks(project_id) where deleted_at is null;
-create index idx_tasks_assignee_active
-  on public.tasks(zugeordnet_employee_id) where deleted_at is null;
+create unique index idx_tasks_legacy_unique on public.tasks(company_id, legacy_id) where legacy_id is not null;
+create index idx_tasks_company_active on public.tasks(company_id, status) where deleted_at is null;
+create index idx_tasks_project_active on public.tasks(project_id) where deleted_at is null;
+create index idx_tasks_assignee_active on public.tasks(zugeordnet_employee_id) where deleted_at is null;
 
-create function public.tasks_set_updated_at()
-returns trigger
-language plpgsql
-set search_path = public
+-- Verhindert auch bei GF Cross-Tenant-Referenzen über erratene UUIDs.
+create function public.tasks_enforce_tenant_refs() returns trigger
+language plpgsql security definer set search_path = ''
 as $$
 begin
-  -- Unveränderliche Audit-/Mandantenfelder werden serverseitig festgehalten.
+  if new.company_id is distinct from public.current_employee_company_id() then
+    raise exception 'Ungültige Firmenzuordnung.';
+  end if;
+  if new.project_id is not null and not exists (
+    select 1 from public.projects p where p.id=new.project_id and p.company_id=new.company_id
+  ) then
+    raise exception 'Projekt gehört nicht zur Firma.';
+  end if;
+  if new.zugeordnet_employee_id is not null and not exists (
+    select 1 from public.employees e where e.id=new.zugeordnet_employee_id and e.company_id=new.company_id
+  ) then
+    raise exception 'Mitarbeiter gehört nicht zur Firma.';
+  end if;
+  return new;
+end;
+$$;
+revoke all on function public.tasks_enforce_tenant_refs() from public;
+
+create function public.tasks_set_updated_at() returns trigger
+language plpgsql set search_path = ''
+as $$
+begin
   new.company_id := old.company_id;
   new.created_at := old.created_at;
   new.created_by := old.created_by;
   new.updated_at := now();
-  if auth.uid() is not null then
-    new.updated_by := auth.uid();
-  end if;
-
-  -- Soft Delete/Restore entspricht tasks.delete und ist ausschließlich GF erlaubt.
-  -- Bauleiter dürfen Tasks editieren, aber deleted_at nicht verändern.
+  if auth.uid() is not null then new.updated_by := auth.uid(); end if;
   if old.deleted_at is distinct from new.deleted_at
      and public.current_employee_role() is distinct from 'geschaeftsfuehrer' then
     raise exception 'Soft Delete/Restore ist nur für Geschäftsführer erlaubt.';
   end if;
-
   return new;
 end;
 $$;
 
-create trigger trg_tasks_updated_at
-before update on public.tasks
+create trigger trg_tasks_updated_at before update on public.tasks
 for each row execute function public.tasks_set_updated_at();
+create trigger trg_tasks_tenant_refs before insert or update on public.tasks
+for each row execute function public.tasks_enforce_tenant_refs();
 
--- RLS auf sämtlichen neuen Tabellen.
 alter table public.companies enable row level security;
 alter table public.profiles enable row level security;
 alter table public.roles enable row level security;
@@ -239,147 +199,73 @@ alter table public.projects enable row level security;
 alter table public.project_members enable row level security;
 alter table public.tasks enable row level security;
 
--- Explizite Least-Privilege-Tabellenrechte; RLS wirkt zusätzlich.
 revoke all on public.companies, public.profiles, public.roles, public.permissions,
   public.role_permissions, public.employees, public.projects, public.project_members,
   public.tasks from anon, authenticated;
-
 grant select on public.companies, public.profiles, public.roles, public.permissions,
-  public.role_permissions, public.employees, public.projects, public.project_members
-  to authenticated;
+  public.role_permissions, public.employees, public.projects, public.project_members to authenticated;
 grant select, insert, update on public.tasks to authenticated;
--- Kein DELETE-Grant auf tasks.
 
-create policy profiles_select_self on public.profiles
-for select to authenticated using (id = auth.uid());
+create policy profiles_select_self on public.profiles for select to authenticated using (id=auth.uid());
+create policy companies_select_own on public.companies for select to authenticated
+using (id=public.current_employee_company_id());
+create policy roles_select_authenticated on public.roles for select to authenticated using (true);
+create policy permissions_select_authenticated on public.permissions for select to authenticated using (true);
+create policy role_permissions_select_authenticated on public.role_permissions for select to authenticated using (true);
+create policy employees_select_company on public.employees for select to authenticated
+using (company_id=public.current_employee_company_id());
 
-create policy companies_select_own on public.companies
-for select to authenticated using (id = public.current_employee_company_id());
-
-create policy roles_select_authenticated on public.roles
-for select to authenticated using (true);
-create policy permissions_select_authenticated on public.permissions
-for select to authenticated using (true);
-create policy role_permissions_select_authenticated on public.role_permissions
-for select to authenticated using (true);
-
-create policy employees_select_company on public.employees
-for select to authenticated
-using (company_id = public.current_employee_company_id());
-
-create policy projects_select_scoped on public.projects
-for select to authenticated
-using (
-  company_id = public.current_employee_company_id()
-  and (
-    public.current_employee_role() = 'geschaeftsfuehrer'
-    or exists (
-      select 1 from public.project_members pm
-      where pm.project_id = projects.id
-        and pm.employee_id = public.current_employee_id()
-    )
+create policy projects_select_scoped on public.projects for select to authenticated
+using (company_id=public.current_employee_company_id() and (
+  public.current_employee_role()='geschaeftsfuehrer' or exists (
+    select 1 from public.project_members pm
+    where pm.project_id=projects.id and pm.employee_id=public.current_employee_id()
   )
-);
-
-create policy project_members_select_scoped on public.project_members
-for select to authenticated
-using (
-  employee_id = public.current_employee_id()
-  or public.current_employee_role() = 'geschaeftsfuehrer'
-);
+));
+create policy project_members_select_scoped on public.project_members for select to authenticated
+using (employee_id=public.current_employee_id() or public.current_employee_role()='geschaeftsfuehrer');
 
 -- Projektlose Aufgaben sind KEIN pauschaler Sichtbarkeitsgrund.
-create policy tasks_select_scoped on public.tasks
-for select to authenticated
-using (
-  deleted_at is null
-  and company_id = public.current_employee_company_id()
-  and (
-    public.current_employee_role() = 'geschaeftsfuehrer'
-    or zugeordnet_employee_id = public.current_employee_id()
-    or (
-      project_id is not null
-      and exists (
-        select 1 from public.project_members pm
-        where pm.project_id = tasks.project_id
-          and pm.employee_id = public.current_employee_id()
-      )
-    )
-  )
-);
+create policy tasks_select_scoped on public.tasks for select to authenticated
+using (deleted_at is null and company_id=public.current_employee_company_id() and (
+  public.current_employee_role()='geschaeftsfuehrer'
+  or zugeordnet_employee_id=public.current_employee_id()
+  or (project_id is not null and exists (
+    select 1 from public.project_members pm
+    where pm.project_id=tasks.project_id and pm.employee_id=public.current_employee_id()
+  ))
+));
 
-create policy tasks_insert_scoped on public.tasks
-for insert to authenticated
-with check (
-  company_id = public.current_employee_company_id()
+create policy tasks_insert_scoped on public.tasks for insert to authenticated
+with check (company_id=public.current_employee_company_id()
   and public.current_employee_role() in ('bauleiter','geschaeftsfuehrer')
-  and (
-    project_id is null
-    or public.current_employee_role() = 'geschaeftsfuehrer'
-    or exists (
-      select 1 from public.project_members pm
-      where pm.project_id = tasks.project_id
-        and pm.employee_id = public.current_employee_id()
-    )
-  )
+  and (project_id is null or public.current_employee_role()='geschaeftsfuehrer' or exists (
+    select 1 from public.project_members pm
+    where pm.project_id=tasks.project_id and pm.employee_id=public.current_employee_id()
+  ))
 );
 
--- Soft Delete/Restore ist technisch UPDATE, wird für Bauleiter zusätzlich im
--- BEFORE-UPDATE-Trigger blockiert. Soft-deleted Datensätze sind für Bauleiter
--- auch über direkte UPDATE-by-id-Aufrufe nicht editierbar.
-create policy tasks_update_scoped on public.tasks
-for update to authenticated
-using (
-  company_id = public.current_employee_company_id()
-  and (
-    public.current_employee_role() = 'geschaeftsfuehrer'
-    or (
-      deleted_at is null
-      and public.current_employee_role() = 'bauleiter'
-      and (
-        zugeordnet_employee_id = public.current_employee_id()
-        or (
-          project_id is not null
-          and exists (
-            select 1 from public.project_members pm
-            where pm.project_id = tasks.project_id
-              and pm.employee_id = public.current_employee_id()
-          )
-        )
-      )
+create policy tasks_update_scoped on public.tasks for update to authenticated
+using (company_id=public.current_employee_company_id() and (
+  public.current_employee_role()='geschaeftsfuehrer' or (
+    deleted_at is null and public.current_employee_role()='bauleiter' and (
+      zugeordnet_employee_id=public.current_employee_id() or (project_id is not null and exists (
+        select 1 from public.project_members pm
+        where pm.project_id=tasks.project_id and pm.employee_id=public.current_employee_id()
+      ))
     )
   )
-)
-with check (
-  company_id = public.current_employee_company_id()
-  and (
-    public.current_employee_role() = 'geschaeftsfuehrer'
-    or (
-      deleted_at is null
-      and public.current_employee_role() = 'bauleiter'
-      and (
-        zugeordnet_employee_id = public.current_employee_id()
-        or (
-          project_id is not null
-          and exists (
-            select 1 from public.project_members pm
-            where pm.project_id = tasks.project_id
-              and pm.employee_id = public.current_employee_id()
-          )
-        )
-      )
+))
+with check (company_id=public.current_employee_company_id() and (
+  public.current_employee_role()='geschaeftsfuehrer' or (
+    deleted_at is null and public.current_employee_role()='bauleiter' and (
+      zugeordnet_employee_id=public.current_employee_id() or (project_id is not null and exists (
+        select 1 from public.project_members pm
+        where pm.project_id=tasks.project_id and pm.employee_id=public.current_employee_id()
+      ))
     )
   )
-);
+));
 
--- ABSICHTLICH KEINE DELETE-POLICY.
--- ABSICHTLICH KEIN DELETE-GRANT.
--- ABSICHTLICH KEIN ALTER PUBLICATION supabase_realtime.
--- ABSICHTLICH KEINE ÄNDERUNG AN erm_data ODER allow_all.
-
+-- Keine DELETE-Policy / kein DELETE-Grant / kein Realtime / keine Legacy-Policy-Änderung.
 commit;
-
--- Nach Ausführung separat mit Testkonto prüfen; erst danach Feature-Flag-Test.
--- ============================================================================
--- ENDE PRE-LIVE DRAFT
--- ============================================================================
