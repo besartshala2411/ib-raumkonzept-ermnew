@@ -40,9 +40,6 @@
       : (Array.isArray(legacyTasks) ? legacyTasks : []);
   }
 
-  // Führt ausschließlich einen synchronen Lese-/Renderpfad mit den Pilot-Tasks aus.
-  // S.aufgaben wird im finally sofort auf dieselbe Legacy-Array-Referenz zurückgesetzt,
-  // damit saveState/cloudSync niemals versehentlich Supabase-Tasks in erm_data schreibt.
   function withVisibleTasks(fn, thisArg, args) {
     const state = global.S;
     if (!state || !Array.isArray(state.aufgaben) || runtime.mode !== 'supabase') {
@@ -84,13 +81,10 @@
   function installTaskReadPilotBridge() {
     if (bridgeInstalled) return;
     bridgeInstalled = true;
-
-    // Alle bekannten Task-Lesestellen laufen im Pilot über die temporäre View.
     wrapReadFunction('renderAufgaben');
     wrapReadFunction('renderProjektDetail');
     wrapReadFunction('globalSearchIndex');
 
-    // Nach erfolgreichem App-Einstieg den relationalen READ-Preflight ausführen.
     const originalEnterApp = global.enterApp;
     if (typeof originalEnterApp === 'function' && !originalEnterApp.__taskPilotReadWrapped) {
       function wrappedEnterApp() {
@@ -103,8 +97,6 @@
       global.enterApp = wrappedEnterApp;
     }
 
-    // Falls die App beim Installieren bereits offen ist (z.B. Session-Restore),
-    // den READ-Preflight ebenfalls einmal anstoßen.
     const shell = global.document && global.document.getElementById('appShell');
     if (shell && !shell.classList.contains('hidden')) {
       Promise.resolve().then(refreshRuntimeAndView).catch(() => null);
@@ -120,10 +112,11 @@
     refreshRuntimeAndView,
   };
 
-  // Dieses Modul wird vor dem großen Legacy-Hauptscript geladen. Erst nach dessen
-  // Ausführung existieren renderAufgaben/enterApp; deshalb Installation im nächsten
-  // Event-Loop-Turn. Flag OFF lädt dieses Modul gar nicht.
-  if (typeof global.setTimeout === 'function') {
+  if (typeof global.setTimeout === 'function' && typeof global.document !== 'undefined') {
     global.setTimeout(installTaskReadPilotBridge, 0);
   }
 })(typeof window !== 'undefined' ? window : globalThis);
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = globalThis.TaskRuntimeBootstrap;
+}
