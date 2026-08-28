@@ -134,6 +134,12 @@
 
   function mutationMode() {
     if (runtime.mode === 'supabase') {
+      // WRITE darf nur existieren, solange auch der origin-weite READ-Pilot weiterhin
+      // ausdrücklich angefordert ist. Wird READ in einem laufenden Tab entfernt,
+      // blockieren wir sofort fail-closed bis zum vorgesehenen Reload/Runtime-Reset.
+      // So kann ein zurückgelassenes sessionStorage-WRITE-Flag keine stale Supabase-
+      // Runtime weiter beschreiben.
+      if (!isTaskReadPilotRequested(global.localStorage)) return 'pilot-unavailable';
       const writeStorage = getTaskWriteStorage();
       return isTaskWritePilotEnabled(writeStorage) ? 'supabase-write' : 'supabase-readonly';
     }
