@@ -10,6 +10,7 @@
   let runtime = { mode: 'legacy', reason: 'not-started', tasks: null, repository: null, mapper: null };
   let bridgeInstalled = false;
   let initializePromise = null;
+  const mutationsInFlight = new Set();
 
   function storageFlagEnabled(storage, key) {
     try {
@@ -36,6 +37,7 @@
       mapper: null,
     };
     initializePromise = null;
+    mutationsInFlight.clear();
     return runtime;
   }
 
@@ -137,6 +139,16 @@
     rerenderTasks();
   }
 
+  function mutationBusy() {
+    notify('Diese Aufgaben-Änderung wird bereits gespeichert.', 'warn');
+  }
+
+  function mutationKey(name, args) {
+    if (name === 'saveAufgabe') return 'task:create';
+    const id = args && args.length ? args[0] : null;
+    return id ? 'task:' + String(id) : 'task:' + name;
+  }
+
   function wrapTaskMutation(name, supabaseHandler) {
     const original = global[name];
     if (typeof original !== 'function' || original.__taskPilotWriteWrapped) return;
@@ -152,9 +164,16 @@
         return;
       }
       const args = arguments;
+      const key = mutationKey(name, args);
+      if (mutationsInFlight.has(key)) {
+        mutationBusy();
+        return;
+      }
+      mutationsInFlight.add(key);
       Promise.resolve()
         .then(() => supabaseHandler.apply(this, args))
-        .catch(mutationFailed);
+        .catch(mutationFailed)
+        .finally(() => { mutationsInFlight.delete(key); });
     }
     wrapped.__taskPilotWriteWrapped = true;
     wrapped.__taskPilotOriginal = original;
