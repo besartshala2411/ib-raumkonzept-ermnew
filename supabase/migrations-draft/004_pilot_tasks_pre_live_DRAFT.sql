@@ -101,19 +101,41 @@ create index idx_tasks_company_active on public.tasks(company_id,status) where d
 create index idx_tasks_project_active on public.tasks(project_id) where deleted_at is null;
 create index idx_tasks_assignee_active on public.tasks(zugeordnet_employee_id) where deleted_at is null;
 
--- Cross-Tenant-FKs werden zusätzlich serverseitig geprüft.
+-- Cross-Tenant-FKs sowie serverseitige Insert-Auditfelder werden hier erzwungen.
+-- So kann ein manipulierter Client weder Fremdreferenzen noch vorab gelöschte Tasks
+-- oder gefälschte created_by/created_at-Werte einschleusen.
 create function public.tasks_enforce_tenant_refs() returns trigger language plpgsql security definer set search_path=''
 as $$ begin
-  if new.company_id is distinct from public.current_employee_company_id() then raise exception 'Ungültige Firmenzuordnung.'; end if;
-  if new.project_id is not null and not exists(select 1 from public.projects p where p.id=new.project_id and p.company_id=new.company_id) then raise exception 'Projekt gehört nicht zur Firma.'; end if;
-  if new.zugeordnet_employee_id is not null and not exists(select 1 from public.employees e where e.id=new.zugeordnet_employee_id and e.company_id=new.company_id) then raise exception 'Mitarbeiter gehört nicht zur Firma.'; end if;
+  if new.company_id is distinct from public.current_employee_company_id() then
+    raise exception 'Ungültige Firmenzuordnung.';
+  end if;
+  if new.project_id is not null and not exists(
+    select 1 from public.projects p where p.id=new.project_id and p.company_id=new.company_id
+  ) then
+    raise exception 'Projekt gehört nicht zur Firma.';
+  end if;
+  if new.zugeordnet_employee_id is not null and not exists(
+    select 1 from public.employees e where e.id=new.zugeordnet_employee_id and e.company_id=new.company_id
+  ) then
+    raise exception 'Mitarbeiter gehört nicht zur Firma.';
+  end if;
+  if tg_op='INSERT' then
+    new.created_by:=auth.uid();
+    new.updated_by:=auth.uid();
+    new.created_at:=now();
+    new.updated_at:=now();
+    new.deleted_at:=null;
+  end if;
   return new;
 end $$;
 revoke all on function public.tasks_enforce_tenant_refs() from public;
 
 create function public.tasks_set_updated_at() returns trigger language plpgsql set search_path=''
 as $$ begin
-  new.company_id:=old.company_id; new.created_at:=old.created_at; new.created_by:=old.created_by; new.updated_at:=now();
+  new.company_id:=old.company_id;
+  new.created_at:=old.created_at;
+  new.created_by:=old.created_by;
+  new.updated_at:=now();
   if auth.uid() is not null then new.updated_by:=auth.uid(); end if;
   if old.deleted_at is distinct from new.deleted_at and public.current_employee_role() is distinct from 'geschaeftsfuehrer' then
     raise exception 'Soft Delete/Restore ist nur für Geschäftsführer erlaubt.';
