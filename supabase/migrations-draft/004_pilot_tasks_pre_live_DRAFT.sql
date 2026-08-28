@@ -204,12 +204,22 @@ language plpgsql
 set search_path = public
 as $$
 begin
+  -- Unveränderliche Audit-/Mandantenfelder werden serverseitig festgehalten.
+  new.company_id := old.company_id;
+  new.created_at := old.created_at;
+  new.created_by := old.created_by;
   new.updated_at := now();
   if auth.uid() is not null then
     new.updated_by := auth.uid();
   end if;
-  -- Firmenzugehörigkeit darf bei Updates nie geändert werden.
-  new.company_id := old.company_id;
+
+  -- Soft Delete/Restore entspricht tasks.delete und ist ausschließlich GF erlaubt.
+  -- Bauleiter dürfen Tasks editieren, aber deleted_at nicht verändern.
+  if old.deleted_at is distinct from new.deleted_at
+     and public.current_employee_role() is distinct from 'geschaeftsfuehrer' then
+    raise exception 'Soft Delete/Restore ist nur für Geschäftsführer erlaubt.';
+  end if;
+
   return new;
 end;
 $$;
@@ -228,6 +238,17 @@ alter table public.employees enable row level security;
 alter table public.projects enable row level security;
 alter table public.project_members enable row level security;
 alter table public.tasks enable row level security;
+
+-- Explizite Least-Privilege-Tabellenrechte; RLS wirkt zusätzlich.
+revoke all on public.companies, public.profiles, public.roles, public.permissions,
+  public.role_permissions, public.employees, public.projects, public.project_members,
+  public.tasks from anon, authenticated;
+
+grant select on public.companies, public.profiles, public.roles, public.permissions,
+  public.role_permissions, public.employees, public.projects, public.project_members
+  to authenticated;
+grant select, insert, update on public.tasks to authenticated;
+-- Kein DELETE-Grant auf tasks.
 
 create policy profiles_select_self on public.profiles
 for select to authenticated using (id = auth.uid());
@@ -303,7 +324,9 @@ with check (
   )
 );
 
--- Soft Delete und Restore laufen als UPDATE. Mitarbeiter haben kein edit-Recht.
+-- Soft Delete/Restore ist technisch UPDATE, wird für Bauleiter zusätzlich im
+-- BEFORE-UPDATE-Trigger blockiert. Soft-deleted Datensätze sind für Bauleiter
+-- auch über direkte UPDATE-by-id-Aufrufe nicht editierbar.
 create policy tasks_update_scoped on public.tasks
 for update to authenticated
 using (
@@ -311,7 +334,8 @@ using (
   and (
     public.current_employee_role() = 'geschaeftsfuehrer'
     or (
-      public.current_employee_role() = 'bauleiter'
+      deleted_at is null
+      and public.current_employee_role() = 'bauleiter'
       and (
         zugeordnet_employee_id = public.current_employee_id()
         or (
@@ -331,7 +355,8 @@ with check (
   and (
     public.current_employee_role() = 'geschaeftsfuehrer'
     or (
-      public.current_employee_role() = 'bauleiter'
+      deleted_at is null
+      and public.current_employee_role() = 'bauleiter'
       and (
         zugeordnet_employee_id = public.current_employee_id()
         or (
@@ -348,6 +373,7 @@ with check (
 );
 
 -- ABSICHTLICH KEINE DELETE-POLICY.
+-- ABSICHTLICH KEIN DELETE-GRANT.
 -- ABSICHTLICH KEIN ALTER PUBLICATION supabase_realtime.
 -- ABSICHTLICH KEINE ÄNDERUNG AN erm_data ODER allow_all.
 
