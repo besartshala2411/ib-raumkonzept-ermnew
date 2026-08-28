@@ -89,8 +89,10 @@ async function prepareTaskSupabaseRuntime({ storage, client, createRepository, l
   }
 
   try {
+    // Live-Pilot-Schema 004: projects besitzt bewusst kein deleted_at. RLS liefert
+    // ausschließlich sichtbare Projekte; daher nur die Mapping-Spalten selektieren.
     const [projectsResult, employeesResult] = await Promise.all([
-      client.from('projects').select('id,legacy_id').is('deleted_at', null),
+      client.from('projects').select('id,legacy_id'),
       client.from('employees').select('id,legacy_id').eq('status', 'aktiv'),
     ]);
     if (projectsResult.error) throw projectsResult.error;
