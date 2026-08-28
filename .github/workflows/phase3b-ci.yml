@@ -4,11 +4,12 @@ on:
   push:
     branches:
       - phase3b-prep
-      - phase3c-task-runtime-flag
+      - 'phase3c-*'
   pull_request:
     branches:
       - phase3a-preflight
       - phase3b-prep
+      - phase3c-task-runtime-flag
   workflow_dispatch:
 
 permissions:
