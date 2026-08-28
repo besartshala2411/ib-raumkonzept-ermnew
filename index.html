@@ -9,6 +9,7 @@
 <title>IB Raumkonzept – ERM System</title>
 <link id="favicon" rel="icon" href="">
 <link id="appleTouchIcon" rel="apple-touch-icon" href="">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <style>
 :root{
   --bg:#0b0e14; --bg2:#0f141d; --card:#151b26; --card2:#1a212e; --border:#242e3d;
@@ -277,6 +278,7 @@ tr:hover td{background:var(--card2);}
 <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js" defer></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
 <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js" defer></script>
 
 <script>
 "use strict";
@@ -2927,6 +2929,10 @@ function renderProjekte(view, id, tab){
         <option value="">Alle Status</option>${PROJEKT_STATI.map(s=>`<option value="${s}">${s}</option>`).join("")}
       </select>
     </div>
+    <div class="card" style="margin-bottom:16px; padding:0; overflow:hidden;">
+      <div id="pjMapStatus" class="pageSub" style="padding:8px 14px 0;"></div>
+      <div id="pjMapWrap" style="height:320px;"></div>
+    </div>
     <div class="grid cols-3" id="pjGrid"></div>
   `;
   const q = (document.getElementById("pjFilter")?.value||"").toLowerCase();
@@ -2944,6 +2950,56 @@ function renderProjekte(view, id, tab){
       </div>
     </div>
   `).join("") || `<div class="empty" style="grid-column:1/-1;">Keine Projekte gefunden.</div>`;
+  renderProjekteKarte(list);
+}
+async function geocodeAddress(address){
+  if(!address || !address.trim()) return null;
+  try{
+    const res = await fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=de&q="+encodeURIComponent(address));
+    if(!res.ok) return null;
+    const data = await res.json();
+    if(!data || !data[0]) return null;
+    return { lat: Number(data[0].lat), lng: Number(data[0].lon) };
+  }catch(e){ return null; }
+}
+let _pjMapInstance = null;
+let _pjMapRenderToken = 0;
+async function renderProjekteKarte(list){
+  const mapWrap = document.getElementById("pjMapWrap");
+  if(!mapWrap) return;
+  if(!window.L){ setTimeout(()=>renderProjekteKarte(list), 300); return; }
+  const myToken = ++_pjMapRenderToken;
+  if(_pjMapInstance){ try{ _pjMapInstance.remove(); }catch(e){} _pjMapInstance = null; }
+  const map = L.map(mapWrap).setView([51.16, 10.45], 6);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>-Mitwirkende'
+  }).addTo(map);
+  _pjMapInstance = map;
+
+  const withAdresse = list.filter(p=>p.adresse && p.adresse.trim());
+  const statusEl = document.getElementById("pjMapStatus");
+  const markers = [];
+  for(const p of withAdresse){
+    if(myToken !== _pjMapRenderToken) return;
+    let geo = (p.geo && p.geo.forAddress===p.adresse) ? p.geo : null;
+    if(!geo){
+      if(statusEl) statusEl.textContent = "📍 Standorte werden ermittelt … ("+(markers.length+1)+"/"+withAdresse.length+")";
+      geo = await geocodeAddress(p.adresse);
+      if(geo){ p.geo = {lat:geo.lat, lng:geo.lng, forAddress:p.adresse}; saveState(); }
+      await new Promise(r=>setTimeout(r,1100));
+    }
+    if(myToken !== _pjMapRenderToken || !document.getElementById("pjMapWrap")) return;
+    if(geo){
+      const marker = L.marker([geo.lat, geo.lng]).addTo(map);
+      marker.bindPopup("<b>"+escHtml(p.name)+"</b><br>"+escHtml(p.adresse));
+      marker.on("click", ()=>goTo("#projekte/"+p.id));
+      markers.push(marker);
+      if(markers.length>1){ try{ map.fitBounds(L.featureGroup(markers).getBounds().pad(0.2)); }catch(e){} }
+      else{ map.setView([geo.lat, geo.lng], 13); }
+    }
+  }
+  if(statusEl) statusEl.textContent = markers.length ? "" : (withAdresse.length ? "Keine Adresse konnte auf der Karte gefunden werden." : "");
 }
 function openProjektForm(id){
   const p = id ? S.projekte.find(x=>x.id===id) : {id:uid(), name:"", kundeId:"", adresse:"", status:"In Planung", budget:0, deadline:"", fortschritt:0, team:[], subunternehmer:[], fotos:[], dokumente:[], material:[], ausschreibung:[], bautagebuch:[], zugaenge:[], checkliste:[], aufmasse:[], bauzeitenplan:[], chat:[]};
