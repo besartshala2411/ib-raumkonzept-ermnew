@@ -16,6 +16,8 @@ Den relationalen Aufgabenpfad im Browser kontrolliert für Create, Status-Update
   - `IB_TASKS_SUPABASE_PILOT=1` liegt in `localStorage` und aktiviert den READ-Pilot für die Origin.
   - `IB_TASKS_SUPABASE_WRITE_PILOT=1` liegt absichtlich in `sessionStorage` und aktiviert WRITE nur im aktuellen Browser-Tab.
 - Ein WRITE-Flag in `localStorage` allein wird ignoriert. Dadurch werden parallel geöffnete Tabs nicht versehentlich schreibend aktiviert.
+- Fehlendes oder gesperrtes `sessionStorage` bleibt fail-closed; WRITE wird dann nicht aktiviert.
+- Wenn das READ-Flag in einer bereits initialisierten Supabase-Runtime entfernt wird, werden Task-Mutationen sofort fail-closed blockiert. Ein zurückgelassenes WRITE-Flag darf bis zum vorgesehenen Reload/Runtime-Reset weder Supabase noch Legacy beschreiben.
 - Wenn der READ-Pilot angefordert ist, aber der Supabase-Preflight fehlschlägt, werden Task-Mutationen fail-closed blockiert. Es gibt dann keinen Legacy-Schreibfallback.
 - Bei einem Fehler nach Beginn einer Supabase-Mutation wird niemals dieselbe Mutation zusätzlich in Legacy ausgeführt.
 
@@ -84,9 +86,15 @@ Erwartung:
 
 WRITE-Flag aktiv lassen, READ-Preflight absichtlich **nicht** manipulieren. Fail-closed wird primär automatisiert getestet. Ein absichtliches Live-Stören der Verbindung ist für den Pilot nicht erforderlich.
 
+Automatisiert wird zusätzlich geprüft:
+
+- fehlendes oder gesperrtes `sessionStorage` aktiviert keinen WRITE-Pfad;
+- ein entferntes READ-Flag stoppt WRITE sofort auch dann, wenn die aktuelle Runtime noch `supabase` ist;
+- Legacy-Schreiben wird erst nach deaktiviertem READ-Flag und Runtime-Reset/Reload wieder freigegeben.
+
 ## Deaktivierung
 
-Nach Abschluss im Pilot-Tab:
+Nach Abschluss im Pilot-Tab in dieser Reihenfolge:
 
 ```js
 sessionStorage.removeItem('IB_TASKS_SUPABASE_WRITE_PILOT');
@@ -94,7 +102,9 @@ localStorage.removeItem('IB_TASKS_SUPABASE_PILOT');
 location.reload();
 ```
 
-Erwartung: Task-Modul läuft wieder vollständig über den unveränderten Legacy-Pfad. Andere Tabs waren zu keinem Zeitpunkt durch das WRITE-Flag aktiviert.
+Zwischen Entfernen der Flags und dem Reload bleiben Mutationen fail-closed, falls die Runtime noch den vorherigen Supabase-Zustand hält. Erst der Reload/Runtime-Reset stellt den unveränderten Legacy-Schreibpfad wieder her.
+
+Erwartung: Task-Modul läuft nach dem Reload wieder vollständig über den unveränderten Legacy-Pfad. Andere Tabs waren zu keinem Zeitpunkt durch das WRITE-Flag aktiviert.
 
 ## Abbruchkriterien
 
