@@ -10,7 +10,8 @@
     "test:task-supabase-repository": "node tests/task-supabase-repository.test.js",
     "test:task-runtime-gate": "node tests/task-runtime-gate.test.js",
     "test:task-runtime-bootstrap": "node tests/task-runtime-bootstrap.test.js",
-    "test:task-runtime-auth-race": "node tests/task-runtime-auth-race.test.js"
+    "test:task-runtime-auth-race": "node tests/task-runtime-auth-race.test.js",
+    "test:task-runtime-write-tab-scope": "node tests/task-runtime-write-tab-scope.test.js"
   },
   "dependencies": {
     "web-push": "^3.6.7"
