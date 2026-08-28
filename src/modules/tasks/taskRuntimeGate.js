@@ -56,6 +56,17 @@ function createTaskReferenceMapper({ projects = [], employees = [] } = {}) {
         zugeordnet: requireMapped(task && task.zugeordnet, employeeLegacyToUuid, 'Mitarbeiter-Legacy-ID'),
       };
     },
+    toDbTaskPatch(changes) {
+      if (!this.ok) throw new Error('TaskReferenceMapper: Mapping ist nicht eindeutig.');
+      const patch = { ...changes };
+      if (Object.prototype.hasOwnProperty.call(patch, 'projektId')) {
+        patch.projektId = requireMapped(patch.projektId, projectLegacyToUuid, 'Projekt-Legacy-ID');
+      }
+      if (Object.prototype.hasOwnProperty.call(patch, 'zugeordnet')) {
+        patch.zugeordnet = requireMapped(patch.zugeordnet, employeeLegacyToUuid, 'Mitarbeiter-Legacy-ID');
+      }
+      return patch;
+    },
     toLegacyTask(task) {
       if (!this.ok) throw new Error('TaskReferenceMapper: Mapping ist nicht eindeutig.');
       return {
@@ -63,6 +74,34 @@ function createTaskReferenceMapper({ projects = [], employees = [] } = {}) {
         projektId: requireMapped(task && task.projektId, projectUuidToLegacy, 'Projekt-UUID'),
         zugeordnet: requireMapped(task && task.zugeordnet, employeeUuidToLegacy, 'Mitarbeiter-UUID'),
       };
+    },
+  };
+}
+
+function createMappedTaskRepository(rawRepository, mapper) {
+  if (!rawRepository || !mapper || !mapper.ok) {
+    throw new Error('MappedTaskRepository: Repository oder Mapping ungültig.');
+  }
+  return {
+    async list() {
+      const rows = await rawRepository.list();
+      return (rows || []).map((task) => mapper.toLegacyTask(task));
+    },
+    async create(data) {
+      const created = await rawRepository.create(mapper.toDbTask(data || {}));
+      return mapper.toLegacyTask(created);
+    },
+    async update(id, changes) {
+      const updated = await rawRepository.update(id, mapper.toDbTaskPatch(changes || {}));
+      return mapper.toLegacyTask(updated);
+    },
+    async remove(id) {
+      const removed = await rawRepository.remove(id);
+      return mapper.toLegacyTask(removed);
+    },
+    async restore(id) {
+      const restored = await rawRepository.restore(id);
+      return mapper.toLegacyTask(restored);
     },
   };
 }
@@ -109,9 +148,9 @@ async function prepareTaskSupabaseRuntime({ storage, client, createRepository, l
       return { mode: 'legacy', reason: 'legacy-reference-gap', errors: coverageErrors, tasks: legacyTasks, mapper };
     }
 
-    const repository = createRepository(client);
-    const dbTasks = await repository.list();
-    const tasks = dbTasks.map((task) => mapper.toLegacyTask(task));
+    const rawRepository = createRepository(client);
+    const repository = createMappedTaskRepository(rawRepository, mapper);
+    const tasks = await repository.list();
     return { mode: 'supabase', reason: 'ready', tasks, repository, mapper };
   } catch (error) {
     return { mode: 'legacy', reason: 'preflight-failed', error, tasks: legacyTasks };
@@ -119,8 +158,8 @@ async function prepareTaskSupabaseRuntime({ storage, client, createRepository, l
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { TASK_RUNTIME_FLAG, isTaskSupabasePilotEnabled, createTaskReferenceMapper, validateLegacyTaskCoverage, prepareTaskSupabaseRuntime };
+  module.exports = { TASK_RUNTIME_FLAG, isTaskSupabasePilotEnabled, createTaskReferenceMapper, createMappedTaskRepository, validateLegacyTaskCoverage, prepareTaskSupabaseRuntime };
 }
 if (typeof window !== 'undefined') {
-  window.TaskRuntimeGate = { TASK_RUNTIME_FLAG, isTaskSupabasePilotEnabled, createTaskReferenceMapper, validateLegacyTaskCoverage, prepareTaskSupabaseRuntime };
+  window.TaskRuntimeGate = { TASK_RUNTIME_FLAG, isTaskSupabasePilotEnabled, createTaskReferenceMapper, createMappedTaskRepository, validateLegacyTaskCoverage, prepareTaskSupabaseRuntime };
 }
