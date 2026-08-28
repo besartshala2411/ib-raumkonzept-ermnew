@@ -39,6 +39,11 @@ function tick(){ return new Promise(resolve=>setTimeout(resolve,0)); }
   await tick();
   assert(updates===1,'Entfernen des sessionStorage-Flags sperrt weitere Writes sofort wieder');
 
+  delete global.sessionStorage;
+  global.setAufgabeStatus('db','offen');
+  await tick();
+  assert(updates===1 && legacyUpdates===0,'fehlendes sessionStorage bleibt fail-closed und fällt nicht auf localStorage-WRITE zurück');
+
   console.log(`\n${passed} Tests bestanden, ${failed} fehlgeschlagen.`);
   process.exit(failed?1:0);
 })().catch(e=>{console.error(e);process.exit(1);});
