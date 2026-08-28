@@ -27,6 +27,7 @@ function tick(){ return new Promise(resolve=>setTimeout(resolve,0)); }
   await bootstrap.initializeTaskRuntime({legacyTasks:legacyRef,client:{from(){}}});
   assert(bootstrap.getTaskRuntime().mode==='supabase','initialisiert den freigegebenen Supabase-READ-Modus');
   assert(bootstrap.getVisibleTasks(legacyRef)[0].id==='db','liefert im Pilot die relational gelesenen Aufgaben');
+  assert(bootstrap.isTaskReadPilotRequested(global.localStorage),'READ-Pilot erkennt die explizite Anforderung');
   assert(!bootstrap.isTaskWritePilotEnabled(global.localStorage),'WRITE-Pilot ist unabhängig vom READ-Flag standardmäßig aus');
 
   let seen=null;
@@ -83,13 +84,28 @@ function tick(){ return new Promise(resolve=>setTimeout(resolve,0)); }
   assert(calls.remove===1 && !bootstrap.getTaskRuntime().tasks.some(t=>t.id==='db'),'Delete nutzt Soft-Delete-Repository und entfernt Task aus Runtime-Cache');
   assert(calls.legacyDelete===0 && global.S.aufgaben===legacyRef,'Delete hat keinen Legacy-Fallback und verändert Legacy-State nicht');
 
-  let failingLegacyCalls=0;
   bootstrap.getTaskRuntime().repository.update=async()=>{throw new Error('network');};
-  global.setAufgabeStatus.__taskPilotOriginal=()=>{failingLegacyCalls++;};
+  const legacyStatusBeforeFailure=calls.legacyStatus;
   global.setAufgabeStatus('db-new','erledigt');
   await tick(); await tick();
-  assert(failingLegacyCalls===0,'fehlgeschlagene Supabase-Mutation wird niemals als Legacy-Mutation wiederholt');
+  assert(calls.legacyStatus===legacyStatusBeforeFailure,'fehlgeschlagene Supabase-Mutation wird niemals als Legacy-Mutation wiederholt');
   assert(/nicht in Supabase gespeichert/i.test(lastToast),'Supabase-Fehler wird sichtbar gemeldet');
+
+  // Kritischer Cutover-Fall: READ/WRITE sind angefordert, aber der Supabase-Preflight
+  // fällt zurück auf Legacy. Auch dann darf keine Mutation in S.aufgaben landen.
+  global.TaskRuntimeGate.prepareTaskSupabaseRuntime=async()=>({mode:'legacy',reason:'preflight-failed',tasks:legacyRef});
+  await bootstrap.initializeTaskRuntime({legacyTasks:legacyRef,client:{from(){}}});
+  const legacyStatusBeforePreflightBlock=calls.legacyStatus;
+  global.setAufgabeStatus('legacy','erledigt');
+  await tick();
+  assert(calls.legacyStatus===legacyStatusBeforePreflightBlock,'fehlgeschlagener Pilot-Preflight blockiert Legacy-Schreiben bei aktivem READ-Flag');
+  assert(/nicht schreibbereit/i.test(lastToast) && /Legacy-State/i.test(lastToast),'Preflight-Blockade wird sichtbar und erklärt den fehlenden Legacy-Fallback');
+
+  // Erst wenn der Pilot ausdrücklich deaktiviert ist, gilt wieder der unveränderte Legacy-Pfad.
+  storageValues.IB_TASKS_SUPABASE_PILOT=null;
+  storageValues.IB_TASKS_SUPABASE_WRITE_PILOT=null;
+  global.setAufgabeStatus('legacy','erledigt');
+  assert(calls.legacyStatus===legacyStatusBeforePreflightBlock+1,'bei deaktiviertem READ-Pilot bleibt Legacy-Schreiben unverändert verfügbar');
 
   console.log(`\n${passed} Tests bestanden, ${failed} fehlgeschlagen.`);
   process.exit(failed?1:0);
