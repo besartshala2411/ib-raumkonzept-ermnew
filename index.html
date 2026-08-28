@@ -3007,6 +3007,7 @@ function renderProjektDetail(view, id, tab){
         ${p.adresse ? mapsLinksHTML(p.adresse) : ""}
       </div>
       <div style="display:flex; gap:8px;">
+        <button class="btn" onclick="exportArbeitsauftrag('${escAttr(p.id)}')">🧾 Arbeitsauftrag (ohne Preise)</button>
         <button class="btn" onclick="openAuftragsmappeForm('${escAttr(p.id)}')">📁 Auftragsmappe</button>
         <button class="btn" onclick="openProjektForm('${escAttr(p.id)}')">✏️ Bearbeiten</button>
         <button class="btn danger" onclick="deleteProjekt('${escAttr(p.id)}')">🗑️ Löschen</button>
@@ -3489,7 +3490,7 @@ function renderTabMaterial(body, p){
         <thead><tr><th>Titel/Gewerk</th><th>Bezeichnung</th><th>Menge</th><th>Einheit</th><th>Preis (€)</th><th>Datum</th><th></th></tr></thead>
         <tbody>
         ${p.material.map(m=>`
-          <tr><td>${m.titel?escHtml(m.titel):"–"}</td><td>${escHtml(m.bezeichnung)}</td><td>${escHtml(m.menge)}</td><td>${escHtml(m.einheit)}</td><td>${m.preis?fmtCurrency(m.preis):"–"}</td><td>${fmtDate(m.datum)}</td>
+          <tr><td>${m.titel?escHtml(m.titel):"–"}</td><td>${escHtml(m.bezeichnung)}${m.beschreibung?`<div class="pageSub">${escHtml(m.beschreibung)}</div>`:""}</td><td>${escHtml(m.menge)}</td><td>${escHtml(m.einheit)}</td><td>${m.preis?fmtCurrency(m.preis):"–"}</td><td>${fmtDate(m.datum)}</td>
           <td style="text-align:right;"><button class="iconBtn" onclick="deleteMaterial('${escAttr(p.id)}','${escAttr(m.id)}')">🗑️</button></td></tr>
         `).join("") || `<tr><td colspan="7"><div class="empty">Kein Material erfasst.</div></td></tr>`}
         </tbody>
@@ -3505,6 +3506,7 @@ function openMaterialForm(pid){
     <div class="modalHead"><div class="modalTitle">Material erfassen</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
     <div class="formRow"><label>Titel/Gewerk (optional)</label><input id="matTitel" type="text" list="matTitelListe" placeholder="z.B. Fliesenarbeiten"><datalist id="matTitelListe">${bestehendeTitel.map(t=>`<option value="${escAttr(t)}">`).join("")}</datalist></div>
     <div class="formRow"><label>Bezeichnung</label><div class="micWrap"><input id="matBez" type="text">${fieldMic("matBez")}</div></div>
+    <div class="formRow"><label>Kurzbeschreibung (optional)</label><div class="micWrap"><textarea id="matBeschreibung" style="min-height:50px;"></textarea>${fieldMic("matBeschreibung")}</div></div>
     <div class="grid cols-2">
       <div class="formRow"><label>Menge</label><input id="matMenge" type="number" step="0.01"></div>
       <div class="formRow"><label>Einheit</label><input id="matEinheit" type="text" placeholder="m², Stk, kg..."></div>
@@ -3517,7 +3519,7 @@ function saveMaterial(pid){
   const bezeichnung = document.getElementById("matBez").value.trim();
   if(!bezeichnung){ toast("Bezeichnung erforderlich.", "warn"); return; }
   const p = S.projekte.find(x=>x.id===pid);
-  p.material.push({id:uid(), titel:document.getElementById("matTitel").value.trim(), bezeichnung, menge:document.getElementById("matMenge").value, einheit:document.getElementById("matEinheit").value.trim(), preis:Number(document.getElementById("matPreis").value)||0, datum:todayISO()});
+  p.material.push({id:uid(), titel:document.getElementById("matTitel").value.trim(), bezeichnung, beschreibung:document.getElementById("matBeschreibung").value.trim(), menge:document.getElementById("matMenge").value, einheit:document.getElementById("matEinheit").value.trim(), preis:Number(document.getElementById("matPreis").value)||0, datum:todayISO()});
   saveState(); closeModal(); route(location.hash);
 }
 function deleteMaterial(pid, mid){
@@ -3577,14 +3579,22 @@ function buildLvDocPositions(p, positionen, mitPreisen, subtitle){
     doc.setDrawColor(200); doc.line(15,y+2,195,y+2);
     y += 7;
     g.items.forEach((m,i)=>{
-      if(y>270){ doc.addPage(); y=20; }
-      if(i%2===1){ doc.setFillColor(249,250,251); doc.rect(15,y-4.5,180,6,"F"); }
+      const descLines = m.beschreibung ? doc.splitTextToSize(m.beschreibung, 175) : [];
+      const blockH = 6 + (descLines.length ? descLines.length*4 + 2 : 0);
+      if(y+blockH>270){ doc.addPage(); y=20; }
+      if(i%2===1){ doc.setFillColor(249,250,251); doc.rect(15,y-4.5,180,blockH,"F"); }
       const posNr = grpNr+"."+String((i+1)*10).padStart(3,"0");
       const row = mitPreisen
         ? [posNr, m.bezeichnung, String(m.menge), m.einheit, m.preis?fmtCurrency(m.preis):"–"]
         : [posNr, m.bezeichnung, String(m.menge), m.einheit];
       row.forEach((cell,ci)=>doc.text(String(cell), colX[ci], y, ci===row.length-1?{align:"right"}:{}));
       y += 6;
+      if(descLines.length){
+        doc.setFontSize(8.5); doc.setTextColor(120);
+        descLines.forEach(line=>{ doc.text(line, colX[1], y); y+=4; });
+        doc.setFontSize(10); doc.setTextColor(0);
+        y += 2;
+      }
     });
     y += 8;
   });
@@ -3608,6 +3618,85 @@ function exportLvPDF(pid, mitPreisen){
   const p = S.projekte.find(x=>x.id===pid);
   if(!p.material.length){ toast("Keine Positionen zum Exportieren.", "warn"); return; }
   saveOrSharePdf(buildLvDoc(p, mitPreisen), "LV_"+p.name.replace(/[^a-z0-9]+/gi,"_")+(mitPreisen?"":"_ohne_Preise")+".pdf");
+}
+
+/* =========================================================
+   ARBEITSAUFTRAG (intern, für Mitarbeiter — nie mit Preisen)
+========================================================= */
+function buildArbeitsauftragDoc(p){
+  const doc = pdfNewDoc();
+  let y = pdfHeader(doc, "Arbeitsauftrag");
+  doc.setFontSize(11); doc.setFont(undefined,"bold");
+  doc.text(p.name, 15, y); doc.setFont(undefined,"normal"); y+=7;
+  doc.setFontSize(10.5);
+  doc.text("Adresse: "+(p.adresse||"–"), 15, y); y+=6;
+  doc.text("Status: "+p.status, 15, y); y+=6;
+  if(p.team && p.team.length){
+    y = pdfWriteWrapped(doc, "Team: "+p.team.map(mid=>mitarbeiterName(mid)).join(", "), 15, y, 180);
+  }
+  y += 8;
+
+  if(p.material && p.material.length){
+    if(y>250){ doc.addPage(); y=20; }
+    doc.setFont(undefined,"bold"); doc.setFontSize(11.5); doc.text("Auszuführende Leistungen", 15, y);
+    doc.setFont(undefined,"normal"); doc.setFontSize(10.5); y+=8;
+    const groups = [];
+    p.material.forEach(pos=>{
+      const key = (pos.titel||"").trim();
+      let g = groups.find(x=>x.key===key);
+      if(!g){ g={key, items:[]}; groups.push(g); }
+      g.items.push(pos);
+    });
+    groups.forEach(g=>{
+      if(g.key){
+        if(y>255){ doc.addPage(); y=20; }
+        doc.setFillColor(232,239,250); doc.rect(15,y-5.5,180,8.5,"F");
+        doc.setFont(undefined,"bold"); doc.text(g.key, 19, y); doc.setFont(undefined,"normal"); y+=9;
+      }
+      g.items.forEach(m=>{
+        if(y>270){ doc.addPage(); y=20; }
+        doc.text("•  "+m.bezeichnung+"  —  "+m.menge+" "+m.einheit, 18, y); y+=6;
+        if(m.beschreibung){
+          doc.setFontSize(8.5); doc.setTextColor(120);
+          y = pdfWriteWrapped(doc, m.beschreibung, 24, y, 165, {lineHeight:4});
+          doc.setFontSize(10.5); doc.setTextColor(0);
+          y += 2;
+        }
+      });
+      y+=4;
+    });
+    y+=4;
+  }
+
+  const aufgaben = S.aufgaben.filter(a=>a.projektId===p.id && a.status!=="erledigt");
+  if(aufgaben.length){
+    if(y>250){ doc.addPage(); y=20; }
+    doc.setFont(undefined,"bold"); doc.setFontSize(11.5); doc.text("Offene Aufgaben", 15, y);
+    doc.setFont(undefined,"normal"); doc.setFontSize(10.5); y+=8;
+    aufgaben.forEach(a=>{
+      if(y>270){ doc.addPage(); y=20; }
+      doc.text("[ ]  "+a.titel+(a.faellig?"  (fällig "+fmtDate(a.faellig)+")":""), 18, y); y+=6;
+    });
+    y+=4;
+  }
+
+  if(p.zugaenge && p.zugaenge.length){
+    if(y>250){ doc.addPage(); y=20; }
+    doc.setFont(undefined,"bold"); doc.setFontSize(11.5); doc.text("Zugänge", 15, y);
+    doc.setFont(undefined,"normal"); doc.setFontSize(10.5); y+=8;
+    p.zugaenge.forEach(z=>{
+      if(y>265){ doc.addPage(); y=20; }
+      doc.setFont(undefined,"bold"); doc.text(z.bezeichnung, 18, y); doc.setFont(undefined,"normal"); y+=5;
+      if(z.info){ y = pdfWriteWrapped(doc, z.info, 18, y, 170) + 3; }
+    });
+  }
+
+  pdfFooter(doc);
+  return doc;
+}
+function exportArbeitsauftrag(pid){
+  const p = S.projekte.find(x=>x.id===pid);
+  saveOrSharePdf(buildArbeitsauftragDoc(p), "Arbeitsauftrag_"+p.name.replace(/[^a-z0-9]+/gi,"_")+".pdf");
 }
 
 /* =========================================================
@@ -3667,8 +3756,8 @@ function openAusschreibungForm(pid){
   const verfuegbar = S.subunternehmer.filter(s=>!bereitsEingeladen.has(s.id));
   window._ausDraft = {
     pid,
-    original: p.material.map(m=>({titel:m.titel||"", bezeichnung:m.bezeichnung, menge:m.menge, einheit:m.einheit, preis:Number(m.preis)||0})),
-    positionen: p.material.map(m=>({titel:m.titel||"", bezeichnung:m.bezeichnung, menge:m.menge, einheit:m.einheit, preis:Number(m.preis)||0})),
+    original: p.material.map(m=>({titel:m.titel||"", bezeichnung:m.bezeichnung, beschreibung:m.beschreibung||"", menge:m.menge, einheit:m.einheit, preis:Number(m.preis)||0})),
+    positionen: p.material.map(m=>({titel:m.titel||"", bezeichnung:m.bezeichnung, beschreibung:m.beschreibung||"", menge:m.menge, einheit:m.einheit, preis:Number(m.preis)||0})),
   };
   openModal(`
     <div class="modalHead"><div class="modalTitle">📤 LV an Nachunternehmer senden</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
@@ -5541,7 +5630,7 @@ async function analyzeLvPdf(){
   try{
     const dataURL = await fileToDataURL(file);
     const base64 = dataURL.slice(dataURL.indexOf(",")+1);
-    const prompt = `Du bist Assistent eines deutschen Handwerksbetriebs (Trockenbau/Maler/Fliesen/Sanitär). Analysiere das beigefügte Leistungsverzeichnis oder Angebot als PDF und extrahiere die Projektdaten. Antworte AUSSCHLIESSLICH mit validem JSON in genau diesem Format, ohne Erklärtext, ohne Markdown-Codeblock: {"name":"kurzer Projektname/Titel","adresse":"Bauadresse falls vorhanden, sonst leer","kunde":"Kundenname/Auftraggeber falls vorhanden, sonst leer","positionen":[{"bezeichnung":"...","menge":0,"einheit":"...","einzelpreis":0,"gesamtpreis":0}],"budgetSchaetzung":0}. Wenn ein Wert nicht im Dokument steht, benutze "" bzw. 0. budgetSchaetzung ist die im Dokument genannte Gesamtsumme bzw. die Summe aller Positionen.`;
+    const prompt = `Du bist Assistent eines deutschen Handwerksbetriebs (Trockenbau/Maler/Fliesen/Sanitär). Analysiere das beigefügte Leistungsverzeichnis oder Angebot als PDF und extrahiere die Projektdaten. Antworte AUSSCHLIESSLICH mit validem JSON in genau diesem Format, ohne Erklärtext, ohne Markdown-Codeblock: {"name":"kurzer Projektname/Titel","adresse":"Bauadresse falls vorhanden, sonst leer","kunde":"Kundenname/Auftraggeber falls vorhanden, sonst leer","positionen":[{"titel":"Gewerk/Titel-Abschnitt falls das Dokument die Positionen gruppiert, sonst leer","bezeichnung":"kurzer Titel der Position","beschreibung":"ausführlichere Beschreibung/Leistungstext der Position falls im Dokument vorhanden, sonst leer","menge":0,"einheit":"...","einzelpreis":0,"gesamtpreis":0}],"budgetSchaetzung":0}. Wenn ein Wert nicht im Dokument steht, benutze "" bzw. 0. budgetSchaetzung ist die im Dokument genannte Gesamtsumme bzw. die Summe aller Positionen. Bezeichnung und Beschreibung sind unterschiedliche Felder - nicht denselben Text doppelt eintragen, wenn das Dokument beides trennt.`;
     const text = await callGeminiWithFile(prompt, apiKey, base64, file.type||"application/pdf");
     const result = extractJsonFromText(text);
     openLvReviewForm(result);
@@ -5557,7 +5646,9 @@ function openLvReviewForm(result){
     kundeName: String(result.kunde||"").slice(0,120),
     budgetSchaetzung: Number(result.budgetSchaetzung)||0,
     positionen: positionen.map(p=>({
+      titel: String(p.titel||"").slice(0,80),
       bezeichnung: String(p.bezeichnung||"Position").slice(0,200),
+      beschreibung: String(p.beschreibung||"").slice(0,500),
       menge: Number(p.menge)||0,
       einheit: String(p.einheit||"").slice(0,20),
       preis: Number(p.gesamtpreis||p.einzelpreis)||0,
@@ -5590,7 +5681,10 @@ function renderLvReviewForm(){
 }
 function lvPosRowHTML(p,i){
   return `<tr>
-    <td><input type="text" value="${escAttr(p.bezeichnung)}" oninput="updateLvPos(${i},'bezeichnung',this.value)" style="width:100%; background:var(--bg2); border:1px solid var(--border); border-radius:6px; padding:4px 6px; color:var(--text);"></td>
+    <td style="min-width:180px;">
+      <input type="text" value="${escAttr(p.bezeichnung)}" oninput="updateLvPos(${i},'bezeichnung',this.value)" placeholder="Bezeichnung" style="width:100%; background:var(--bg2); border:1px solid var(--border); border-radius:6px; padding:4px 6px; color:var(--text); margin-bottom:4px;">
+      <textarea oninput="updateLvPos(${i},'beschreibung',this.value)" placeholder="Kurzbeschreibung (optional)" style="width:100%; min-height:32px; font-size:11px; background:var(--bg2); border:1px solid var(--border); border-radius:6px; padding:4px 6px; color:var(--text);">${escHtml(p.beschreibung||"")}</textarea>
+    </td>
     <td><input type="number" step="0.01" value="${escAttr(p.menge)}" oninput="updateLvPos(${i},'menge',this.value)" style="width:70px; background:var(--bg2); border:1px solid var(--border); border-radius:6px; padding:4px 6px; color:var(--text);"></td>
     <td><input type="text" value="${escAttr(p.einheit)}" oninput="updateLvPos(${i},'einheit',this.value)" style="width:60px; background:var(--bg2); border:1px solid var(--border); border-radius:6px; padding:4px 6px; color:var(--text);"></td>
     <td><input type="number" step="0.01" value="${escAttr(p.preis)}" oninput="updateLvPos(${i},'preis',this.value)" style="width:90px; background:var(--bg2); border:1px solid var(--border); border-radius:6px; padding:4px 6px; color:var(--text);"></td>
@@ -5623,7 +5717,7 @@ function confirmLvImport(){
   const p = {
     id:uid(), name, kundeId, adresse, status:"In Planung", budget, deadline:"", fortschritt:0,
     team:[], subunternehmer:[], fotos:[], dokumente:[],
-    material: d.positionen.map(pos=>({id:uid(), bezeichnung:pos.bezeichnung||"Position", menge:pos.menge||0, einheit:pos.einheit||"", preis:pos.preis||0, datum:todayISO()})),
+    material: d.positionen.map(pos=>({id:uid(), titel:pos.titel||"", bezeichnung:pos.bezeichnung||"Position", beschreibung:pos.beschreibung||"", menge:pos.menge||0, einheit:pos.einheit||"", preis:pos.preis||0, datum:todayISO()})),
     ausschreibung:[], bautagebuch:[], zugaenge:[], checkliste:[], aufmasse:[], bauzeitenplan:[], chat:[],
   };
   S.projekte.push(p);
