@@ -8,7 +8,7 @@ function tick(){ return new Promise(resolve=>setTimeout(resolve,0)); }
   let storageValues={IB_TASKS_SUPABASE_PILOT:'1',IB_TASKS_SUPABASE_WRITE_PILOT:null};
   global.S={aufgaben:[{id:'legacy',titel:'Legacy'}]};
   global.localStorage={getItem(key){return storageValues[key] || null;}};
-  const calls={create:0,update:0,remove:0,legacySave:0,legacyStatus:0,legacyDelete:0};
+  const calls={create:0,update:0,remove:0,legacySave:0,legacyStatus:0,legacyDelete:0,enter:0,logout:0};
   const mappedRepo={
     async list(){ return [{id:'db',titel:'Supabase',status:'offen',projektId:null,zugeordnet:null}]; },
     async create(data){ calls.create++; return {id:'db-new',...data}; },
@@ -39,7 +39,7 @@ function tick(){ return new Promise(resolve=>setTimeout(resolve,0)); }
   try{ bootstrap.withVisibleTasks(()=>{ throw new Error('render failed'); }); }catch(_){ restoredAfterError=global.S.aufgaben===legacyRef; }
   assert(restoredAfterError,'Legacy-State wird auch nach Render-Fehler wiederhergestellt');
 
-  let routeCount=0, lastToast='';
+  let routeCount=0, lastToast='', enterSawTask=null;
   global.location={hash:'#aufgaben'};
   global.route=()=>{routeCount++;};
   global.toast=(msg)=>{lastToast=msg;};
@@ -49,6 +49,8 @@ function tick(){ return new Promise(resolve=>setTimeout(resolve,0)); }
   global.saveAufgabe=function(){ calls.legacySave++; };
   global.setAufgabeStatus=function(){ calls.legacyStatus++; };
   global.deleteAufgabe=function(){ calls.legacyDelete++; };
+  global.enterApp=function(){ calls.enter++; enterSawTask=bootstrap.getVisibleTasks(global.S.aufgaben)[0].id; };
+  global.logout=function(){ calls.logout++; };
   bootstrap.installTaskReadPilotBridge();
   assert(global.renderAufgaben()==='db','Aufgabenansicht liest im Pilot aus Supabase ohne State-Cutover');
   assert(global.renderProjektDetail()==='db' && global.globalSearchIndex()==='db','Projektübersicht und Suche nutzen denselben READ-Pfad');
@@ -100,6 +102,21 @@ function tick(){ return new Promise(resolve=>setTimeout(resolve,0)); }
   await tick();
   assert(calls.legacyStatus===legacyStatusBeforePreflightBlock,'fehlgeschlagener Pilot-Preflight blockiert Legacy-Schreiben bei aktivem READ-Flag');
   assert(/nicht schreibbereit/i.test(lastToast) && /Legacy-State/i.test(lastToast),'Preflight-Blockade wird sichtbar und erklärt den fehlenden Legacy-Fallback');
+
+  // Auth-Grenze: Ein alter Supabase-Cache darf beim nächsten Benutzer niemals vor
+  // dem neuen RLS-Refresh gerendert werden.
+  global.TaskRuntimeGate.prepareTaskSupabaseRuntime=async()=>({mode:'supabase',reason:'ready',tasks:await mappedRepo.list(),repository:mappedRepo,mapper:{}});
+  await bootstrap.initializeTaskRuntime({legacyTasks:legacyRef,client:{from(){}}});
+  assert(bootstrap.getTaskRuntime().mode==='supabase','Testvorbedingung: Runtime enthält vor Auth-Wechsel Supabase-Daten');
+  global.enterApp();
+  assert(calls.enter===1 && enterSawTask==='legacy','enterApp setzt vor dem ersten Render auf Legacy-Snapshot zurück');
+  assert(bootstrap.getTaskRuntime().reason==='auth-transition','Auth-Wechsel markiert den Runtime-Reset explizit');
+  await tick(); await tick();
+  assert(bootstrap.getTaskRuntime().mode==='supabase','nach Auth-Wechsel wird der RLS-gescopte Supabase-READ neu initialisiert');
+
+  global.logout();
+  assert(calls.logout===1 && bootstrap.getTaskRuntime().mode==='legacy','Logout verwirft den Supabase-Runtime-Cache sofort');
+  assert(bootstrap.getTaskRuntime().reason==='logout' && bootstrap.getVisibleTasks(legacyRef)[0].id==='legacy','nach Logout sind keine Tasks des vorherigen Runtime-Caches sichtbar');
 
   // Erst wenn der Pilot ausdrücklich deaktiviert ist, gilt wieder der unveränderte Legacy-Pfad.
   storageValues.IB_TASKS_SUPABASE_PILOT=null;
