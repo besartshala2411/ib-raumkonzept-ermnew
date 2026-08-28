@@ -55,3 +55,6 @@ jobs:
 
       - name: Task runtime write tab-scope tests
         run: npm run test:task-runtime-write-tab-scope
+
+      - name: Task WRITE pilot lifecycle dry-run
+        run: npm run test:task-write-pilot-lifecycle
