@@ -82,13 +82,19 @@ export default async () => {
   if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
     return new Response("Supabase env vars missing, skipping.", { status: 200 });
   }
+
+  // Taeglicher DB-Zugriff, damit Supabase das Projekt im Free-Tier nicht wegen
+  // Inaktivitaet pausiert. Laeuft unabhaengig davon, ob Push (VAPID) konfiguriert
+  // ist - vorher stand dieser Aufruf hinter dem VAPID-Check und wurde bei fehlenden
+  // VAPID-Keys nie erreicht, wodurch die DB tagelang unberuehrt blieb.
+  const rows = await sbRest("erm_data?id=eq.1&select=payload");
+  const payload = rows && rows[0] ? rows[0].payload : {};
+
   if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
-    return new Response("VAPID keys missing, skipping.", { status: 200 });
+    return new Response("Keep-alive ping ok. VAPID keys missing, skipping push.", { status: 200 });
   }
   webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
 
-  const rows = await sbRest("erm_data?id=eq.1&select=payload");
-  const payload = rows && rows[0] ? rows[0].payload : {};
   const reminders = buildReminders(payload || {});
 
   if (!reminders.length) {
