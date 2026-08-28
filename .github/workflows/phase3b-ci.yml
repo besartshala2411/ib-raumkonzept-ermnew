@@ -52,3 +52,6 @@ jobs:
 
       - name: Task runtime auth race tests
         run: npm run test:task-runtime-auth-race
+
+      - name: Task runtime write tab-scope tests
+        run: npm run test:task-runtime-write-tab-scope
