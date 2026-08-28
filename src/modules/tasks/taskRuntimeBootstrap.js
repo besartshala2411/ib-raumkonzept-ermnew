@@ -128,7 +128,9 @@
     if (runtime.mode === 'supabase') {
       // WRITE muss absichtlich nur im aktiven Browser-Tab freigegeben werden. localStorage
       // wäre origin-weit und könnte parallel geöffnete Tabs ungewollt mitschalten.
-      return isTaskWritePilotEnabled(global.sessionStorage) ? 'supabase-write' : 'supabase-readonly';
+      // Der Fallback existiert nur für nicht-browserbasierte Test-Harnesses ohne sessionStorage.
+      const writeStorage = global.sessionStorage || global.localStorage;
+      return isTaskWritePilotEnabled(writeStorage) ? 'supabase-write' : 'supabase-readonly';
     }
     // Sobald der READ-Pilot ausdrücklich angefordert wurde, ist Legacy-Schreiben kein
     // zulässiger Fallback mehr. Das gilt auch vor/bei fehlgeschlagenem Preflight.
