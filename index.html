@@ -186,6 +186,7 @@ tr:hover td{background:var(--card2);}
 .tabBtn{background:none; border:none; padding:8px 14px; color:var(--text-dim); font-weight:600; font-size:13px; border-radius:calc(var(--radius-sm) - 3px); white-space:nowrap;}
 .tabBtn:hover{color:var(--text);}
 .tabBtn.active{color:#fff; background:var(--primary); box-shadow:0 2px 8px rgba(59,130,246,.3);}
+.tabDivider{width:1px; align-self:stretch; background:var(--border); margin:4px 4px;}
 
 .empty{text-align:center; padding:40px 20px; color:var(--text-dim);}
 .empty .emptyIcon{font-size:36px; margin-bottom:10px;}
@@ -2948,18 +2949,18 @@ function deleteProjekt(id){
 }
 
 const PROJEKT_TABS = [
-  {id:"uebersicht", label:"Übersicht", icon:"📋"},
-  {id:"team", label:"Team", icon:"👷"},
-  {id:"bauzeitenplan", label:"Bauzeitenplan", icon:"📊"},
-  {id:"fotos", label:"Fotos", icon:"📷"},
-  {id:"dokumente", label:"Dokumente", icon:"📁"},
-  {id:"material", label:"Material", icon:"📦"},
-  {id:"ausschreibung", label:"Ausschreibung", icon:"🏗️"},
-  {id:"bautagebuch", label:"Bautagebuch", icon:"📔"},
-  {id:"zugaenge", label:"Zugänge", icon:"🔐"},
-  {id:"checkliste", label:"WISO/Checkliste", icon:"✅"},
-  {id:"aufmass", label:"Aufmaß", icon:"📐"},
-  {id:"chat", label:"Chat", icon:"💬"},
+  {id:"uebersicht", label:"Übersicht", icon:"📋", group:"Planung"},
+  {id:"team", label:"Team", icon:"👷", group:"Planung"},
+  {id:"bauzeitenplan", label:"Bauzeitenplan", icon:"📊", group:"Planung"},
+  {id:"material", label:"Material / LV", icon:"📦", group:"Kalkulation & Vergabe"},
+  {id:"ausschreibung", label:"Ausschreibung", icon:"🏗️", group:"Kalkulation & Vergabe"},
+  {id:"dokumente", label:"Dokumente", icon:"📁", group:"Kalkulation & Vergabe"},
+  {id:"fotos", label:"Fotos", icon:"📷", group:"Baustelle"},
+  {id:"bautagebuch", label:"Bautagebuch", icon:"📔", group:"Baustelle"},
+  {id:"aufmass", label:"Aufmaß", icon:"📐", group:"Baustelle"},
+  {id:"zugaenge", label:"Zugänge", icon:"🔐", group:"Baustelle"},
+  {id:"checkliste", label:"WISO/Checkliste", icon:"✅", group:"Abschluss"},
+  {id:"chat", label:"Chat", icon:"💬", group:"Abschluss"},
 ];
 function renderProjektDetail(view, id, tab){
   const p = S.projekte.find(x=>x.id===id);
@@ -2979,7 +2980,7 @@ function renderProjektDetail(view, id, tab){
       </div>
     </div>
     <div class="tabs">
-      ${PROJEKT_TABS.map(t=>`<button class="tabBtn ${tab===t.id?"active":""}" onclick="goTo('#projekte/${escAttr(p.id)}/${t.id}')">${t.icon} ${t.label}</button>`).join("")}
+      ${PROJEKT_TABS.map((t,i)=>(i>0 && t.group!==PROJEKT_TABS[i-1].group ? `<div class="tabDivider"></div>` : "")+`<button class="tabBtn ${tab===t.id?"active":""}" onclick="goTo('#projekte/${escAttr(p.id)}/${t.id}')">${t.icon} ${t.label}</button>`).join("")}
     </div>
     <div id="projektTabBody"></div>
   `;
