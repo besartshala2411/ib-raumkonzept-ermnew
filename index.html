@@ -2897,6 +2897,7 @@ function renderProjektDetail(view, id, tab){
         <button class="btn sm" onclick="goTo('#projekte')" style="margin-bottom:8px;">← Alle Projekte</button>
         <div class="pageTitle">${escHtml(p.name)} ${projektStatusBadge(p.status)}</div>
         <div class="pageSub">${escHtml(p.adresse||"–")} · ${escHtml(kundeName(p.kundeId))}</div>
+        ${p.adresse ? mapsLinksHTML(p.adresse) : ""}
       </div>
       <div style="display:flex; gap:8px;">
         <button class="btn" onclick="openAuftragsmappeForm('${escAttr(p.id)}')">📁 Auftragsmappe</button>
@@ -2989,6 +2990,13 @@ function renderTabUebersicht(body, p){
 }
 function updateProjektFortschritt(id, val){
   const p = S.projekte.find(x=>x.id===id); p.fortschritt=Number(val); saveState();
+}
+function mapsLinksHTML(adresse){
+  const q = encodeURIComponent(adresse);
+  return `<div style="display:flex; gap:6px; margin-top:6px;">
+    <a class="btn sm" href="https://www.google.com/maps/search/?api=1&query=${q}" target="_blank" rel="noopener">🧭 Google Maps</a>
+    <a class="btn sm" href="https://maps.apple.com/?q=${q}" target="_blank" rel="noopener">🧭 Apple Maps</a>
+  </div>`;
 }
 
 function renderTabTeam(body, p){
