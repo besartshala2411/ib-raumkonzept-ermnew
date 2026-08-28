@@ -280,19 +280,18 @@ tr:hover td{background:var(--card2);}
 <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js" defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js" defer></script>
 
+<!-- Phase-1-Modularisierung: reine Formatter-Funktionen, bewusst OHNE defer geladen,
+     damit sie synchron vor dem Haupt-Script verfügbar sind (keine Race Condition). -->
+<script src="./src/core/formatters.js"></script>
+<script src="./src/core/utils.js"></script>
+
 <script>
 "use strict";
 
 /* =========================================================
    UTILITIES
 ========================================================= */
-function escHtml(v){
-  return String(v==null?"":v).replace(/[&<>'"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]));
-}
-function escAttr(v){
-  return String(v==null?"":v).replace(/[&<>'"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]));
-}
-function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,9); }
+/* uid: Phase 1 nach ./src/core/utils.js verschoben. */
 function dataUrlToFile(dataURL, filename){
   const comma = dataURL.indexOf(",");
   const meta = dataURL.slice(0, comma);
@@ -358,28 +357,8 @@ function saveOrShareBlob(blob, filename){
   }
   download(blob, filename, blob.type||"application/pdf");
 }
-function todayISO(){ return new Date().toISOString().slice(0,10); }
-function nowHM(){ const d=new Date(); return String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0"); }
-function fmtDate(iso){
-  if(!iso) return "–";
-  const d = new Date(iso);
-  if(isNaN(d)) return iso;
-  return d.toLocaleDateString("de-DE",{day:"2-digit",month:"2-digit",year:"numeric"});
-}
-function fmtDateTime(iso){
-  if(!iso) return "–";
-  const d = new Date(iso);
-  if(isNaN(d)) return iso;
-  return d.toLocaleDateString("de-DE",{day:"2-digit",month:"2-digit",year:"numeric"})+" "+d.toLocaleTimeString("de-DE",{hour:"2-digit",minute:"2-digit"});
-}
-function fmtCurrency(n){
-  n = Number(n)||0;
-  return n.toLocaleString("de-DE",{style:"currency",currency:"EUR"});
-}
-function debounce(fn, ms){
-  let t;
-  return function(...args){ clearTimeout(t); t=setTimeout(()=>fn.apply(this,args), ms); };
-}
+/* escHtml, escAttr, fmtDate, fmtDateTime, fmtCurrency: Phase 1 nach ./src/core/formatters.js verschoben.
+   todayISO, nowHM, debounce: Phase 1 nach ./src/core/utils.js verschoben. */
 function download(content, filename, mime){
   const blob = content instanceof Blob ? content : new Blob([content],{type:mime||"application/octet-stream"});
   const a = document.createElement("a");

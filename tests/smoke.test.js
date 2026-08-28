@@ -7,6 +7,15 @@ let html = fs.readFileSync(APP_PATH, "utf8");
 // Strip external CDN <script src> tags — offline sandbox, and app already
 // feature-detects window.jspdf / window.QRCode / window.supabase before use.
 html = html.replace(/<script src="https:[^>]*><\/script>\s*/g, "");
+// Local module scripts (e.g. ./src/core/formatters.js) are NOT stripped — jsdom is given a
+// fake "http://localhost/" base URL with no real server behind it, so a <script src="./...">
+// would try a real network fetch and fail silently. Inline their file content directly instead,
+// so the extracted module actually executes in the test the same way it does in a real browser.
+html = html.replace(/<script src="\.\/([^"]+)"><\/script>/g, (match, relPath) => {
+  const filePath = path.join(__dirname, "..", relPath);
+  const content = fs.readFileSync(filePath, "utf8");
+  return "<script>\n" + content + "\n</script>";
+});
 
 let failures = 0, passed = 0;
 function assert(cond, msg) {
@@ -660,6 +669,33 @@ async function main() {
   try { window.saveVorlageInstanz(); } catch (e) { saveOk = false; saveMsg = e.message; }
   assert(saveOk, "saveVorlageInstanz() wirft keine Exception, auch wenn jsPDF (hier) nicht geladen ist" + (saveOk ? "" : " (" + saveMsg + ")"));
   assert(window.S.vorlagen.some((v) => v.projektId === "p1"), "Ausgefüllte Vorlage wird mit der Projekt-ID gespeichert");
+
+  console.log("\n== Phase 1: core/formatters.js (extrahiert aus index.html) ==");
+  assert(window.fmtCurrency(0) === "0,00 €", "fmtCurrency(0) formatiert als 0,00 €");
+  assert(window.fmtCurrency(1234.5) === "1.234,50 €", "fmtCurrency() formatiert Dezimalwerte mit deutschem Tausendertrennzeichen");
+  assert(window.fmtCurrency(26394.2) === "26.394,20 €", "fmtCurrency() rundet/formatiert Cent-Beträge korrekt");
+  assert(window.fmtCurrency(1000000) === "1.000.000,00 €", "fmtCurrency() formatiert große Beträge mit mehreren Tausendertrennzeichen");
+  assert(window.fmtCurrency(-5) === "-5,00 €", "fmtCurrency() formatiert negative Beträge");
+  assert(window.fmtCurrency(undefined) === "0,00 €", "fmtCurrency(undefined) fällt auf 0,00 € zurück (bestehendes Verhalten: Number(n)||0)");
+
+  assert(window.fmtDate("2026-08-28") === "28.08.2026", "fmtDate() formatiert ein gültiges ISO-Datum als TT.MM.JJJJ");
+  assert(window.fmtDate("") === "–", "fmtDate() zeigt bei leerem Wert einen Gedankenstrich");
+  assert(window.fmtDate(null) === "–", "fmtDate(null) zeigt einen Gedankenstrich");
+  assert(window.fmtDate("nicht-valide") === "nicht-valide", "fmtDate() gibt bei nicht parsbarem Wert den Originalwert zurück (bestehendes Verhalten)");
+
+  assert(window.escHtml("<script>") === "&lt;script&gt;", "escHtml() escaped spitze Klammern");
+  assert(window.escHtml("Tom & Jerry") === "Tom &amp; Jerry", "escHtml() escaped kaufmännisches Und");
+  assert(window.escHtml('"quoted"') === "&quot;quoted&quot;", "escHtml() escaped doppelte Anführungszeichen");
+  assert(window.escHtml("O'Brien") === "O&#39;Brien", "escHtml() escaped einfaches Anführungszeichen");
+  assert(window.escHtml(null) === "", "escHtml(null) liefert leeren String (bestehendes Verhalten)");
+  assert(window.escAttr('<a href="x">') === "&lt;a href=&quot;x&quot;&gt;", "escAttr() escaped identisch zu escHtml (bestehendes Verhalten, bewusst nicht verändert)");
+
+  console.log("\n== Phase 1: core/utils.js (extrahiert aus index.html) ==");
+  assert(typeof window.uid() === "string" && window.uid().length > 0, "uid() liefert einen nicht-leeren String");
+  assert(window.uid() !== window.uid(), "uid() liefert bei zwei Aufrufen unterschiedliche Werte");
+  assert(/^\d{4}-\d{2}-\d{2}$/.test(window.todayISO()), "todayISO() liefert das Format JJJJ-MM-TT");
+  assert(/^\d{2}:\d{2}$/.test(window.nowHM()), "nowHM() liefert das Format HH:MM");
+  assert(typeof window.debounce === "function", "debounce() ist verfügbar (wird intern für saveState benötigt)");
 
   console.log("\n=================================");
   console.log(passed + " Tests bestanden, " + failures + " fehlgeschlagen.");
