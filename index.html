@@ -2167,7 +2167,7 @@ function exportUrlaubantragPDF(id){
     ["Status:", u.status],
   ];
   lines.forEach(([label,val])=>{ doc.setFont(undefined,"bold"); doc.text(label,15,y); doc.setFont(undefined,"normal"); doc.text(val,70,y); y+=8; });
-  if(u.kommentar){ y+=2; doc.setFont(undefined,"bold"); doc.text("Kommentar:",15,y); doc.setFont(undefined,"normal"); y+=6; doc.text(doc.splitTextToSize(u.kommentar,180),15,y); y+=14; }
+  if(u.kommentar){ y+=2; doc.setFont(undefined,"bold"); doc.text("Kommentar:",15,y); doc.setFont(undefined,"normal"); y+=6; y = pdfWriteWrapped(doc, u.kommentar, 15, y, 180) + 14; }
   y += 16;
   if(y>220){ doc.addPage(); y=20; }
   if(u.unterschrift){ try{ doc.addImage(u.unterschrift,"PNG",15,y,60,26); }catch(e){} }
@@ -3850,9 +3850,7 @@ function buildBautagebuchDoc(p){
     if(y>250){ doc.addPage(); y=20; }
     doc.setFont(undefined,"bold"); doc.text(fmtDate(e.datum)+(e.wetter?"  ·  "+e.wetter:""), 15, y); doc.setFont(undefined,"normal");
     y+=6;
-    const lines = doc.splitTextToSize(e.text, 180);
-    doc.text(lines, 15, y);
-    y += lines.length*5 + 4;
+    y = pdfWriteWrapped(doc, e.text, 15, y, 180, {bottom:250}) + 4;
     if(e.unterschrift){
       if(y>240){ doc.addPage(); y=20; }
       try{ doc.addImage(e.unterschrift,"PNG",15,y,35,16); }catch(err){}
@@ -3990,8 +3988,7 @@ function buildAuftragsmappeDeckblatt(p, projektRechnungen){
 
   if(p.team && p.team.length){
     doc.setFont(undefined,"bold"); doc.text("Team", 15, y); doc.setFont(undefined,"normal"); y+=6;
-    const lines = doc.splitTextToSize(p.team.map(mid=>mitarbeiterName(mid)).join(", "), 180);
-    doc.text(lines, 15, y); y += lines.length*5 + 6;
+    y = pdfWriteWrapped(doc, p.team.map(mid=>mitarbeiterName(mid)).join(", "), 15, y, 180) + 6;
   }
   if(p.material && p.material.length){
     if(y>230){ doc.addPage(); y=20; }
@@ -4540,6 +4537,18 @@ function pdfTable(doc, y, headers, rows, colWidths, colX){
   });
   return y;
 }
+function pdfWriteWrapped(doc, text, x, y, maxWidth, opts){
+  opts = opts || {};
+  const lineHeight = opts.lineHeight || 5;
+  const bottom = opts.bottom || 270;
+  const lines = doc.splitTextToSize(String(text==null?"":text), maxWidth);
+  lines.forEach(line=>{
+    if(y>bottom){ doc.addPage(); y=20; }
+    doc.text(line, x, y);
+    y += lineHeight;
+  });
+  return y;
+}
 
 /* =========================================================
    MODULE: DOKUMENTE (zentrale Ablage)
@@ -4723,7 +4732,7 @@ function buildRechnungDoc(r){
   doc.setFont(undefined,"bold");
   doc.text("Gesamt:", 150, y); doc.text(fmtCurrency(rechnungSumme(r)), 195, y, {align:"right"});
   doc.setFont(undefined,"normal");
-  if(r.notiz){ y+=12; doc.setFontSize(9); doc.text(doc.splitTextToSize(r.notiz,180), 15, y); y+=10; }
+  if(r.notiz){ y+=12; doc.setFontSize(9); y = pdfWriteWrapped(doc, r.notiz, 15, y, 180) + 10; }
   if(r.unterschrift){
     y += 14;
     if(y>230){ doc.addPage(); y=20; }
@@ -4852,8 +4861,7 @@ function exportVertragPDF(id){
   const doc = pdfNewDoc();
   let y = pdfHeader(doc, v.typ);
   doc.setFontSize(10);
-  const lines = doc.splitTextToSize(v.inhalt, 180);
-  doc.text(lines, 15, y); y += lines.length*5 + 15;
+  y = pdfWriteWrapped(doc, v.inhalt, 15, y, 180) + 15;
   if(y>230){ doc.addPage(); y=20; }
   doc.setFontSize(9);
   if(v.unterschriftAG) doc.addImage(v.unterschriftAG,"PNG",15,y,60,26);
@@ -5081,9 +5089,9 @@ function buildVorlagePDFDoc(v){
       y += 7;
     }else{
       doc.setFont(undefined,"bold"); doc.text(f.label+":", 15, y); doc.setFont(undefined,"normal");
-      const lines = doc.splitTextToSize(String(val), 130);
-      doc.text(lines, 65, y);
-      y += Math.max(6, lines.length*5) + 3;
+      const yBefore = y;
+      y = pdfWriteWrapped(doc, val, 65, y, 130, {bottom:260});
+      y = Math.max(y, yBefore+6) + 3;
     }
   });
   y += 10;
@@ -6139,8 +6147,8 @@ function exportBriefPDF(){
   const doc = pdfNewDoc();
   let y = pdfHeader(doc, d.betreff||"Schreiben");
   doc.setFontSize(10.5);
-  if(d.empfaenger){ const lines = doc.splitTextToSize(d.empfaenger,90); doc.text(lines, 15, y); y += lines.length*5+10; }
-  doc.text(doc.splitTextToSize(d.text||"",180), 15, y);
+  if(d.empfaenger){ y = pdfWriteWrapped(doc, d.empfaenger, 15, y, 90) + 10; }
+  pdfWriteWrapped(doc, d.text||"", 15, y, 180);
   pdfFooter(doc);
   saveOrSharePdf(doc, (d.betreff||"Brief").replace(/[^a-z0-9]+/gi,"_")+".pdf");
   toast("Brief-PDF erstellt.", "success");
