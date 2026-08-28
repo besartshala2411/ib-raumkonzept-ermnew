@@ -1,12 +1,14 @@
-name: Phase 3B CI
+name: Phase 3B/3C CI
 
 on:
   push:
     branches:
       - phase3b-prep
+      - phase3c-task-runtime-flag
   pull_request:
     branches:
       - phase3a-preflight
+      - phase3b-prep
   workflow_dispatch:
 
 permissions:
