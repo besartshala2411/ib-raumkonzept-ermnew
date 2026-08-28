@@ -3527,17 +3527,29 @@ function deleteMaterial(pid, mid){
 function buildLvDocPositions(p, positionen, mitPreisen, subtitle){
   const doc = pdfNewDoc();
   let y = pdfHeader(doc, "Leistungsverzeichnis"+(subtitle ? " – "+subtitle : (mitPreisen?"":" (ohne Preise)")));
-  doc.setFontSize(10.5);
-  doc.text("Bauvorhaben: "+p.name, 15, y); y+=6;
-  doc.text("Ausführungsort: "+(p.adresse||"–"), 15, y); y+=8;
-  const kunde = S.kunden.find(k=>k.id===p.kundeId);
-  if(kunde){
-    doc.setFont(undefined,"bold"); doc.text("Auftraggeber", 15, y); doc.setFont(undefined,"normal"); y+=5;
-    doc.text(kunde.name, 15, y); y+=5;
-    if(kunde.adresse){ doc.text(kunde.adresse, 15, y); y+=5; }
-    y+=3;
-  }
-  doc.text("Datum: "+fmtDate(todayISO()), 15, y); y+=10;
+  const f = S.firma;
+  const firmaAdresse = [f.strasse, [f.plz,f.ort].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+
+  const boxTop = y;
+  doc.setDrawColor(220); doc.setFillColor(247,248,250);
+  doc.roundedRect(15, boxTop, 180, 30, 2, 2, "FD");
+  let iy = boxTop + 7;
+  doc.setFontSize(8.5); doc.setTextColor(130);
+  doc.text("BAUVORHABEN", 20, iy);
+  doc.text("AUFTRAGGEBER", 110, iy);
+  doc.setTextColor(0); iy += 5;
+  doc.setFontSize(10.5); doc.setFont(undefined,"bold");
+  doc.text(p.name, 20, iy);
+  doc.text(f.name||"–", 110, iy);
+  doc.setFont(undefined,"normal"); iy += 5;
+  doc.setFontSize(9.5);
+  doc.text(p.adresse||"–", 20, iy);
+  doc.text(firmaAdresse||"–", 110, iy);
+  iy += 5;
+  doc.setFontSize(8.5); doc.setTextColor(130);
+  doc.text("Datum: "+fmtDate(todayISO()), 20, iy);
+  doc.setTextColor(0);
+  y = boxTop + 30 + 10;
 
   const groups = [];
   positionen.forEach(pos=>{
@@ -3547,27 +3559,44 @@ function buildLvDocPositions(p, positionen, mitPreisen, subtitle){
     g.items.push(pos);
   });
   const headers = mitPreisen ? ["Pos.","Bezeichnung","Menge","Einheit","Preis (€)"] : ["Pos.","Bezeichnung","Menge","Einheit"];
-  const colX = mitPreisen ? [15,32,140,160,195] : [15,32,150,175];
+  const colX = mitPreisen ? [18,34,140,160,193] : [18,34,150,175];
   groups.forEach((g,gi)=>{
     const grpNr = String(gi+1).padStart(2,"0");
     if(g.key){
-      if(y>255){ doc.addPage(); y=20; }
-      doc.setFont(undefined,"bold"); doc.setFontSize(11.5);
-      doc.text(grpNr+" "+g.key, 15, y); y+=7;
-      doc.setFont(undefined,"normal"); doc.setFontSize(10.5);
+      if(y>245){ doc.addPage(); y=20; }
+      doc.setFillColor(232,239,250);
+      doc.rect(15, y-5.5, 180, 8.5, "F");
+      doc.setFont(undefined,"bold"); doc.setFontSize(11); doc.setTextColor(30,64,120);
+      doc.text(grpNr+"   "+g.key, 19, y);
+      doc.setTextColor(0); doc.setFont(undefined,"normal"); doc.setFontSize(10.5);
+      y += 9;
     }
-    const rows = g.items.map((m,i)=>{
+    doc.setFontSize(8.5); doc.setFont(undefined,"bold"); doc.setTextColor(120);
+    headers.forEach((h,i)=>doc.text(h, colX[i], y));
+    doc.setFont(undefined,"normal"); doc.setTextColor(0); doc.setFontSize(10);
+    doc.setDrawColor(200); doc.line(15,y+2,195,y+2);
+    y += 7;
+    g.items.forEach((m,i)=>{
+      if(y>270){ doc.addPage(); y=20; }
+      if(i%2===1){ doc.setFillColor(249,250,251); doc.rect(15,y-4.5,180,6,"F"); }
       const posNr = grpNr+"."+String((i+1)*10).padStart(3,"0");
-      return mitPreisen
+      const row = mitPreisen
         ? [posNr, m.bezeichnung, String(m.menge), m.einheit, m.preis?fmtCurrency(m.preis):"–"]
         : [posNr, m.bezeichnung, String(m.menge), m.einheit];
+      row.forEach((cell,ci)=>doc.text(String(cell), colX[ci], y, ci===row.length-1?{align:"right"}:{}));
+      y += 6;
     });
-    y = pdfTable(doc, y, headers, rows, null, colX);
     y += 8;
   });
   if(mitPreisen){
     const summe = positionen.reduce((s,m)=>s+(Number(m.preis)||0),0);
-    if(summe){ if(y>260){doc.addPage(); y=20;} doc.setFont(undefined,"bold"); doc.text("Gesamtsumme: "+fmtCurrency(summe), 195, y, {align:"right"}); doc.setFont(undefined,"normal"); }
+    if(summe){
+      if(y>255){doc.addPage(); y=20;}
+      doc.setDrawColor(60); doc.line(140,y,195,y); y += 7;
+      doc.setFontSize(12.5); doc.setFont(undefined,"bold");
+      doc.text("Gesamtsumme: "+fmtCurrency(summe), 195, y, {align:"right"});
+      doc.setFont(undefined,"normal"); doc.setFontSize(10.5);
+    }
   }
   pdfFooter(doc);
   return doc;
