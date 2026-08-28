@@ -49,3 +49,6 @@ jobs:
 
       - name: Task runtime browser bridge tests
         run: npm run test:task-runtime-bootstrap
+
+      - name: Task runtime auth race tests
+        run: npm run test:task-runtime-auth-race
