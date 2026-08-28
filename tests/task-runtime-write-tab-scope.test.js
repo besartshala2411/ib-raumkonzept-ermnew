@@ -34,6 +34,15 @@ function tick(){ return new Promise(resolve=>setTimeout(resolve,0)); }
   assert(updates===1 && legacyUpdates===0,'sessionStorage-WRITE-Flag aktiviert Mutation nur im aktuellen Tab-Kontext');
   assert(bootstrap.getTaskRuntime().tasks[0].status==='erledigt','tab-lokal freigegebener Write aktualisiert Runtime-Cache');
 
+  // Wird das READ-Flag in einer bereits initialisierten Supabase-Runtime entfernt,
+  // darf ein zurückgelassenes WRITE-Flag bis zum Reload/Reset nicht weiter schreiben.
+  local.IB_TASKS_SUPABASE_PILOT=null;
+  global.setAufgabeStatus('db','offen');
+  await tick();
+  assert(updates===1 && legacyUpdates===0,'entferntes READ-Flag stoppt WRITE sofort auch bei stale Supabase-Runtime');
+  assert(/nicht schreibbereit/i.test(lastToast),'READ-Deaktivierung in stale Runtime wird sichtbar fail-closed blockiert');
+
+  local.IB_TASKS_SUPABASE_PILOT='1';
   session.IB_TASKS_SUPABASE_WRITE_PILOT=null;
   global.setAufgabeStatus('db','offen');
   await tick();
@@ -43,6 +52,22 @@ function tick(){ return new Promise(resolve=>setTimeout(resolve,0)); }
   global.setAufgabeStatus('db','offen');
   await tick();
   assert(updates===1 && legacyUpdates===0,'fehlendes sessionStorage bleibt fail-closed und fällt nicht auf localStorage-WRITE zurück');
+
+  Object.defineProperty(global,'sessionStorage',{
+    configurable:true,
+    get(){ throw new Error('session storage blocked'); }
+  });
+  global.setAufgabeStatus('db','offen');
+  await tick();
+  assert(updates===1 && legacyUpdates===0,'gesperrtes sessionStorage bleibt ebenfalls fail-closed');
+  delete global.sessionStorage;
+
+  // Erst nach deaktiviertem READ-Flag plus Runtime-Reset (entspricht dem Reload im
+  // Runbook) darf der unveränderte Legacy-Pfad wieder Schreibzugriffe übernehmen.
+  local.IB_TASKS_SUPABASE_PILOT=null;
+  bootstrap.resetTaskRuntime('pilot-disabled',global.S.aufgaben);
+  global.setAufgabeStatus('legacy','erledigt');
+  assert(legacyUpdates===1 && updates===1,'nach explizitem Pilot-Reset ist Legacy-Schreiben wieder verfügbar');
 
   console.log(`\n${passed} Tests bestanden, ${failed} fehlgeschlagen.`);
   process.exit(failed?1:0);
