@@ -586,6 +586,7 @@ function ensureShape(s){
     if(!p.subunternehmer) p.subunternehmer=[];
     if(!p.fotos) p.fotos=[];
     if(!p.dokumente) p.dokumente=[];
+    if(!p.grundrisse) p.grundrisse=[];
     if(!p.material) p.material=[];
     if(!p.ausschreibung) p.ausschreibung=[];
     if(!p.bautagebuch) p.bautagebuch=[];
@@ -3002,7 +3003,7 @@ async function renderProjekteKarte(list){
   if(statusEl) statusEl.textContent = markers.length ? "" : (withAdresse.length ? "Keine Adresse konnte auf der Karte gefunden werden." : "");
 }
 function openProjektForm(id){
-  const p = id ? S.projekte.find(x=>x.id===id) : {id:uid(), name:"", kundeId:"", adresse:"", status:"In Planung", budget:0, deadline:"", fortschritt:0, team:[], subunternehmer:[], fotos:[], dokumente:[], material:[], ausschreibung:[], bautagebuch:[], zugaenge:[], checkliste:[], aufmasse:[], bauzeitenplan:[], chat:[]};
+  const p = id ? S.projekte.find(x=>x.id===id) : {id:uid(), name:"", kundeId:"", adresse:"", status:"In Planung", budget:0, deadline:"", fortschritt:0, team:[], subunternehmer:[], fotos:[], dokumente:[], grundrisse:[], material:[], ausschreibung:[], bautagebuch:[], zugaenge:[], checkliste:[], aufmasse:[], bauzeitenplan:[], chat:[]};
   openModal(`
     <div class="modalHead"><div class="modalTitle">${id?"Projekt bearbeiten":"Neues Projekt"}</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
     <div class="formRow"><label>Projektname</label><div class="micWrap"><input id="pName" type="text" value="${escAttr(p.name)}">${fieldMic("pName")}</div></div>
@@ -3083,13 +3084,64 @@ function renderProjektDetail(view, id, tab){
   (renderers[tab]||renderTabUebersicht)(body, p);
 }
 
+function projektBauzeitraum(p){
+  const phasen = p.bauzeitenplan||[];
+  const vonListe = phasen.map(ph=>ph.von).filter(Boolean).sort();
+  const bisListe = phasen.map(ph=>ph.bis).filter(Boolean).sort();
+  return { beginn: vonListe[0]||null, ende: bisListe.length?bisListe[bisListe.length-1]:null };
+}
 function renderTabUebersicht(body, p){
   const admin = hasAdminAccess();
   const offeneAufgaben = S.aufgaben.filter(a=>a.projektId===p.id && a.status!=="erledigt");
+  const ueberfaelligeAufgaben = offeneAufgaben.filter(a=>a.faellig && a.faellig<todayISO());
   const projektRechnungen = admin ? S.rechnungen.filter(r=>r.projektId===p.id) : [];
   const offenerBetrag = projektRechnungen.filter(r=>rechnungEffectiveStatus(r)!=="bezahlt").reduce((s,r)=>s+rechnungSumme(r),0);
   const aktuelleBauphase = (p.bauzeitenplan||[]).slice().sort((a,b)=>(a.von||"").localeCompare(b.von||"")).find(ph=>bauphaseEffectiveStatus(ph)!=="fertig");
+  const zeitraum = projektBauzeitraum(p);
+  const letzterGrundriss = p.grundrisse && p.grundrisse.length ? p.grundrisse[p.grundrisse.length-1] : null;
   body.innerHTML = `
+    <div class="grid cols-3" style="margin-bottom:16px;">
+      <div class="kpi"><div class="kpiIcon">🚀</div><div class="kpiVal">${zeitraum.beginn?fmtDate(zeitraum.beginn):"–"}</div><div class="kpiLabel">Baubeginn</div></div>
+      <div class="kpi"><div class="kpiIcon">🏁</div><div class="kpiVal">${zeitraum.ende?fmtDate(zeitraum.ende):(p.deadline?fmtDate(p.deadline):"–")}</div><div class="kpiLabel">Fertigstellung</div></div>
+      <div class="kpi"><div class="kpiIcon">💶</div><div class="kpiVal">${fmtCurrency(p.budget)}</div><div class="kpiLabel">Auftragsvolumen</div></div>
+    </div>
+    <div class="grid cols-3" style="margin-bottom:16px;">
+      <div class="kpi">
+        <div class="kpiIcon" style="background:${ueberfaelligeAufgaben.length?"var(--red-bg)":"var(--green-bg)"};">${ueberfaelligeAufgaben.length?"⚠️":"✅"}</div>
+        <div class="kpiVal">${offeneAufgaben.length}</div>
+        <div class="kpiLabel">Offene Aufgaben${ueberfaelligeAufgaben.length?` · ${ueberfaelligeAufgaben.length} überfällig`:""}</div>
+      </div>
+      <div class="kpi">
+        <div class="kpiIcon" style="background:${p.dokumente.length?"var(--green-bg)":"var(--amber-bg)"};">${p.dokumente.length?"📄":"⚠️"}</div>
+        <div class="kpiVal">${p.dokumente.length}</div>
+        <div class="kpiLabel">Dokumente hinterlegt</div>
+      </div>
+      <div class="kpi">
+        <div class="kpiIcon" style="background:${p.zugaenge.length?"var(--green-bg)":"var(--amber-bg)"};">${p.zugaenge.length?"🔓":"🔒"}</div>
+        <div class="kpiVal">${p.zugaenge.length?"Vorhanden":"Keine"}</div>
+        <div class="kpiLabel">Zugänge/Schlüssel</div>
+      </div>
+    </div>
+    <div class="grid cols-2" style="margin-bottom:16px;">
+      <div class="card" style="padding:0; overflow:hidden;">
+        <div style="padding:14px 16px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border);">
+          <b>📐 Grundriss</b>
+          <label class="btn sm" style="margin:0;">⬆ Hochladen<input type="file" accept="image/*" style="display:none;" onchange="addProjektGrundriss('${escAttr(p.id)}', this)"></label>
+        </div>
+        ${letzterGrundriss ? `
+          <img src="${escAttr(letzterGrundriss.dataURL)}" style="width:100%; display:block; max-height:280px; object-fit:contain; background:#fff;">
+          <div style="padding:8px 16px; display:flex; justify-content:space-between; align-items:center; font-size:12px; color:var(--text-dim);">
+            <span>${escHtml(letzterGrundriss.name)}</span>
+            <button class="iconBtn" onclick="deleteProjektGrundriss('${escAttr(p.id)}','${escAttr(letzterGrundriss.id)}')">🗑️</button>
+          </div>
+        ` : `<div class="empty" style="padding:40px 20px;">Noch kein Grundriss hochgeladen.</div>`}
+      </div>
+      <div class="card" style="padding:0; overflow:hidden;">
+        <div style="padding:14px 16px; border-bottom:1px solid var(--border);"><b>🗺️ Standort</b></div>
+        <div id="pjDetailMapStatus" class="pageSub" style="padding:0 16px;"></div>
+        <div id="pjDetailMapWrap" style="height:280px;"></div>
+      </div>
+    </div>
     <div class="grid cols-2">
       <div class="card">
         <b>Details</b>
@@ -3151,6 +3203,52 @@ function renderTabUebersicht(body, p){
       </div>`:""}
     </div>
   `;
+  renderProjektDetailKarte(p);
+}
+async function addProjektGrundriss(pid, input){
+  const p = S.projekte.find(x=>x.id===pid);
+  for(const file of input.files){
+    try{
+      const dataURL = await fileToDataURL(file);
+      p.grundrisse.push({id:uid(), name:file.name, dataURL, datum:new Date().toISOString()});
+    }catch(e){ toast("Datei-Fehler: "+e.message, "error"); }
+  }
+  saveState(); route(location.hash);
+}
+function deleteProjektGrundriss(pid, gid){
+  const p = S.projekte.find(x=>x.id===pid);
+  deleteItemWithUndo(p.grundrisse, gid, "Grundriss gelöscht.");
+}
+let _pjDetailMapInstance = null;
+let _pjDetailMapToken = 0;
+async function renderProjektDetailKarte(p){
+  const mapWrap = document.getElementById("pjDetailMapWrap");
+  if(!mapWrap) return;
+  if(!window.L){ setTimeout(()=>renderProjektDetailKarte(p), 300); return; }
+  const myToken = ++_pjDetailMapToken;
+  if(_pjDetailMapInstance){ try{ _pjDetailMapInstance.remove(); }catch(e){} _pjDetailMapInstance = null; }
+  if(!p.adresse){ mapWrap.innerHTML = `<div class="empty" style="padding:40px 20px;">Keine Adresse hinterlegt.</div>`; return; }
+  const map = L.map(mapWrap).setView([51.16,10.45], 6);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>-Mitwirkende'
+  }).addTo(map);
+  _pjDetailMapInstance = map;
+  const statusEl = document.getElementById("pjDetailMapStatus");
+  let geo = (p.geo && p.geo.forAddress===p.adresse) ? p.geo : null;
+  if(!geo){
+    if(statusEl) statusEl.textContent = "📍 Standort wird ermittelt …";
+    geo = await geocodeAddress(p.adresse);
+    if(geo){ p.geo = {lat:geo.lat, lng:geo.lng, forAddress:p.adresse}; saveState(); }
+  }
+  if(myToken !== _pjDetailMapToken || !document.getElementById("pjDetailMapWrap")) return;
+  if(geo){
+    L.marker([geo.lat, geo.lng]).addTo(map);
+    map.setView([geo.lat, geo.lng], 15);
+    if(statusEl) statusEl.textContent = "";
+  }else if(statusEl){
+    statusEl.textContent = "Adresse konnte nicht gefunden werden.";
+  }
 }
 function updateProjektFortschritt(id, val){
   const p = S.projekte.find(x=>x.id===id); p.fortschritt=Number(val); saveState();
@@ -5772,7 +5870,7 @@ function confirmLvImport(){
   const budget = summe || d.budgetSchaetzung || 0;
   const p = {
     id:uid(), name, kundeId, adresse, status:"In Planung", budget, deadline:"", fortschritt:0,
-    team:[], subunternehmer:[], fotos:[], dokumente:[],
+    team:[], subunternehmer:[], fotos:[], dokumente:[], grundrisse:[],
     material: d.positionen.map(pos=>({id:uid(), titel:pos.titel||"", bezeichnung:pos.bezeichnung||"Position", beschreibung:pos.beschreibung||"", menge:pos.menge||0, einheit:pos.einheit||"", preis:pos.preis||0, datum:todayISO()})),
     ausschreibung:[], bautagebuch:[], zugaenge:[], checkliste:[], aufmasse:[], bauzeitenplan:[], chat:[],
   };
