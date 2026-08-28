@@ -27,6 +27,18 @@
     return storageFlagEnabled(storage, TASK_WRITE_FLAG);
   }
 
+  function resetTaskRuntime(reason, legacyTasks) {
+    runtime = {
+      mode: 'legacy',
+      reason: reason || 'reset',
+      tasks: Array.isArray(legacyTasks) ? legacyTasks : null,
+      repository: null,
+      mapper: null,
+    };
+    initializePromise = null;
+    return runtime;
+  }
+
   async function initializeTaskRuntime(options) {
     const opts = options || {};
     const legacyTasks = Array.isArray(opts.legacyTasks) ? opts.legacyTasks : [];
@@ -216,6 +228,11 @@
     const originalEnterApp = global.enterApp;
     if (typeof originalEnterApp === 'function' && !originalEnterApp.__taskPilotReadWrapped) {
       function wrappedEnterApp() {
+        // Auth-/Benutzerwechsel darf niemals Tasks aus einem vorherigen Runtime-Cache
+        // kurz anzeigen. Vor dem ersten Render deshalb immer auf den lokalen Legacy-
+        // Snapshot zurücksetzen; der RLS-gescopte Supabase-READ folgt danach asynchron.
+        const legacyTasks = global.S && Array.isArray(global.S.aufgaben) ? global.S.aufgaben : [];
+        resetTaskRuntime('auth-transition', legacyTasks);
         const result = originalEnterApp.apply(this, arguments);
         Promise.resolve().then(refreshRuntimeAndView).catch(() => null);
         return result;
@@ -223,6 +240,18 @@
       wrappedEnterApp.__taskPilotReadWrapped = true;
       wrappedEnterApp.__taskPilotOriginal = originalEnterApp;
       global.enterApp = wrappedEnterApp;
+    }
+
+    const originalLogout = global.logout;
+    if (typeof originalLogout === 'function' && !originalLogout.__taskPilotReadWrapped) {
+      function wrappedLogout() {
+        const legacyTasks = global.S && Array.isArray(global.S.aufgaben) ? global.S.aufgaben : [];
+        resetTaskRuntime('logout', legacyTasks);
+        return originalLogout.apply(this, arguments);
+      }
+      wrappedLogout.__taskPilotReadWrapped = true;
+      wrappedLogout.__taskPilotOriginal = originalLogout;
+      global.logout = wrappedLogout;
     }
 
     const shell = global.document && global.document.getElementById('appShell');
@@ -236,6 +265,7 @@
     TASK_WRITE_FLAG,
     isTaskReadPilotRequested,
     isTaskWritePilotEnabled,
+    resetTaskRuntime,
     initializeTaskRuntime,
     getTaskRuntime,
     getVisibleTasks,
