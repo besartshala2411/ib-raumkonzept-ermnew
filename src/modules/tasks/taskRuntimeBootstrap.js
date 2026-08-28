@@ -175,7 +175,11 @@
         return;
       }
       const args = arguments;
-      const key = mutationKey(name, args);
+      const generation = runtimeGeneration;
+      // Der Lock ist an die Auth-/Runtime-Generation gebunden. Nach einem Reset darf
+      // ein verspätetes finally() aus der alten Generation niemals den Lock eines
+      // neuen Writes derselben Aufgabe entfernen.
+      const key = String(generation) + ':' + mutationKey(name, args);
       if (mutationsInFlight.has(key)) {
         mutationBusy();
         return;
@@ -183,7 +187,9 @@
       mutationsInFlight.add(key);
       Promise.resolve()
         .then(() => supabaseHandler.apply(this, args))
-        .catch(mutationFailed)
+        .catch((error) => {
+          if (generation === runtimeGeneration) mutationFailed(error);
+        })
         .finally(() => { mutationsInFlight.delete(key); });
     }
     wrapped.__taskPilotWriteWrapped = true;
