@@ -3488,24 +3488,27 @@ function deleteMaterial(pid, mid){
   const p = S.projekte.find(x=>x.id===pid);
   deleteItemWithUndo(p.material, mid, "Material-Eintrag gelöscht.");
 }
-function buildLvDoc(p, mitPreisen){
+function buildLvDocPositions(p, positionen, mitPreisen, subtitle){
   const doc = pdfNewDoc();
-  let y = pdfHeader(doc, "Leistungsverzeichnis"+(mitPreisen?"":" (ohne Preise)"));
+  let y = pdfHeader(doc, "Leistungsverzeichnis"+(subtitle ? " – "+subtitle : (mitPreisen?"":" (ohne Preise)")));
   doc.setFontSize(10.5);
   doc.text("Projekt: "+p.name, 15, y); y+=6;
   doc.text("Adresse: "+(p.adresse||"–"), 15, y); y+=10;
   const headers = mitPreisen ? ["Pos.","Bezeichnung","Menge","Einheit","Preis (€)"] : ["Pos.","Bezeichnung","Menge","Einheit"];
   const colX = mitPreisen ? [15,30,140,160,195] : [15,30,150,175];
-  const rows = p.material.map((m,i)=> mitPreisen
+  const rows = positionen.map((m,i)=> mitPreisen
     ? [String(i+1), m.bezeichnung, String(m.menge), m.einheit, m.preis?fmtCurrency(m.preis):"–"]
     : [String(i+1), m.bezeichnung, String(m.menge), m.einheit]);
   y = pdfTable(doc, y, headers, rows, null, colX);
   if(mitPreisen){
-    const summe = p.material.reduce((s,m)=>s+(Number(m.preis)||0),0);
+    const summe = positionen.reduce((s,m)=>s+(Number(m.preis)||0),0);
     if(summe){ y+=6; doc.setFont(undefined,"bold"); doc.text("Summe: "+fmtCurrency(summe), 195, y, {align:"right"}); doc.setFont(undefined,"normal"); }
   }
   pdfFooter(doc);
   return doc;
+}
+function buildLvDoc(p, mitPreisen){
+  return buildLvDocPositions(p, p.material, mitPreisen);
 }
 function exportLvPDF(pid, mitPreisen){
   const p = S.projekte.find(x=>x.id===pid);
@@ -3568,31 +3571,115 @@ function openAusschreibungForm(pid){
   if(!p.material.length){ toast("Bitte zuerst LV-Positionen im Tab „Material / LV“ anlegen oder importieren.", "warn"); return; }
   const bereitsEingeladen = new Set(p.ausschreibung.map(e=>e.subunternehmerId));
   const verfuegbar = S.subunternehmer.filter(s=>!bereitsEingeladen.has(s.id));
+  window._ausDraft = {
+    pid,
+    original: p.material.map(m=>({bezeichnung:m.bezeichnung, menge:m.menge, einheit:m.einheit, preis:Number(m.preis)||0})),
+    positionen: p.material.map(m=>({bezeichnung:m.bezeichnung, menge:m.menge, einheit:m.einheit, preis:Number(m.preis)||0})),
+  };
   openModal(`
     <div class="modalHead"><div class="modalTitle">📤 LV an Nachunternehmer senden</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
     <div class="pageSub" style="margin-bottom:12px;">Wähle Nachunternehmer aus, die das LV zur Angebotsabgabe erhalten sollen.</div>
-    <div style="display:flex; flex-direction:column; gap:8px; max-height:220px; overflow-y:auto; margin-bottom:14px;">
+    <div style="display:flex; flex-direction:column; gap:8px; max-height:180px; overflow-y:auto; margin-bottom:14px;">
       ${verfuegbar.map(s=>`<label style="display:flex; align-items:center; gap:10px;"><input type="checkbox" class="ausSubChk" value="${escAttr(s.id)}"> ${escHtml(s.firma)}${s.gewerk?` <span class="pageSub">(${escHtml(s.gewerk)})</span>`:""}</label>`).join("") || `<div class="empty">Alle vorhandenen Nachunternehmer wurden bereits eingeladen.</div>`}
     </div>
     <div class="formRow"><label>LV-Variante</label>
-      <div style="display:flex; flex-direction:column; gap:6px;">
-        <label style="display:flex; align-items:center; gap:6px;"><input type="radio" name="ausPreise" value="ohne" checked> Ohne Preise (Nachunternehmer kalkuliert selbst)</label>
-        <label style="display:flex; align-items:center; gap:6px;"><input type="radio" name="ausPreise" value="mit"> Mit Preisen (als Referenz mitschicken)</label>
+      <div style="display:flex; flex-direction:column; gap:8px;">
+        <label style="display:flex; align-items:center; gap:6px;"><input type="radio" name="ausPreise" value="ohne" checked onchange="onAusPreisModeChange()"> Ohne Preise (Nachunternehmer kalkuliert selbst)</label>
+        <label style="display:flex; align-items:center; gap:6px;"><input type="radio" name="ausPreise" value="mit" onchange="onAusPreisModeChange()"> Mit meinen Preisen (100%)</label>
+        <label style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+          <input type="radio" name="ausPreise" value="reduziert" onchange="onAusPreisModeChange()"> Mit reduzierten Preisen
+          <button type="button" class="btn sm" onclick="setAusReduktion(5)">-5%</button>
+          <button type="button" class="btn sm" onclick="setAusReduktion(10)">-10%</button>
+          <button type="button" class="btn sm" onclick="setAusReduktion(15)">-15%</button>
+          <span style="display:inline-flex; align-items:center; gap:4px;"><input id="ausReduktionInput" type="number" step="1" value="10" min="0" max="100" style="width:60px; background:var(--bg2); border:1px solid var(--border); border-radius:6px; padding:4px 6px; color:var(--text);" oninput="onAusReduktionInput()">%</span>
+        </label>
       </div>
     </div>
-    <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="confirmAusschreibung('${escAttr(pid)}')">📤 Senden</button></div>
+    <div id="ausPosWrap" class="hidden">
+      <b style="display:block; margin:12px 0 8px;">Positionen (bearbeitbar)</b>
+      <div class="tableWrap" style="max-height:220px; overflow-y:auto;"><table>
+        <thead><tr><th>Bezeichnung</th><th>Menge</th><th>Einheit</th><th>Preis (€)</th></tr></thead>
+        <tbody id="ausPosBody"></tbody>
+      </table></div>
+    </div>
+    <div class="modalFoot">
+      <button class="btn" onclick="closeModal()">Abbrechen</button>
+      <button class="btn" onclick="previewAusschreibungLv()">👁️ Vorschau</button>
+      <button class="btn primary" onclick="confirmAusschreibung()">📤 Senden</button>
+    </div>
   `, true);
 }
-function confirmAusschreibung(pid){
-  const p = S.projekte.find(x=>x.id===pid);
+function currentAusPreisMode(){
+  const el = document.querySelector('input[name="ausPreise"]:checked');
+  return el ? el.value : "ohne";
+}
+function onAusPreisModeChange(){
+  const mode = currentAusPreisMode();
+  const wrap = document.getElementById("ausPosWrap");
+  if(mode==="ohne"){ wrap.classList.add("hidden"); return; }
+  wrap.classList.remove("hidden");
+  recalcAusPositionen();
+}
+function setAusReduktion(pct){
+  document.getElementById("ausReduktionInput").value = pct;
+  document.querySelector('input[name="ausPreise"][value="reduziert"]').checked = true;
+  document.getElementById("ausPosWrap").classList.remove("hidden");
+  recalcAusPositionen();
+}
+function onAusReduktionInput(){
+  document.querySelector('input[name="ausPreise"][value="reduziert"]').checked = true;
+  document.getElementById("ausPosWrap").classList.remove("hidden");
+  recalcAusPositionen();
+}
+function recalcAusPositionen(){
+  const d = window._ausDraft;
+  const mode = currentAusPreisMode();
+  const pct = mode==="reduziert" ? (Number(document.getElementById("ausReduktionInput").value)||0) : 0;
+  const factor = 1 - (pct/100);
+  d.positionen = d.original.map(pos=>({ ...pos, preis: mode==="reduziert" ? Math.round(pos.preis*factor*100)/100 : pos.preis }));
+  renderAusPosTable();
+}
+function renderAusPosTable(){
+  const tbody = document.getElementById("ausPosBody");
+  if(!tbody) return;
+  tbody.innerHTML = window._ausDraft.positionen.map((p,i)=>`
+    <tr>
+      <td>${escHtml(p.bezeichnung)}</td>
+      <td>${escHtml(p.menge)}</td>
+      <td>${escHtml(p.einheit)}</td>
+      <td><input type="number" step="0.01" value="${escAttr(p.preis)}" oninput="updateAusPos(${i}, this.value)" style="width:90px; background:var(--bg2); border:1px solid var(--border); border-radius:6px; padding:4px 6px; color:var(--text);"></td>
+    </tr>
+  `).join("");
+}
+function updateAusPos(i, val){
+  window._ausDraft.positionen[i].preis = Number(val)||0;
+}
+function previewAusschreibungLv(){
+  const d = window._ausDraft;
+  const p = S.projekte.find(x=>x.id===d.pid);
+  const mode = currentAusPreisMode();
+  const mitPreisen = mode !== "ohne";
+  const doc = buildLvDocPositions(p, d.positionen, mitPreisen, mode==="reduziert" ? "Nachunternehmer-Preise" : (mitPreisen ? "Referenzpreise" : null));
+  const blob = doc.output("blob");
+  const url = URL.createObjectURL(blob);
+  window.open(url, "_blank", "noopener");
+  setTimeout(()=>URL.revokeObjectURL(url), 60000);
+}
+function confirmAusschreibung(){
+  const d = window._ausDraft;
+  const p = S.projekte.find(x=>x.id===d.pid);
   const checked = Array.from(document.querySelectorAll(".ausSubChk:checked")).map(el=>el.value);
   if(!checked.length){ toast("Bitte mindestens einen Nachunternehmer auswählen.", "warn"); return; }
-  const mitPreisen = document.querySelector('input[name="ausPreise"]:checked').value === "mit";
+  const mode = currentAusPreisMode();
+  const mitPreisen = mode !== "ohne";
   checked.forEach(subId=>{
     p.ausschreibung.push({id:uid(), subunternehmerId:subId, versandAm:todayISO(), status:"versendet", angebotSumme:null, angebotNotiz:"", angebotDatum:null});
   });
+  const doc = buildLvDocPositions(p, d.positionen, mitPreisen, mode==="reduziert" ? "Nachunternehmer-Preise" : (mitPreisen ? "Referenzpreise" : null));
+  const suffix = mode==="reduziert" ? "_reduziert" : (mitPreisen ? "" : "_ohne_Preise");
   saveState(); closeModal(); route(location.hash);
-  saveOrSharePdf(buildLvDoc(p, mitPreisen), "LV_"+p.name.replace(/[^a-z0-9]+/gi,"_")+(mitPreisen?"":"_ohne_Preise")+".pdf");
+  saveOrSharePdf(doc, "LV_"+p.name.replace(/[^a-z0-9]+/gi,"_")+suffix+".pdf");
+  window._ausDraft = null;
   toast(checked.length+" Nachunternehmer zur Ausschreibung hinzugefügt. LV zum Versenden bereit.", "success");
 }
 function openAngebotForm(pid, entryId){
