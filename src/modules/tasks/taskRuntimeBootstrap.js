@@ -5,17 +5,26 @@
 (function (global) {
   'use strict';
 
+  const TASK_READ_FLAG = 'IB_TASKS_SUPABASE_PILOT';
   const TASK_WRITE_FLAG = 'IB_TASKS_SUPABASE_WRITE_PILOT';
   let runtime = { mode: 'legacy', reason: 'not-started', tasks: null, repository: null, mapper: null };
   let bridgeInstalled = false;
   let initializePromise = null;
 
-  function isTaskWritePilotEnabled(storage) {
+  function storageFlagEnabled(storage, key) {
     try {
-      return !!storage && storage.getItem(TASK_WRITE_FLAG) === '1';
+      return !!storage && storage.getItem(key) === '1';
     } catch (_) {
       return false;
     }
+  }
+
+  function isTaskReadPilotRequested(storage) {
+    return storageFlagEnabled(storage, TASK_READ_FLAG);
+  }
+
+  function isTaskWritePilotEnabled(storage) {
+    return storageFlagEnabled(storage, TASK_WRITE_FLAG);
   }
 
   async function initializeTaskRuntime(options) {
@@ -91,12 +100,23 @@
   }
 
   function mutationMode() {
-    if (runtime.mode !== 'supabase') return 'legacy';
-    return isTaskWritePilotEnabled(global.localStorage) ? 'supabase-write' : 'supabase-readonly';
+    if (runtime.mode === 'supabase') {
+      return isTaskWritePilotEnabled(global.localStorage) ? 'supabase-write' : 'supabase-readonly';
+    }
+    // Sobald der READ-Pilot ausdrücklich angefordert wurde, ist Legacy-Schreiben kein
+    // zulässiger Fallback mehr. Das gilt auch vor/bei fehlgeschlagenem Preflight.
+    // So kann ein Supabase-Ausfall keine unbemerkte Divergenz zwischen beiden Stores erzeugen.
+    if (isTaskReadPilotRequested(global.localStorage)) return 'pilot-unavailable';
+    return 'legacy';
   }
 
   function blockReadOnlyMutation() {
     notify('Aufgaben-Pilot ist derzeit nur lesend aktiviert. Änderungen wurden nicht gespeichert.', 'warn');
+    rerenderTasks();
+  }
+
+  function blockUnavailableMutation() {
+    notify('Aufgaben-Pilot ist nicht schreibbereit. Änderung wurde aus Sicherheitsgründen nicht im Legacy-State gespeichert.', 'error');
     rerenderTasks();
   }
 
@@ -113,6 +133,10 @@
       if (mode === 'legacy') return original.apply(this, arguments);
       if (mode === 'supabase-readonly') {
         blockReadOnlyMutation();
+        return;
+      }
+      if (mode === 'pilot-unavailable') {
+        blockUnavailableMutation();
         return;
       }
       const args = arguments;
@@ -208,7 +232,9 @@
   }
 
   global.TaskRuntimeBootstrap = {
+    TASK_READ_FLAG,
     TASK_WRITE_FLAG,
+    isTaskReadPilotRequested,
     isTaskWritePilotEnabled,
     initializeTaskRuntime,
     getTaskRuntime,
