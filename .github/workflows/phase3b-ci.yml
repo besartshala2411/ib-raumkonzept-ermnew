@@ -46,3 +46,6 @@ jobs:
 
       - name: Task runtime gate tests
         run: npm run test:task-runtime-gate
+
+      - name: Task runtime browser bridge tests
+        run: npm run test:task-runtime-bootstrap
