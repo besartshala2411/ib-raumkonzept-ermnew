@@ -12,9 +12,10 @@ Den relationalen Aufgabenpfad im Browser kontrolliert für Create, Status-Update
 - Keine neue Supabase-Migration und keine RLS-/Policy-Änderung.
 - Kein Realtime-Cutover.
 - Passwortmodul bleibt unangetastet.
-- WRITE ist nur erlaubt, wenn **beide** Flags explizit gesetzt sind:
-  - `IB_TASKS_SUPABASE_PILOT=1`
-  - `IB_TASKS_SUPABASE_WRITE_PILOT=1`
+- READ und WRITE sind getrennt freizugeben:
+  - `IB_TASKS_SUPABASE_PILOT=1` liegt in `localStorage` und aktiviert den READ-Pilot für die Origin.
+  - `IB_TASKS_SUPABASE_WRITE_PILOT=1` liegt absichtlich in `sessionStorage` und aktiviert WRITE nur im aktuellen Browser-Tab.
+- Ein WRITE-Flag in `localStorage` allein wird ignoriert. Dadurch werden parallel geöffnete Tabs nicht versehentlich schreibend aktiviert.
 - Wenn der READ-Pilot angefordert ist, aber der Supabase-Preflight fehlschlägt, werden Task-Mutationen fail-closed blockiert. Es gibt dann keinen Legacy-Schreibfallback.
 - Bei einem Fehler nach Beginn einer Supabase-Mutation wird niemals dieselbe Mutation zusätzlich in Legacy ausgeführt.
 
@@ -27,15 +28,15 @@ Den relationalen Aufgabenpfad im Browser kontrolliert für Create, Status-Update
 
 ## Aktivierung
 
-Nur nach Freigabe im Test-Browser:
+Nur nach Freigabe im Test-Browser und ausschließlich in dem Tab, in dem der WRITE-Pilot ausgeführt wird:
 
 ```js
 localStorage.setItem('IB_TASKS_SUPABASE_PILOT', '1');
-localStorage.setItem('IB_TASKS_SUPABASE_WRITE_PILOT', '1');
+sessionStorage.setItem('IB_TASKS_SUPABASE_WRITE_PILOT', '1');
 location.reload();
 ```
 
-Danach muss `TaskRuntimeBootstrap.getTaskRuntime().mode` den Wert `supabase` liefern. Ist das nicht der Fall, **keine Mutation durchführen**.
+Danach muss `TaskRuntimeBootstrap.getTaskRuntime().mode` den Wert `supabase` liefern und `TaskRuntimeBootstrap.isTaskWritePilotEnabled(sessionStorage)` muss `true` sein. Ist eine der Bedingungen nicht erfüllt, **keine Mutation durchführen**.
 
 ## Testsequenz
 
@@ -72,7 +73,7 @@ Erwartung:
 
 ### 4. Reload-Kontrolle
 
-Browser neu laden, beide Flags weiterhin aktiv lassen.
+Browser neu laden, READ-Flag und tab-lokales WRITE-Flag weiterhin aktiv lassen.
 
 Erwartung:
 
@@ -85,15 +86,15 @@ WRITE-Flag aktiv lassen, READ-Preflight absichtlich **nicht** manipulieren. Fail
 
 ## Deaktivierung
 
-Nach Abschluss:
+Nach Abschluss im Pilot-Tab:
 
 ```js
-localStorage.removeItem('IB_TASKS_SUPABASE_WRITE_PILOT');
+sessionStorage.removeItem('IB_TASKS_SUPABASE_WRITE_PILOT');
 localStorage.removeItem('IB_TASKS_SUPABASE_PILOT');
 location.reload();
 ```
 
-Erwartung: Task-Modul läuft wieder vollständig über den unveränderten Legacy-Pfad.
+Erwartung: Task-Modul läuft wieder vollständig über den unveränderten Legacy-Pfad. Andere Tabs waren zu keinem Zeitpunkt durch das WRITE-Flag aktiviert.
 
 ## Abbruchkriterien
 
