@@ -1,7 +1,7 @@
 // Phase 3C – Browser-Bootstrap für den kontrollierten Aufgaben-Pilot.
 // Keine automatische Aktivierung: TaskRuntimeGate prüft das explizite localStorage-Flag.
 // READ-Pilot: der Legacy-State wird niemals dauerhaft mit Supabase-Tasks überschrieben.
-// WRITE-Pilot: zusätzliches Flag erforderlich; bei aktivem READ ohne WRITE werden Mutationen blockiert.
+// WRITE-Pilot: zusätzliches tab-lokales sessionStorage-Flag erforderlich; bei aktivem READ ohne WRITE werden Mutationen blockiert.
 (function (global) {
   'use strict';
 
@@ -126,7 +126,9 @@
 
   function mutationMode() {
     if (runtime.mode === 'supabase') {
-      return isTaskWritePilotEnabled(global.localStorage) ? 'supabase-write' : 'supabase-readonly';
+      // WRITE muss absichtlich nur im aktiven Browser-Tab freigegeben werden. localStorage
+      // wäre origin-weit und könnte parallel geöffnete Tabs ungewollt mitschalten.
+      return isTaskWritePilotEnabled(global.sessionStorage) ? 'supabase-write' : 'supabase-readonly';
     }
     // Sobald der READ-Pilot ausdrücklich angefordert wurde, ist Legacy-Schreiben kein
     // zulässiger Fallback mehr. Das gilt auch vor/bei fehlgeschlagenem Preflight.
