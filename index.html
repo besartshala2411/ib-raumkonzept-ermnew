@@ -203,6 +203,10 @@ tr:hover td{background:var(--card2);}
 .gsResultItem:hover{background:var(--card2); border-color:var(--border);}
 .gsResultType{font-size:11px; color:var(--text-dim2);}
 
+.kundeSearchResults{position:absolute; top:100%; left:0; right:0; background:var(--card); border:1px solid var(--border); border-radius:var(--radius-sm); box-shadow:var(--shadow-lg); max-height:220px; overflow-y:auto; z-index:50; margin-top:4px;}
+.kundeSearchItem{padding:8px 12px; font-size:13px; cursor:pointer;}
+.kundeSearchItem:hover{background:var(--card2);}
+
 .progressBar{height:8px; background:var(--bg2); border-radius:20px; overflow:hidden;}
 .progressBar > div{height:100%; background:var(--primary); border-radius:20px;}
 
@@ -1264,6 +1268,35 @@ function clearSigPad(canvasId){
 function mitarbeiterName(id){ const m=S.mitarbeiter.find(x=>x.id===id); return m?m.name:"–"; }
 function kundeName(id){ const k=S.kunden.find(x=>x.id===id); return k?k.name:"–"; }
 function projektName(id){ const p=S.projekte.find(x=>x.id===id); return p?p.name:"–"; }
+function kundeSearchHTML(fieldId, selectedKundeId, placeholder){
+  const k = S.kunden.find(x=>x.id===selectedKundeId);
+  return `<div style="position:relative;">
+    <input type="text" id="${escAttr(fieldId)}_q" placeholder="${escAttr(placeholder||"Kunde suchen…")}" autocomplete="off" value="${escAttr(k?k.name:"")}"
+      oninput="kundeSearchInput('${escAttr(fieldId)}')" onfocus="kundeSearchInput('${escAttr(fieldId)}')"
+      onblur="setTimeout(()=>{const r=document.getElementById('${escAttr(fieldId)}_results'); if(r) r.classList.add('hidden');},150)">
+    <input type="hidden" id="${escAttr(fieldId)}" value="${escAttr(selectedKundeId||"")}">
+    <div id="${escAttr(fieldId)}_results" class="kundeSearchResults hidden"></div>
+  </div>`;
+}
+function kundeSearchInput(fieldId){
+  const q = document.getElementById(fieldId+"_q").value.trim().toLowerCase();
+  const results = document.getElementById(fieldId+"_results");
+  const matches = S.kunden.filter(k=>!q || k.name.toLowerCase().includes(q)).slice(0,30);
+  const emptyOption = `<div class="kundeSearchItem" style="color:var(--text-dim);" onmousedown="kundeSearchPick('${fieldId}','')">– Kein Kunde –</div>`;
+  results.innerHTML = (q?"":emptyOption) + (matches.map(k=>`<div class="kundeSearchItem" onmousedown="kundeSearchPick('${fieldId}','${escAttr(k.id)}')">${escHtml(k.name)}${k.ansprechpartner?` <span class="pageSub">· ${escHtml(k.ansprechpartner)}</span>`:""}</div>`).join("") || `<div class="kundeSearchItem" style="color:var(--text-dim); cursor:default;">Kein Treffer</div>`);
+  results.classList.remove("hidden");
+}
+function kundeSearchPick(fieldId, id){
+  const k = S.kunden.find(x=>x.id===id);
+  document.getElementById(fieldId).value = id;
+  document.getElementById(fieldId+"_q").value = k ? k.name : "";
+  document.getElementById(fieldId+"_results").classList.add("hidden");
+  if(fieldId==="pKunde"){
+    const adresseEl = document.getElementById("pAdresse");
+    if(adresseEl && k && k.adresse && !adresseEl.value.trim()) adresseEl.value = k.adresse;
+  }
+  if(fieldId==="rKunde" && window._rechnungDraft){ window._rechnungDraft.kundeId = id; }
+}
 function rechnungNetto(r){ return (r.positionen||[]).reduce((s,p)=>s+(Number(p.menge)||0)*(Number(p.preis)||0),0); }
 function rechnungMwst(r){ return rechnungNetto(r) * 0.19; }
 function rechnungSumme(r){ return rechnungNetto(r) + rechnungMwst(r); }
@@ -2918,7 +2951,7 @@ function openProjektForm(id){
     <div class="modalHead"><div class="modalTitle">${id?"Projekt bearbeiten":"Neues Projekt"}</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
     <div class="formRow"><label>Projektname</label><div class="micWrap"><input id="pName" type="text" value="${escAttr(p.name)}">${fieldMic("pName")}</div></div>
     <div class="grid cols-2">
-      <div class="formRow"><label>Kunde</label><select id="pKunde"><option value="">–</option>${S.kunden.map(k=>`<option value="${escAttr(k.id)}" ${p.kundeId===k.id?"selected":""}>${escHtml(k.name)}</option>`).join("")}</select></div>
+      <div class="formRow"><label>Kunde</label>${kundeSearchHTML("pKunde", p.kundeId)}</div>
       <div class="formRow"><label>Status</label><select id="pStatus">${PROJEKT_STATI.map(s=>`<option ${p.status===s?"selected":""}>${s}</option>`).join("")}</select></div>
       <div class="formRow" style="grid-column:1/-1;"><label>Adresse</label><input id="pAdresse" type="text" value="${escAttr(p.adresse||"")}"></div>
       <div class="formRow"><label>Budget (€)</label><input id="pBudget" type="number" step="0.01" value="${escAttr(p.budget||0)}"></div>
@@ -3453,12 +3486,12 @@ function renderTabMaterial(body, p){
         </div>
       </div>
       <div class="tableWrap"><table>
-        <thead><tr><th>Bezeichnung</th><th>Menge</th><th>Einheit</th><th>Preis (€)</th><th>Datum</th><th></th></tr></thead>
+        <thead><tr><th>Titel/Gewerk</th><th>Bezeichnung</th><th>Menge</th><th>Einheit</th><th>Preis (€)</th><th>Datum</th><th></th></tr></thead>
         <tbody>
         ${p.material.map(m=>`
-          <tr><td>${escHtml(m.bezeichnung)}</td><td>${escHtml(m.menge)}</td><td>${escHtml(m.einheit)}</td><td>${m.preis?fmtCurrency(m.preis):"–"}</td><td>${fmtDate(m.datum)}</td>
+          <tr><td>${m.titel?escHtml(m.titel):"–"}</td><td>${escHtml(m.bezeichnung)}</td><td>${escHtml(m.menge)}</td><td>${escHtml(m.einheit)}</td><td>${m.preis?fmtCurrency(m.preis):"–"}</td><td>${fmtDate(m.datum)}</td>
           <td style="text-align:right;"><button class="iconBtn" onclick="deleteMaterial('${escAttr(p.id)}','${escAttr(m.id)}')">🗑️</button></td></tr>
-        `).join("") || `<tr><td colspan="6"><div class="empty">Kein Material erfasst.</div></td></tr>`}
+        `).join("") || `<tr><td colspan="7"><div class="empty">Kein Material erfasst.</div></td></tr>`}
         </tbody>
       </table></div>
       ${summe ? `<div style="text-align:right; font-weight:700; margin-top:10px;">Summe: ${fmtCurrency(summe)}</div>` : ""}
@@ -3466,8 +3499,11 @@ function renderTabMaterial(body, p){
   `;
 }
 function openMaterialForm(pid){
+  const p = S.projekte.find(x=>x.id===pid);
+  const bestehendeTitel = Array.from(new Set(p.material.map(m=>m.titel).filter(Boolean)));
   openModal(`
     <div class="modalHead"><div class="modalTitle">Material erfassen</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
+    <div class="formRow"><label>Titel/Gewerk (optional)</label><input id="matTitel" type="text" list="matTitelListe" placeholder="z.B. Fliesenarbeiten"><datalist id="matTitelListe">${bestehendeTitel.map(t=>`<option value="${escAttr(t)}">`).join("")}</datalist></div>
     <div class="formRow"><label>Bezeichnung</label><div class="micWrap"><input id="matBez" type="text">${fieldMic("matBez")}</div></div>
     <div class="grid cols-2">
       <div class="formRow"><label>Menge</label><input id="matMenge" type="number" step="0.01"></div>
@@ -3481,7 +3517,7 @@ function saveMaterial(pid){
   const bezeichnung = document.getElementById("matBez").value.trim();
   if(!bezeichnung){ toast("Bezeichnung erforderlich.", "warn"); return; }
   const p = S.projekte.find(x=>x.id===pid);
-  p.material.push({id:uid(), bezeichnung, menge:document.getElementById("matMenge").value, einheit:document.getElementById("matEinheit").value.trim(), preis:Number(document.getElementById("matPreis").value)||0, datum:todayISO()});
+  p.material.push({id:uid(), titel:document.getElementById("matTitel").value.trim(), bezeichnung, menge:document.getElementById("matMenge").value, einheit:document.getElementById("matEinheit").value.trim(), preis:Number(document.getElementById("matPreis").value)||0, datum:todayISO()});
   saveState(); closeModal(); route(location.hash);
 }
 function deleteMaterial(pid, mid){
@@ -3492,17 +3528,46 @@ function buildLvDocPositions(p, positionen, mitPreisen, subtitle){
   const doc = pdfNewDoc();
   let y = pdfHeader(doc, "Leistungsverzeichnis"+(subtitle ? " – "+subtitle : (mitPreisen?"":" (ohne Preise)")));
   doc.setFontSize(10.5);
-  doc.text("Projekt: "+p.name, 15, y); y+=6;
-  doc.text("Adresse: "+(p.adresse||"–"), 15, y); y+=10;
+  doc.text("Bauvorhaben: "+p.name, 15, y); y+=6;
+  doc.text("Ausführungsort: "+(p.adresse||"–"), 15, y); y+=8;
+  const kunde = S.kunden.find(k=>k.id===p.kundeId);
+  if(kunde){
+    doc.setFont(undefined,"bold"); doc.text("Auftraggeber", 15, y); doc.setFont(undefined,"normal"); y+=5;
+    doc.text(kunde.name, 15, y); y+=5;
+    if(kunde.adresse){ doc.text(kunde.adresse, 15, y); y+=5; }
+    y+=3;
+  }
+  doc.text("Datum: "+fmtDate(todayISO()), 15, y); y+=10;
+
+  const groups = [];
+  positionen.forEach(pos=>{
+    const key = (pos.titel||"").trim();
+    let g = groups.find(x=>x.key===key);
+    if(!g){ g = {key, items:[]}; groups.push(g); }
+    g.items.push(pos);
+  });
   const headers = mitPreisen ? ["Pos.","Bezeichnung","Menge","Einheit","Preis (€)"] : ["Pos.","Bezeichnung","Menge","Einheit"];
-  const colX = mitPreisen ? [15,30,140,160,195] : [15,30,150,175];
-  const rows = positionen.map((m,i)=> mitPreisen
-    ? [String(i+1), m.bezeichnung, String(m.menge), m.einheit, m.preis?fmtCurrency(m.preis):"–"]
-    : [String(i+1), m.bezeichnung, String(m.menge), m.einheit]);
-  y = pdfTable(doc, y, headers, rows, null, colX);
+  const colX = mitPreisen ? [15,32,140,160,195] : [15,32,150,175];
+  groups.forEach((g,gi)=>{
+    const grpNr = String(gi+1).padStart(2,"0");
+    if(g.key){
+      if(y>255){ doc.addPage(); y=20; }
+      doc.setFont(undefined,"bold"); doc.setFontSize(11.5);
+      doc.text(grpNr+" "+g.key, 15, y); y+=7;
+      doc.setFont(undefined,"normal"); doc.setFontSize(10.5);
+    }
+    const rows = g.items.map((m,i)=>{
+      const posNr = grpNr+"."+String((i+1)*10).padStart(3,"0");
+      return mitPreisen
+        ? [posNr, m.bezeichnung, String(m.menge), m.einheit, m.preis?fmtCurrency(m.preis):"–"]
+        : [posNr, m.bezeichnung, String(m.menge), m.einheit];
+    });
+    y = pdfTable(doc, y, headers, rows, null, colX);
+    y += 8;
+  });
   if(mitPreisen){
     const summe = positionen.reduce((s,m)=>s+(Number(m.preis)||0),0);
-    if(summe){ y+=6; doc.setFont(undefined,"bold"); doc.text("Summe: "+fmtCurrency(summe), 195, y, {align:"right"}); doc.setFont(undefined,"normal"); }
+    if(summe){ if(y>260){doc.addPage(); y=20;} doc.setFont(undefined,"bold"); doc.text("Gesamtsumme: "+fmtCurrency(summe), 195, y, {align:"right"}); doc.setFont(undefined,"normal"); }
   }
   pdfFooter(doc);
   return doc;
@@ -3573,8 +3638,8 @@ function openAusschreibungForm(pid){
   const verfuegbar = S.subunternehmer.filter(s=>!bereitsEingeladen.has(s.id));
   window._ausDraft = {
     pid,
-    original: p.material.map(m=>({bezeichnung:m.bezeichnung, menge:m.menge, einheit:m.einheit, preis:Number(m.preis)||0})),
-    positionen: p.material.map(m=>({bezeichnung:m.bezeichnung, menge:m.menge, einheit:m.einheit, preis:Number(m.preis)||0})),
+    original: p.material.map(m=>({titel:m.titel||"", bezeichnung:m.bezeichnung, menge:m.menge, einheit:m.einheit, preis:Number(m.preis)||0})),
+    positionen: p.material.map(m=>({titel:m.titel||"", bezeichnung:m.bezeichnung, menge:m.menge, einheit:m.einheit, preis:Number(m.preis)||0})),
   };
   openModal(`
     <div class="modalHead"><div class="modalTitle">📤 LV an Nachunternehmer senden</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
@@ -4572,7 +4637,7 @@ function openRechnungForm(id){
   openModal(`
     <div class="modalHead"><div class="modalTitle">${id?"Rechnung bearbeiten":"Neue Rechnung"} – ${escHtml(r.nr)}</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
     <div class="grid cols-2">
-      <div class="formRow"><label>Kunde</label><select id="rKunde" onchange="window._rechnungDraft.kundeId=this.value">${S.kunden.map(k=>`<option value="${escAttr(k.id)}" ${r.kundeId===k.id?"selected":""}>${escHtml(k.name)}</option>`).join("")}</select></div>
+      <div class="formRow"><label>Kunde</label>${kundeSearchHTML("rKunde", r.kundeId)}</div>
       <div class="formRow"><label>Projekt (optional)</label><select id="rProjekt" onchange="window._rechnungDraft.projektId=this.value">
         <option value="">–</option>${S.projekte.map(p=>`<option value="${escAttr(p.id)}" ${r.projektId===p.id?"selected":""}>${escHtml(p.name)}</option>`).join("")}
       </select></div>
@@ -5474,7 +5539,7 @@ function renderLvReviewForm(){
     <div class="formRow"><label>Projektname</label><input id="lvName" type="text" value="${escAttr(d.name)}"></div>
     <div class="grid cols-2">
       <div class="formRow"><label>Adresse</label><input id="lvAdresse" type="text" value="${escAttr(d.adresse)}"></div>
-      <div class="formRow"><label>Kunde</label><select id="lvKunde"><option value="">–</option>${S.kunden.map(k=>`<option value="${escAttr(k.id)}" ${matchedKunde&&matchedKunde.id===k.id?"selected":""}>${escHtml(k.name)}</option>`).join("")}</select></div>
+      <div class="formRow"><label>Kunde</label>${kundeSearchHTML("lvKunde", matchedKunde?matchedKunde.id:"")}</div>
     </div>
     ${d.kundeName && !matchedKunde ? `<div class="pageSub" style="color:var(--amber); margin:-6px 0 12px;">Im PDF erkannter Kunde „${escHtml(d.kundeName)}“ wurde nicht in deiner Kundenliste gefunden – bitte manuell auswählen oder leer lassen.</div>` : ""}
     <b style="display:block; margin:16px 0 8px;">Positionen (${d.positionen.length})</b>
