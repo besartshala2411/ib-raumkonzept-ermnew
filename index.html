@@ -571,6 +571,7 @@ function ensureShape(s){
     if(!p.fotos) p.fotos=[];
     if(!p.dokumente) p.dokumente=[];
     if(!p.material) p.material=[];
+    if(!p.ausschreibung) p.ausschreibung=[];
     if(!p.bautagebuch) p.bautagebuch=[];
     if(!p.zugaenge) p.zugaenge=[];
     if(!p.checkliste) p.checkliste=[];
@@ -2838,7 +2839,7 @@ function renderProjekte(view, id, tab){
   `).join("") || `<div class="empty" style="grid-column:1/-1;">Keine Projekte gefunden.</div>`;
 }
 function openProjektForm(id){
-  const p = id ? S.projekte.find(x=>x.id===id) : {id:uid(), name:"", kundeId:"", adresse:"", status:"In Planung", budget:0, deadline:"", fortschritt:0, team:[], subunternehmer:[], fotos:[], dokumente:[], material:[], bautagebuch:[], zugaenge:[], checkliste:[], aufmasse:[], bauzeitenplan:[], chat:[]};
+  const p = id ? S.projekte.find(x=>x.id===id) : {id:uid(), name:"", kundeId:"", adresse:"", status:"In Planung", budget:0, deadline:"", fortschritt:0, team:[], subunternehmer:[], fotos:[], dokumente:[], material:[], ausschreibung:[], bautagebuch:[], zugaenge:[], checkliste:[], aufmasse:[], bauzeitenplan:[], chat:[]};
   openModal(`
     <div class="modalHead"><div class="modalTitle">${id?"Projekt bearbeiten":"Neues Projekt"}</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
     <div class="formRow"><label>Projektname</label><div class="micWrap"><input id="pName" type="text" value="${escAttr(p.name)}">${fieldMic("pName")}</div></div>
@@ -2880,6 +2881,7 @@ const PROJEKT_TABS = [
   {id:"fotos", label:"Fotos", icon:"📷"},
   {id:"dokumente", label:"Dokumente", icon:"📁"},
   {id:"material", label:"Material", icon:"📦"},
+  {id:"ausschreibung", label:"Ausschreibung", icon:"🏗️"},
   {id:"bautagebuch", label:"Bautagebuch", icon:"📔"},
   {id:"zugaenge", label:"Zugänge", icon:"🔐"},
   {id:"checkliste", label:"WISO/Checkliste", icon:"✅"},
@@ -2910,7 +2912,7 @@ function renderProjektDetail(view, id, tab){
   const body = document.getElementById("projektTabBody");
   const renderers = {
     uebersicht: renderTabUebersicht, team: renderTabTeam, bauzeitenplan: renderTabBauzeitenplan, fotos: renderTabFotos, dokumente: renderTabProjektDokumente,
-    material: renderTabMaterial, bautagebuch: renderTabBautagebuch, zugaenge: renderTabZugaenge,
+    material: renderTabMaterial, ausschreibung: renderTabAusschreibung, bautagebuch: renderTabBautagebuch, zugaenge: renderTabZugaenge,
     checkliste: renderTabChecklist, aufmass: renderTabAufmass, chat: renderTabProjektChat
   };
   (renderers[tab]||renderTabUebersicht)(body, p);
@@ -3360,9 +3362,13 @@ function renderTabMaterial(body, p){
   const summe = p.material.reduce((s,m)=>s+(Number(m.preis)||0),0);
   body.innerHTML = `
     <div class="card">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
-        <b>Material (${p.material.length})</b>
-        <button class="btn primary sm" onclick="openMaterialForm('${escAttr(p.id)}')">➕ Material</button>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:8px;">
+        <b>Material / LV (${p.material.length})</b>
+        <div style="display:flex; gap:8px;">
+          <button class="btn sm" onclick="exportLvPDF('${escAttr(p.id)}', true)">📄 LV mit Preisen</button>
+          <button class="btn sm" onclick="exportLvPDF('${escAttr(p.id)}', false)">📄 LV ohne Preise</button>
+          <button class="btn primary sm" onclick="openMaterialForm('${escAttr(p.id)}')">➕ Position</button>
+        </div>
       </div>
       <div class="tableWrap"><table>
         <thead><tr><th>Bezeichnung</th><th>Menge</th><th>Einheit</th><th>Preis (€)</th><th>Datum</th><th></th></tr></thead>
@@ -3399,6 +3405,159 @@ function saveMaterial(pid){
 function deleteMaterial(pid, mid){
   const p = S.projekte.find(x=>x.id===pid);
   deleteItemWithUndo(p.material, mid, "Material-Eintrag gelöscht.");
+}
+function buildLvDoc(p, mitPreisen){
+  const doc = pdfNewDoc();
+  let y = pdfHeader(doc, "Leistungsverzeichnis"+(mitPreisen?"":" (ohne Preise)"));
+  doc.setFontSize(10.5);
+  doc.text("Projekt: "+p.name, 15, y); y+=6;
+  doc.text("Adresse: "+(p.adresse||"–"), 15, y); y+=10;
+  const headers = mitPreisen ? ["Pos.","Bezeichnung","Menge","Einheit","Preis (€)"] : ["Pos.","Bezeichnung","Menge","Einheit"];
+  const colX = mitPreisen ? [15,30,140,160,195] : [15,30,150,175];
+  const rows = p.material.map((m,i)=> mitPreisen
+    ? [String(i+1), m.bezeichnung, String(m.menge), m.einheit, m.preis?fmtCurrency(m.preis):"–"]
+    : [String(i+1), m.bezeichnung, String(m.menge), m.einheit]);
+  y = pdfTable(doc, y, headers, rows, null, colX);
+  if(mitPreisen){
+    const summe = p.material.reduce((s,m)=>s+(Number(m.preis)||0),0);
+    if(summe){ y+=6; doc.setFont(undefined,"bold"); doc.text("Summe: "+fmtCurrency(summe), 195, y, {align:"right"}); doc.setFont(undefined,"normal"); }
+  }
+  pdfFooter(doc);
+  return doc;
+}
+function exportLvPDF(pid, mitPreisen){
+  const p = S.projekte.find(x=>x.id===pid);
+  if(!p.material.length){ toast("Keine Positionen zum Exportieren.", "warn"); return; }
+  saveOrSharePdf(buildLvDoc(p, mitPreisen), "LV_"+p.name.replace(/[^a-z0-9]+/gi,"_")+(mitPreisen?"":"_ohne_Preise")+".pdf");
+}
+
+/* =========================================================
+   NACHUNTERNEHMER-AUSSCHREIBUNG
+========================================================= */
+const AUSSCHREIBUNG_STATUS_BADGE = {"versendet":"gray","angebot erhalten":"blue","beauftragt":"green","abgelehnt":"red"};
+function renderTabAusschreibung(body, p){
+  const entries = p.ausschreibung.slice().sort((a,b)=>(b.versandAm||"").localeCompare(a.versandAm||""));
+  const angebote = entries.filter(e=>e.angebotSumme!=null && e.status!=="abgelehnt").slice().sort((a,b)=>(a.angebotSumme||0)-(b.angebotSumme||0));
+  body.innerHTML = `
+    <div class="card" style="margin-bottom:16px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px;">
+        <b>Nachunternehmer-Ausschreibung (${entries.length})</b>
+        <button class="btn primary sm" onclick="openAusschreibungForm('${escAttr(p.id)}')">📤 LV an Nachunternehmer senden</button>
+      </div>
+      <div class="pageSub" style="margin-bottom:14px;">Schickt das LV aus dem Tab „Material / LV“ an ausgewählte Nachunternehmer zur Angebotsabgabe und hält die Angebote fest.</div>
+      <div class="tableWrap"><table>
+        <thead><tr><th>Nachunternehmer</th><th>Versendet</th><th>Status</th><th>Angebot</th><th></th></tr></thead>
+        <tbody>
+        ${entries.map(e=>{
+          const sub = S.subunternehmer.find(s=>s.id===e.subunternehmerId);
+          return `<tr>
+            <td><b>${escHtml(sub?sub.firma:"– (gelöscht)")}</b>${sub&&sub.gewerk?`<div class="pageSub">${escHtml(sub.gewerk)}</div>`:""}</td>
+            <td>${fmtDate(e.versandAm)}</td>
+            <td><span class="badge ${AUSSCHREIBUNG_STATUS_BADGE[e.status]||"gray"}">${escHtml(e.status)}</span></td>
+            <td>${e.angebotSumme!=null?fmtCurrency(e.angebotSumme):"–"}${e.angebotNotiz?`<div class="pageSub">${escHtml(e.angebotNotiz)}</div>`:""}</td>
+            <td style="text-align:right; white-space:nowrap;">
+              ${e.status==="versendet"||e.status==="angebot erhalten"?`<button class="btn sm" onclick="openAngebotForm('${escAttr(p.id)}','${escAttr(e.id)}')">${e.angebotSumme!=null?"Angebot ändern":"Angebot erfassen"}</button>`:""}
+              ${e.status==="angebot erhalten"?`<button class="btn sm primary" onclick="beauftragenAusschreibung('${escAttr(p.id)}','${escAttr(e.id)}')">✅ Beauftragen</button>`:""}
+              <button class="iconBtn" onclick="deleteAusschreibungEntry('${escAttr(p.id)}','${escAttr(e.id)}')">🗑️</button>
+            </td>
+          </tr>`;
+        }).join("") || `<tr><td colspan="5"><div class="empty">Noch nicht ausgeschrieben.</div></td></tr>`}
+        </tbody>
+      </table></div>
+    </div>
+    ${angebote.length>1 ? `
+    <div class="card">
+      <b>Preisvergleich</b>
+      <div class="tableWrap" style="margin-top:12px;"><table>
+        <thead><tr><th>Nachunternehmer</th><th>Angebot</th><th>Differenz zum günstigsten</th></tr></thead>
+        <tbody>
+          ${angebote.map(e=>{
+            const sub = S.subunternehmer.find(s=>s.id===e.subunternehmerId);
+            const diff = e.angebotSumme - angebote[0].angebotSumme;
+            return `<tr><td>${escHtml(sub?sub.firma:"–")}</td><td>${fmtCurrency(e.angebotSumme)}</td><td>${diff>0?"+"+fmtCurrency(diff):"günstigstes Angebot"}</td></tr>`;
+          }).join("")}
+        </tbody>
+      </table></div>
+    </div>` : ""}
+  `;
+}
+function openAusschreibungForm(pid){
+  const p = S.projekte.find(x=>x.id===pid);
+  if(!p.material.length){ toast("Bitte zuerst LV-Positionen im Tab „Material / LV“ anlegen oder importieren.", "warn"); return; }
+  const bereitsEingeladen = new Set(p.ausschreibung.map(e=>e.subunternehmerId));
+  const verfuegbar = S.subunternehmer.filter(s=>!bereitsEingeladen.has(s.id));
+  openModal(`
+    <div class="modalHead"><div class="modalTitle">📤 LV an Nachunternehmer senden</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
+    <div class="pageSub" style="margin-bottom:12px;">Wähle Nachunternehmer aus, die das LV zur Angebotsabgabe erhalten sollen.</div>
+    <div style="display:flex; flex-direction:column; gap:8px; max-height:220px; overflow-y:auto; margin-bottom:14px;">
+      ${verfuegbar.map(s=>`<label style="display:flex; align-items:center; gap:10px;"><input type="checkbox" class="ausSubChk" value="${escAttr(s.id)}"> ${escHtml(s.firma)}${s.gewerk?` <span class="pageSub">(${escHtml(s.gewerk)})</span>`:""}</label>`).join("") || `<div class="empty">Alle vorhandenen Nachunternehmer wurden bereits eingeladen.</div>`}
+    </div>
+    <div class="formRow"><label>LV-Variante</label>
+      <div style="display:flex; flex-direction:column; gap:6px;">
+        <label style="display:flex; align-items:center; gap:6px;"><input type="radio" name="ausPreise" value="ohne" checked> Ohne Preise (Nachunternehmer kalkuliert selbst)</label>
+        <label style="display:flex; align-items:center; gap:6px;"><input type="radio" name="ausPreise" value="mit"> Mit Preisen (als Referenz mitschicken)</label>
+      </div>
+    </div>
+    <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="confirmAusschreibung('${escAttr(pid)}')">📤 Senden</button></div>
+  `, true);
+}
+function confirmAusschreibung(pid){
+  const p = S.projekte.find(x=>x.id===pid);
+  const checked = Array.from(document.querySelectorAll(".ausSubChk:checked")).map(el=>el.value);
+  if(!checked.length){ toast("Bitte mindestens einen Nachunternehmer auswählen.", "warn"); return; }
+  const mitPreisen = document.querySelector('input[name="ausPreise"]:checked').value === "mit";
+  checked.forEach(subId=>{
+    p.ausschreibung.push({id:uid(), subunternehmerId:subId, versandAm:todayISO(), status:"versendet", angebotSumme:null, angebotNotiz:"", angebotDatum:null});
+  });
+  saveState(); closeModal(); route(location.hash);
+  saveOrSharePdf(buildLvDoc(p, mitPreisen), "LV_"+p.name.replace(/[^a-z0-9]+/gi,"_")+(mitPreisen?"":"_ohne_Preise")+".pdf");
+  toast(checked.length+" Nachunternehmer zur Ausschreibung hinzugefügt. LV zum Versenden bereit.", "success");
+}
+function openAngebotForm(pid, entryId){
+  const p = S.projekte.find(x=>x.id===pid);
+  const e = p.ausschreibung.find(x=>x.id===entryId);
+  openModal(`
+    <div class="modalHead"><div class="modalTitle">Angebot erfassen</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
+    <div class="formRow"><label>Angebotssumme (€)</label><input id="angSumme" type="number" step="0.01" value="${e.angebotSumme!=null?e.angebotSumme:""}"></div>
+    <div class="formRow"><label>Notiz (optional)</label><textarea id="angNotiz">${escHtml(e.angebotNotiz||"")}</textarea></div>
+    <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="saveAngebot('${escAttr(pid)}','${escAttr(entryId)}')">Speichern</button></div>
+  `);
+}
+function saveAngebot(pid, entryId){
+  const summeInput = document.getElementById("angSumme").value;
+  if(summeInput===""){ toast("Bitte Angebotssumme eingeben.", "warn"); return; }
+  const p = S.projekte.find(x=>x.id===pid);
+  const e = p.ausschreibung.find(x=>x.id===entryId);
+  e.angebotSumme = Number(summeInput)||0;
+  e.angebotNotiz = document.getElementById("angNotiz").value.trim();
+  e.angebotDatum = todayISO();
+  e.status = "angebot erhalten";
+  saveState(); closeModal(); route(location.hash);
+  toast("Angebot erfasst.", "success");
+}
+function beauftragenAusschreibung(pid, entryId){
+  const p = S.projekte.find(x=>x.id===pid);
+  const target = p.ausschreibung.find(x=>x.id===entryId);
+  const sub = S.subunternehmer.find(s=>s.id===target.subunternehmerId);
+  openModal(`
+    <div class="modalHead"><div class="modalTitle">Beauftragen bestätigen</div></div>
+    <div>„${escHtml(sub?sub.firma:"Dieser Nachunternehmer")}“ mit diesem Angebot (${fmtCurrency(target.angebotSumme)}) beauftragen? Die übrigen Angebote in dieser Ausschreibung werden als abgelehnt markiert.</div>
+    <div class="modalFoot">
+      <button class="btn" onclick="closeModal()">Abbrechen</button>
+      <button class="btn primary" id="confirmBeauftragenBtn">✅ Beauftragen</button>
+    </div>
+  `);
+  document.getElementById("confirmBeauftragenBtn").onclick = ()=>{
+    closeModal();
+    p.ausschreibung.forEach(e=>{ e.status = (e.id===entryId) ? "beauftragt" : (e.angebotSumme!=null ? "abgelehnt" : e.status); });
+    if(sub && !p.subunternehmer.includes(sub.id)) p.subunternehmer.push(sub.id);
+    saveState(); route(location.hash);
+    toast("Nachunternehmer beauftragt.", "success");
+  };
+}
+function deleteAusschreibungEntry(pid, entryId){
+  const p = S.projekte.find(x=>x.id===pid);
+  deleteItemWithUndo(p.ausschreibung, entryId, "Ausschreibungs-Eintrag entfernt.");
 }
 
 function renderTabBautagebuch(body, p){
@@ -5194,7 +5353,7 @@ function confirmLvImport(){
     id:uid(), name, kundeId, adresse, status:"In Planung", budget, deadline:"", fortschritt:0,
     team:[], subunternehmer:[], fotos:[], dokumente:[],
     material: d.positionen.map(pos=>({id:uid(), bezeichnung:pos.bezeichnung||"Position", menge:pos.menge||0, einheit:pos.einheit||"", preis:pos.preis||0, datum:todayISO()})),
-    bautagebuch:[], zugaenge:[], checkliste:[], aufmasse:[], bauzeitenplan:[], chat:[],
+    ausschreibung:[], bautagebuch:[], zugaenge:[], checkliste:[], aufmasse:[], bauzeitenplan:[], chat:[],
   };
   S.projekte.push(p);
   saveState(); closeModal();
