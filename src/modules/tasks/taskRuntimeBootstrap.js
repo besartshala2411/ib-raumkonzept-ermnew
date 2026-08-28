@@ -10,6 +10,7 @@
   let runtime = { mode: 'legacy', reason: 'not-started', tasks: null, repository: null, mapper: null };
   let bridgeInstalled = false;
   let initializePromise = null;
+  let runtimeGeneration = 0;
   const mutationsInFlight = new Set();
 
   function storageFlagEnabled(storage, key) {
@@ -29,6 +30,7 @@
   }
 
   function resetTaskRuntime(reason, legacyTasks) {
+    runtimeGeneration++;
     runtime = {
       mode: 'legacy',
       reason: reason || 'reset',
@@ -46,9 +48,12 @@
     const legacyTasks = Array.isArray(opts.legacyTasks) ? opts.legacyTasks : [];
     const gate = global.TaskRuntimeGate;
     const createRepository = global.createTaskSupabaseRepository;
+    const generation = runtimeGeneration;
 
     if (!gate || typeof gate.prepareTaskSupabaseRuntime !== 'function') {
-      runtime = { mode: 'legacy', reason: 'gate-unavailable', tasks: legacyTasks, repository: null, mapper: null };
+      if (generation === runtimeGeneration) {
+        runtime = { mode: 'legacy', reason: 'gate-unavailable', tasks: legacyTasks, repository: null, mapper: null };
+      }
       return runtime;
     }
 
@@ -56,13 +61,16 @@
     if (!client && typeof global.getSupabaseClient === 'function') {
       try { client = await global.getSupabaseClient(); } catch (_) { client = null; }
     }
+    if (generation !== runtimeGeneration) return runtime;
 
-    runtime = await gate.prepareTaskSupabaseRuntime({
+    const prepared = await gate.prepareTaskSupabaseRuntime({
       storage: opts.storage || global.localStorage,
       client,
       createRepository,
       legacyTasks,
     });
+    if (generation !== runtimeGeneration) return runtime;
+    runtime = prepared;
     return runtime;
   }
 
@@ -108,7 +116,10 @@
 
   async function reloadSupabaseTasks() {
     if (runtime.mode !== 'supabase' || !runtime.repository || typeof runtime.repository.list !== 'function') return runtime;
-    runtime.tasks = await runtime.repository.list();
+    const generation = runtimeGeneration;
+    const tasks = await runtime.repository.list();
+    if (generation !== runtimeGeneration || runtime.mode !== 'supabase') return runtime;
+    runtime.tasks = tasks;
     rerenderTasks();
     return runtime;
   }
@@ -183,6 +194,7 @@
   function installTaskWritePilotBridge() {
     wrapTaskMutation('saveAufgabe', async function () {
       if (!runtime.repository || typeof runtime.repository.create !== 'function') throw new Error('Task-Repository nicht verfügbar.');
+      const generation = runtimeGeneration;
       const byId = (id) => global.document && global.document.getElementById(id);
       const titelEl = byId('agTitel');
       const titel = titelEl && String(titelEl.value || '').trim();
@@ -199,6 +211,7 @@
         zugeordnet: byId('agZuge') && byId('agZuge').value || null,
         status: 'offen',
       });
+      if (generation !== runtimeGeneration || runtime.mode !== 'supabase') return;
       runtime.tasks = [created].concat((runtime.tasks || []).filter((task) => task.id !== created.id));
       if (typeof global.closeModal === 'function') global.closeModal();
       rerenderTasks();
@@ -207,14 +220,18 @@
 
     wrapTaskMutation('setAufgabeStatus', async function (id, status) {
       if (!runtime.repository || typeof runtime.repository.update !== 'function') throw new Error('Task-Repository nicht verfügbar.');
+      const generation = runtimeGeneration;
       const updated = await runtime.repository.update(id, { status });
+      if (generation !== runtimeGeneration || runtime.mode !== 'supabase') return;
       runtime.tasks = (runtime.tasks || []).map((task) => task.id === id ? updated : task);
       rerenderTasks();
     });
 
     wrapTaskMutation('deleteAufgabe', async function (id) {
       if (!runtime.repository || typeof runtime.repository.remove !== 'function') throw new Error('Task-Repository nicht verfügbar.');
+      const generation = runtimeGeneration;
       await runtime.repository.remove(id);
+      if (generation !== runtimeGeneration || runtime.mode !== 'supabase') return;
       runtime.tasks = (runtime.tasks || []).filter((task) => task.id !== id);
       rerenderTasks();
       notify('Aufgabe gelöscht.', 'success');
@@ -225,15 +242,18 @@
     const state = global.S;
     if (!state || !Array.isArray(state.aufgaben)) return runtime;
     if (initializePromise) return initializePromise;
-    initializePromise = initializeTaskRuntime({ legacyTasks: state.aufgaben })
+    const pending = initializeTaskRuntime({ legacyTasks: state.aufgaben })
       .then((result) => {
         if (result.mode === 'supabase' && typeof global.route === 'function') {
           global.route(global.location && global.location.hash ? global.location.hash : '#dashboard');
         }
         return result;
-      })
-      .finally(() => { initializePromise = null; });
-    return initializePromise;
+      });
+    initializePromise = pending;
+    pending.finally(() => {
+      if (initializePromise === pending) initializePromise = null;
+    });
+    return pending;
   }
 
   function installTaskReadPilotBridge() {
