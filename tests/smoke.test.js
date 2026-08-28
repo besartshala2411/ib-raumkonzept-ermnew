@@ -74,6 +74,9 @@ async function main() {
       getSession: async () => ({ data: { session: null } }),
       signInWithPassword: async () => ({ data: {}, error: null }),
       signOut: async () => ({}),
+      onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
+      resetPasswordForEmail: async () => ({ data: {}, error: null }),
+      updateUser: async () => ({ data: {}, error: null }),
     },
     // Vollständig genug, damit initCloudSyncIfEnabled()/subscribeRealtime() (von enterApp()
     // im Hintergrund angestoßen) nicht mit einer unbehandelten Exception/Rejection abbrechen.
