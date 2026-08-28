@@ -5787,12 +5787,12 @@ async function analyzeLvPdf(){
     const prompt = `Du bist Assistent eines deutschen Handwerksbetriebs (Trockenbau/Maler/Fliesen/Sanitär). Analysiere das beigefügte Leistungsverzeichnis oder Angebot als PDF und extrahiere die Projektdaten. Antworte AUSSCHLIESSLICH mit validem JSON in genau diesem Format, ohne Erklärtext, ohne Markdown-Codeblock: {"name":"kurzer Projektname/Titel","adresse":"Bauadresse falls vorhanden, sonst leer","kunde":"Kundenname/Auftraggeber falls vorhanden, sonst leer","positionen":[{"titel":"Gewerk/Titel-Abschnitt falls das Dokument die Positionen gruppiert, sonst leer","bezeichnung":"kurzer Titel der Position","beschreibung":"ausführlichere Beschreibung/Leistungstext der Position falls im Dokument vorhanden, sonst leer","menge":0,"einheit":"...","einzelpreis":0,"gesamtpreis":0}],"budgetSchaetzung":0}. Wenn ein Wert nicht im Dokument steht, benutze "" bzw. 0. budgetSchaetzung ist die im Dokument genannte Gesamtsumme bzw. die Summe aller Positionen. Bezeichnung und Beschreibung sind unterschiedliche Felder - nicht denselben Text doppelt eintragen, wenn das Dokument beides trennt.`;
     const text = await callGeminiWithFile(prompt, apiKey, base64, file.type||"application/pdf");
     const result = extractJsonFromText(text);
-    openLvReviewForm(result);
+    openLvReviewForm(result, { name: file.name, dataURL });
   }catch(e){
     statusEl.textContent = "Fehler bei der Analyse: " + e.message;
   }
 }
-function openLvReviewForm(result){
+function openLvReviewForm(result, originalFile){
   const positionen = Array.isArray(result.positionen) ? result.positionen : [];
   window._lvImportDraft = {
     name: String(result.name||"").slice(0,120),
@@ -5807,6 +5807,7 @@ function openLvReviewForm(result){
       einheit: String(p.einheit||"").slice(0,20),
       preis: Number(p.gesamtpreis||p.einzelpreis)||0,
     })),
+    originalFile: originalFile || null,
   };
   renderLvReviewForm();
 }
@@ -5817,7 +5818,7 @@ function renderLvReviewForm(){
   const matchedKunde = d.kundeName ? S.kunden.find(k=>k.name.toLowerCase()===d.kundeName.toLowerCase()) : null;
   openModal(`
     <div class="modalHead"><div class="modalTitle">📄 Projektvorschlag prüfen</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
-    <div class="pageSub" style="margin-bottom:12px;">Von der KI aus dem PDF erkannt – bitte prüfen und bei Bedarf anpassen, bevor das Projekt angelegt wird.</div>
+    <div class="pageSub" style="margin-bottom:12px;">Von der KI aus dem PDF erkannt – bitte prüfen und bei Bedarf anpassen, bevor das Projekt angelegt wird. Das Original-PDF wird beim Anlegen automatisch im Dokumente-Tab des Projekts hinterlegt.</div>
     <div class="formRow"><label>Projektname</label><input id="lvName" type="text" value="${escAttr(d.name)}"></div>
     <div class="grid cols-2">
       <div class="formRow"><label>Adresse</label><input id="lvAdresse" type="text" value="${escAttr(d.adresse)}"></div>
@@ -5874,11 +5875,14 @@ function confirmLvImport(){
     material: d.positionen.map(pos=>({id:uid(), titel:pos.titel||"", bezeichnung:pos.bezeichnung||"Position", beschreibung:pos.beschreibung||"", menge:pos.menge||0, einheit:pos.einheit||"", preis:pos.preis||0, datum:todayISO()})),
     ausschreibung:[], bautagebuch:[], zugaenge:[], checkliste:[], aufmasse:[], bauzeitenplan:[], chat:[],
   };
+  if(d.originalFile && d.originalFile.dataURL){
+    p.dokumente.push({id:uid(), name:d.originalFile.name||"LV_Original.pdf", dataURL:d.originalFile.dataURL, datum:new Date().toISOString()});
+  }
   S.projekte.push(p);
   saveState(); closeModal();
   window._lvImportDraft = null;
   goTo("#projekte/"+p.id);
-  toast("Projekt aus PDF erstellt – bitte Daten kurz gegenprüfen.", "success");
+  toast("Projekt aus PDF erstellt (Original im Dokumente-Tab hinterlegt) – bitte Daten kurz gegenprüfen.", "success");
 }
 
 /* =========================================================
