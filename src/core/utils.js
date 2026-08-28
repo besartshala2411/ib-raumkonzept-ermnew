@@ -36,9 +36,10 @@ function debounce(fn, ms){
   ];
 
   // Während des HTML-Parsens synchron einfügen, damit alle drei Module vor dem
-  // bestehenden Hauptscript verfügbar sind. Flag OFF => dieser Pfad läuft nie.
+  // bestehenden Hauptscript verfügbar sind. Der gesplittete End-Tag vermeidet,
+  // dass der Smoke-Test-Loader das externe JS beim Inline-Einsetzen abschneidet.
   if (document.readyState === 'loading' && typeof document.write === 'function') {
-    document.write(scripts.map(src => '<script src="' + src + '"></script>').join(''));
+    document.write(scripts.map(src => '<script src="' + src + '"></scr' + 'ipt>').join(''));
     return;
   }
 
