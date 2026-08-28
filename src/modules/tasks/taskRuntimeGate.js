@@ -1,6 +1,6 @@
-// Phase 3B – Runtime-Gate für einen späteren kontrollierten Aufgaben-Cutover.
-// Dieses Modul schaltet NICHT selbst um. Default ist OFF und jede unvollständige
-// Referenzauflösung fällt geschlossen auf den Legacy-Pfad zurück.
+// Phase 3C – Runtime-Gate für einen kontrollierten Aufgaben-Cutover.
+// Default ist OFF. Unvollständige oder mehrdeutige Referenzauflösung fällt
+// geschlossen auf den Legacy-Pfad zurück.
 
 const TASK_RUNTIME_FLAG = 'IB_TASKS_SUPABASE_PILOT';
 
@@ -46,6 +46,8 @@ function createTaskReferenceMapper({ projects = [], employees = [] } = {}) {
   return {
     ok: errors.length === 0,
     errors,
+    hasProjectLegacyId(value) { return !value || projectLegacyToUuid.has(value); },
+    hasEmployeeLegacyId(value) { return !value || employeeLegacyToUuid.has(value); },
     toDbTask(task) {
       if (!this.ok) throw new Error('TaskReferenceMapper: Mapping ist nicht eindeutig.');
       return {
@@ -63,6 +65,19 @@ function createTaskReferenceMapper({ projects = [], employees = [] } = {}) {
       };
     },
   };
+}
+
+function validateLegacyTaskCoverage(legacyTasks, mapper) {
+  const errors = [];
+  for (const task of Array.isArray(legacyTasks) ? legacyTasks : []) {
+    if (task && task.projektId && !mapper.hasProjectLegacyId(task.projektId)) {
+      errors.push(`Aufgabe ${task.id || '(ohne ID)'}: Projekt ${task.projektId} ist nicht relational gemappt.`);
+    }
+    if (task && task.zugeordnet && !mapper.hasEmployeeLegacyId(task.zugeordnet)) {
+      errors.push(`Aufgabe ${task.id || '(ohne ID)'}: Mitarbeiter ${task.zugeordnet} ist nicht relational gemappt.`);
+    }
+  }
+  return errors;
 }
 
 async function prepareTaskSupabaseRuntime({ storage, client, createRepository, legacyTasks = [] } = {}) {
@@ -87,6 +102,11 @@ async function prepareTaskSupabaseRuntime({ storage, client, createRepository, l
     });
     if (!mapper.ok) return { mode: 'legacy', reason: 'mapping-invalid', errors: mapper.errors, tasks: legacyTasks };
 
+    const coverageErrors = validateLegacyTaskCoverage(legacyTasks, mapper);
+    if (coverageErrors.length) {
+      return { mode: 'legacy', reason: 'legacy-reference-gap', errors: coverageErrors, tasks: legacyTasks, mapper };
+    }
+
     const repository = createRepository(client);
     const dbTasks = await repository.list();
     const tasks = dbTasks.map((task) => mapper.toLegacyTask(task));
@@ -97,8 +117,8 @@ async function prepareTaskSupabaseRuntime({ storage, client, createRepository, l
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { TASK_RUNTIME_FLAG, isTaskSupabasePilotEnabled, createTaskReferenceMapper, prepareTaskSupabaseRuntime };
+  module.exports = { TASK_RUNTIME_FLAG, isTaskSupabasePilotEnabled, createTaskReferenceMapper, validateLegacyTaskCoverage, prepareTaskSupabaseRuntime };
 }
 if (typeof window !== 'undefined') {
-  window.TaskRuntimeGate = { TASK_RUNTIME_FLAG, isTaskSupabasePilotEnabled, createTaskReferenceMapper, prepareTaskSupabaseRuntime };
+  window.TaskRuntimeGate = { TASK_RUNTIME_FLAG, isTaskSupabasePilotEnabled, createTaskReferenceMapper, validateLegacyTaskCoverage, prepareTaskSupabaseRuntime };
 }
