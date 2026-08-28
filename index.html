@@ -262,6 +262,7 @@ tr:hover td{background:var(--card2);}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js" defer></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js" defer></script>
 
 <script>
 "use strict";
@@ -326,6 +327,20 @@ function saveOrSharePdf(doc, filename){
     }catch(e){ /* Web-Share nicht nutzbar, weiter unten normaler Download */ }
   }
   doc.save(filename);
+}
+function saveOrShareBlob(blob, filename){
+  if(navigator.share && navigator.canShare){
+    try{
+      const file = new File([blob], filename, {type: blob.type||"application/pdf"});
+      if(navigator.canShare({files:[file]})){
+        navigator.share({files:[file], title:filename}).catch(e=>{
+          if(!e || e.name!=="AbortError") toast("Teilen fehlgeschlagen: "+String(e && e.message || e).slice(0,150), "error");
+        });
+        return;
+      }
+    }catch(e){ /* Web-Share nicht nutzbar, weiter unten normaler Download */ }
+  }
+  download(blob, filename, blob.type||"application/pdf");
 }
 function todayISO(){ return new Date().toISOString().slice(0,10); }
 function nowHM(){ const d=new Date(); return String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0"); }
@@ -2882,6 +2897,7 @@ function renderProjektDetail(view, id, tab){
         <div class="pageSub">${escHtml(p.adresse||"–")} · ${escHtml(kundeName(p.kundeId))}</div>
       </div>
       <div style="display:flex; gap:8px;">
+        <button class="btn" onclick="openAuftragsmappeForm('${escAttr(p.id)}')">📁 Auftragsmappe</button>
         <button class="btn" onclick="openProjektForm('${escAttr(p.id)}')">✏️ Bearbeiten</button>
         <button class="btn danger" onclick="deleteProjekt('${escAttr(p.id)}')">🗑️ Löschen</button>
       </div>
@@ -3431,9 +3447,7 @@ function deleteBautagebuch(pid, eid){
   const p = S.projekte.find(x=>x.id===pid);
   deleteItemWithUndo(p.bautagebuch, eid, "Bautagebuch-Eintrag gelöscht.");
 }
-function exportBautagebuchPDF(pid){
-  const p = S.projekte.find(x=>x.id===pid);
-  if(!p.bautagebuch.length){ toast("Keine Einträge zum Exportieren.", "warn"); return; }
+function buildBautagebuchDoc(p){
   const doc = pdfNewDoc();
   let y = pdfHeader(doc, "Bautagebuch");
   doc.setFontSize(10.5);
@@ -3455,7 +3469,12 @@ function exportBautagebuchPDF(pid){
     y += 6;
   });
   pdfFooter(doc);
-  saveOrSharePdf(doc, "Bautagebuch_"+p.name.replace(/[^a-z0-9]+/gi,"_")+".pdf");
+  return doc;
+}
+function exportBautagebuchPDF(pid){
+  const p = S.projekte.find(x=>x.id===pid);
+  if(!p.bautagebuch.length){ toast("Keine Einträge zum Exportieren.", "warn"); return; }
+  saveOrSharePdf(buildBautagebuchDoc(p), "Bautagebuch_"+p.name.replace(/[^a-z0-9]+/gi,"_")+".pdf");
   toast("Bautagebuch-PDF erstellt.", "success");
 }
 
@@ -3533,9 +3552,7 @@ function saveChecklisteUnterschrift(pid){
   saveState();
   toast("Unterschrift gespeichert.", "success");
 }
-function exportChecklistePDF(pid){
-  const p = S.projekte.find(x=>x.id===pid);
-  if(!p.checkliste.length){ toast("Keine Checklisten-Punkte zum Exportieren.", "warn"); return; }
+function buildChecklisteDoc(p){
   const doc = pdfNewDoc();
   let y = pdfHeader(doc, "WISO / Abnahme-Checkliste");
   doc.setFontSize(10.5);
@@ -3556,9 +3573,154 @@ function exportChecklistePDF(pid){
   doc.setFontSize(9);
   doc.text("Unterschrift Kunde/Auftraggeber",15,y);
   pdfFooter(doc);
-  saveOrSharePdf(doc, "Abnahme-Checkliste_"+p.name.replace(/[^a-z0-9]+/gi,"_")+".pdf");
+  return doc;
+}
+function exportChecklistePDF(pid){
+  const p = S.projekte.find(x=>x.id===pid);
+  if(!p.checkliste.length){ toast("Keine Checklisten-Punkte zum Exportieren.", "warn"); return; }
+  saveOrSharePdf(buildChecklisteDoc(p), "Abnahme-Checkliste_"+p.name.replace(/[^a-z0-9]+/gi,"_")+".pdf");
   toast("Checkliste-PDF erstellt.", "success");
 }
+
+/* =========================================================
+   AUFTRAGSMAPPE — alle Unterlagen eines Projekts zu einem PDF bündeln
+========================================================= */
+function buildAuftragsmappeDeckblatt(p, projektRechnungen){
+  const doc = pdfNewDoc();
+  let y = pdfHeader(doc, "Auftragsmappe: "+p.name);
+  doc.setFontSize(10.5);
+  doc.text("Adresse: "+(p.adresse||"–"), 15, y); y+=6;
+  doc.text("Kunde: "+kundeName(p.kundeId), 15, y); y+=6;
+  doc.text("Status: "+p.status, 15, y); y+=6;
+  doc.text("Budget: "+fmtCurrency(p.budget), 15, y); y+=6;
+  doc.text("Deadline: "+fmtDate(p.deadline), 15, y); y+=10;
+
+  if(p.team && p.team.length){
+    doc.setFont(undefined,"bold"); doc.text("Team", 15, y); doc.setFont(undefined,"normal"); y+=6;
+    const lines = doc.splitTextToSize(p.team.map(mid=>mitarbeiterName(mid)).join(", "), 180);
+    doc.text(lines, 15, y); y += lines.length*5 + 6;
+  }
+  if(p.material && p.material.length){
+    if(y>230){ doc.addPage(); y=20; }
+    doc.setFont(undefined,"bold"); doc.text("Material / Positionen", 15, y); doc.setFont(undefined,"normal"); y+=6;
+    y = pdfTable(doc, y, ["Bezeichnung","Menge","Einheit","Preis"], p.material.map(m=>[m.bezeichnung, m.menge, m.einheit, m.preis?fmtCurrency(m.preis):"–"]), null, [15,110,140,195]);
+    const summe = p.material.reduce((s,m)=>s+(Number(m.preis)||0),0);
+    if(summe){ y+=6; doc.setFont(undefined,"bold"); doc.text("Summe: "+fmtCurrency(summe), 195, y, {align:"right"}); doc.setFont(undefined,"normal"); }
+    y += 12;
+  }
+  if(p.bauzeitenplan && p.bauzeitenplan.length){
+    if(y>230){ doc.addPage(); y=20; }
+    doc.setFont(undefined,"bold"); doc.text("Bauzeitenplan", 15, y); doc.setFont(undefined,"normal"); y+=6;
+    y = pdfTable(doc, y, ["Phase","Von","Bis","Status"], p.bauzeitenplan.map(ph=>[ph.bezeichnung, fmtDate(ph.von), fmtDate(ph.bis), bauphaseEffectiveStatus(ph)]), null, [15,105,135,195]);
+    y += 12;
+  }
+  if(projektRechnungen.length){
+    if(y>220){ doc.addPage(); y=20; }
+    doc.setFont(undefined,"bold"); doc.text("Rechnungen", 15, y); doc.setFont(undefined,"normal"); y+=6;
+    pdfTable(doc, y, ["Nr.","Datum","Fällig","Status","Summe"], projektRechnungen.map(r=>[r.nr, fmtDate(r.datum), fmtDate(r.faellig), rechnungEffectiveStatus(r), fmtCurrency(rechnungSumme(r))]), null, [15,85,115,145,195]);
+  }
+  pdfFooter(doc);
+  return doc;
+}
+function openAuftragsmappeForm(pid){
+  const p = S.projekte.find(x=>x.id===pid);
+  const projektRechnungen = S.rechnungen.filter(r=>r.projektId===p.id);
+  const chk = (id, count, defaultOn)=>`<label style="display:flex; align-items:center; gap:10px; padding:8px 0;"><input type="checkbox" id="${id}" ${count && defaultOn ? "checked":""} ${count?"":"disabled"}> ${id==="amDokumente"?"Dokumente":id==="amRechnungen"?"Rechnungen":id==="amFotos"?"Fotos":id==="amBautagebuch"?"Bautagebuch":"WISO/Checkliste"} (${count})</label>`;
+  openModal(`
+    <div class="modalHead"><div class="modalTitle">📁 Auftragsmappe erstellen</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
+    <div class="pageSub" style="margin-bottom:8px;">Fasst alle Unterlagen des Projekts zu einem PDF zusammen: Deckblatt mit Projektdaten (inkl. Team, Material/LV-Positionen, Bauzeitenplan) plus die unten ausgewählten Inhalte.</div>
+    <div style="display:flex; flex-direction:column;">
+      ${chk("amDokumente", p.dokumente.length, true)}
+      ${chk("amRechnungen", projektRechnungen.length, true)}
+      ${chk("amFotos", p.fotos.length, false)}
+      ${chk("amBautagebuch", p.bautagebuch.length, false)}
+      ${chk("amCheckliste", p.checkliste.length, false)}
+    </div>
+    <div id="amStatus" style="font-size:13px; color:var(--text-dim); margin-top:12px;"></div>
+    <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" id="amGoBtn" onclick="confirmAuftragsmappe('${escAttr(pid)}')">📁 Erstellen</button></div>
+  `, true);
+}
+function confirmAuftragsmappe(pid){
+  const opts = {
+    dokumente: !!document.getElementById("amDokumente").checked,
+    rechnungen: !!document.getElementById("amRechnungen").checked,
+    fotos: !!document.getElementById("amFotos").checked,
+    bautagebuch: !!document.getElementById("amBautagebuch").checked,
+    checkliste: !!document.getElementById("amCheckliste").checked,
+  };
+  generateAuftragsmappe(pid, opts);
+}
+function dataUrlToBytesAndMime(dataURL){
+  const comma = dataURL.indexOf(",");
+  const meta = dataURL.slice(0, comma);
+  const mimeMatch = /data:(.*?);base64/.exec(meta);
+  const mime = mimeMatch ? mimeMatch[1] : "";
+  const base64 = dataURL.slice(comma+1);
+  const byteChars = atob(base64);
+  const byteNumbers = new Array(byteChars.length);
+  for(let i=0;i<byteChars.length;i++){ byteNumbers[i] = byteChars.charCodeAt(i); }
+  return { bytes: new Uint8Array(byteNumbers), mime };
+}
+async function generateAuftragsmappe(pid, opts){
+  const p = S.projekte.find(x=>x.id===pid);
+  const statusEl = document.getElementById("amStatus");
+  const goBtn = document.getElementById("amGoBtn");
+  if(!window.PDFLib){
+    if(statusEl) statusEl.textContent = "PDF-Werkzeug lädt noch. Bitte kurz warten und erneut versuchen.";
+    return;
+  }
+  if(goBtn) goBtn.disabled = true;
+  if(statusEl) statusEl.textContent = "Erstelle Auftragsmappe …";
+  try{
+    const projektRechnungen = S.rechnungen.filter(r=>r.projektId===p.id);
+    const master = await PDFLib.PDFDocument.create();
+    let skipped = 0;
+
+    async function mergeJsPdfDoc(jsDoc){
+      const bytes = jsDoc.output("arraybuffer");
+      const src = await PDFLib.PDFDocument.load(bytes);
+      const pages = await master.copyPages(src, src.getPageIndices());
+      pages.forEach(pg=>master.addPage(pg));
+    }
+    async function mergeDataUrl(dataURL){
+      try{
+        const { bytes, mime } = dataUrlToBytesAndMime(dataURL);
+        if(mime === "application/pdf"){
+          const src = await PDFLib.PDFDocument.load(bytes, {ignoreEncryption:true});
+          const pages = await master.copyPages(src, src.getPageIndices());
+          pages.forEach(pg=>master.addPage(pg));
+        }else if(mime === "image/jpeg" || mime === "image/jpg" || mime === "image/png"){
+          const img = mime === "image/png" ? await master.embedPng(bytes) : await master.embedJpg(bytes);
+          const pageW = 595.28, pageH = 841.89, margin = 20;
+          const maxW = pageW - margin*2, maxH = pageH - margin*2;
+          const scale = Math.min(maxW/img.width, maxH/img.height, 1);
+          const w = img.width*scale, h = img.height*scale;
+          const page = master.addPage([pageW, pageH]);
+          page.drawImage(img, { x:(pageW-w)/2, y:(pageH-h)/2, width:w, height:h });
+        }else{
+          skipped++;
+        }
+      }catch(e){ skipped++; }
+    }
+
+    await mergeJsPdfDoc(buildAuftragsmappeDeckblatt(p, projektRechnungen));
+    if(opts.dokumente){ for(const d of (p.dokumente||[])){ await mergeDataUrl(d.dataURL); } }
+    if(opts.rechnungen){ for(const r of projektRechnungen){ await mergeJsPdfDoc(buildRechnungDoc(r)); } }
+    if(opts.bautagebuch && p.bautagebuch.length){ await mergeJsPdfDoc(buildBautagebuchDoc(p)); }
+    if(opts.checkliste && p.checkliste.length){ await mergeJsPdfDoc(buildChecklisteDoc(p)); }
+    if(opts.fotos){ for(const f of (p.fotos||[])){ await mergeDataUrl(f.dataURL); } }
+
+    const bytes = await master.save();
+    const blob = new Blob([bytes], {type:"application/pdf"});
+    closeModal();
+    saveOrShareBlob(blob, "Auftragsmappe_"+p.name.replace(/[^a-z0-9]+/gi,"_")+".pdf");
+    toast("Auftragsmappe erstellt"+(skipped?` (${skipped} Datei(en) übersprungen – kein PDF oder Bild)`:"")+".", "success");
+  }catch(e){
+    if(goBtn) goBtn.disabled = false;
+    if(statusEl) statusEl.textContent = "Fehler: " + e.message;
+  }
+}
+
 function openChecklistItemForm(pid){
   openModal(`
     <div class="modalHead"><div class="modalTitle">Checklisten-Punkt</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
@@ -4151,8 +4313,7 @@ function deleteRechnung(id){
     deleteItemWithUndo(S.rechnungen, id, "Rechnung gelöscht.");
   });
 }
-function exportRechnungPDF(id){
-  const r = S.rechnungen.find(x=>x.id===id);
+function buildRechnungDoc(r){
   const k = S.kunden.find(x=>x.id===r.kundeId);
   const doc = pdfNewDoc();
   let y = pdfHeader(doc, "Rechnung "+r.nr);
@@ -4178,7 +4339,11 @@ function exportRechnungPDF(id){
     doc.setFontSize(9); doc.text("Unterschrift",15,y);
   }
   pdfFooter(doc);
-  saveOrSharePdf(doc, r.nr+".pdf");
+  return doc;
+}
+function exportRechnungPDF(id){
+  const r = S.rechnungen.find(x=>x.id===id);
+  saveOrSharePdf(buildRechnungDoc(r), r.nr+".pdf");
 }
 function exportDatevCSV(){
   const rows = S.rechnungen.map(r=>[r.nr, fmtDate(r.datum), kundeName(r.kundeId), rechnungNetto(r).toFixed(2), rechnungMwst(r).toFixed(2), rechnungSumme(r).toFixed(2), rechnungEffectiveStatus(r)]);
