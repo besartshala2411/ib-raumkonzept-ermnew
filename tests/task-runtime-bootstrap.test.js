@@ -1,6 +1,7 @@
 let passed=0, failed=0;
 function assert(cond,msg){ if(cond){passed++;console.log('  OK  '+msg);}else{failed++;console.log('  FAIL '+msg);} }
 function tick(){ return new Promise(resolve=>setTimeout(resolve,0)); }
+function deferred(){ let resolve,reject; const promise=new Promise((res,rej)=>{resolve=res;reject=rej;}); return {promise,resolve,reject}; }
 
 (async()=>{
   console.log('\n== TaskRuntimeBootstrap READ/WRITE bridge ==');
@@ -70,17 +71,39 @@ function tick(){ return new Promise(resolve=>setTimeout(resolve,0)); }
   }};
   global.closeModal=()=>{};
 
+  // Doppel-Klick auf Speichern darf keinen zweiten INSERT starten, solange der erste
+  // Request noch läuft. Nach Abschluss muss ein späterer neuer Versuch wieder möglich sein.
+  const pendingCreate=deferred();
+  mappedRepo.create=async(data)=>{ calls.create++; await pendingCreate.promise; return {id:'db-new',...data}; };
   global.saveAufgabe();
+  global.saveAufgabe();
+  await tick();
+  assert(calls.create===1,'doppelter Create startet während laufendem Request nur einen Supabase-INSERT');
+  assert(/bereits gespeichert/i.test(lastToast),'paralleler Create wird sichtbar als laufende Speicherung blockiert');
+  pendingCreate.resolve();
   await tick(); await tick();
-  assert(calls.create===1,'WRITE-Pilot legt Aufgabe ausschließlich über das Supabase-Repository an');
-  assert(bootstrap.getTaskRuntime().tasks.some(t=>t.id==='db-new'),'erfolgreicher Create aktualisiert nur den Runtime-Task-Cache');
+  assert(bootstrap.getTaskRuntime().tasks.some(t=>t.id==='db-new'),'abgeschlossener Create aktualisiert den Runtime-Task-Cache');
   assert(global.S.aufgaben===legacyRef && calls.legacySave===0,'Create verändert Legacy-State nicht und ruft Legacy-Save nicht auf');
 
-  global.setAufgabeStatus('db','erledigt');
+  mappedRepo.create=async(data)=>{ calls.create++; return {id:'db-new-2',...data}; };
+  global.saveAufgabe();
   await tick(); await tick();
-  assert(calls.update===1 && bootstrap.getTaskRuntime().tasks.find(t=>t.id==='db').status==='erledigt','Statusänderung läuft über Supabase und aktualisiert Runtime-Cache');
+  assert(calls.create===2,'nach Abschluss wird ein späterer Create wieder zugelassen');
+
+  // Statusänderung und Delete derselben Aufgabe teilen denselben Lock-Key. Damit
+  // kann ein Delete nicht einen noch laufenden Status-Request überholen.
+  const pendingUpdate=deferred();
+  mappedRepo.update=async(id,changes)=>{ calls.update++; await pendingUpdate.promise; return {id,titel:'Supabase',projektId:null,zugeordnet:null,...changes}; };
+  global.setAufgabeStatus('db','erledigt');
+  global.deleteAufgabe('db');
+  await tick();
+  assert(calls.update===1 && calls.remove===0,'konkurrierende Mutation derselben Aufgabe wird serialisiert');
+  pendingUpdate.resolve();
+  await tick(); await tick();
+  assert(bootstrap.getTaskRuntime().tasks.find(t=>t.id==='db').status==='erledigt','Statusänderung aktualisiert nach Abschluss den Runtime-Cache');
   assert(calls.legacyStatus===0,'Supabase-Statusänderung hat keinen Legacy-Fallback');
 
+  mappedRepo.remove=async(id)=>{ calls.remove++; return {id,titel:'Supabase',deletedAt:new Date().toISOString(),projektId:null,zugeordnet:null}; };
   global.deleteAufgabe('db');
   await tick(); await tick();
   assert(calls.remove===1 && !bootstrap.getTaskRuntime().tasks.some(t=>t.id==='db'),'Delete nutzt Soft-Delete-Repository und entfernt Task aus Runtime-Cache');
