@@ -7,7 +7,8 @@
     "test": "node tests/smoke.test.js",
     "test:tasks-migration": "node tests/tasks-migration.test.js",
     "test:phase3b-preflight": "node tests/phase3b-preflight.test.js",
-    "test:task-supabase-repository": "node tests/task-supabase-repository.test.js"
+    "test:task-supabase-repository": "node tests/task-supabase-repository.test.js",
+    "test:task-runtime-gate": "node tests/task-runtime-gate.test.js"
   },
   "dependencies": {
     "web-push": "^3.6.7"
