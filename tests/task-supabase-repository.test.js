@@ -57,6 +57,40 @@ function clientWith(result, calls) {
 
   {
     const calls = [];
+    const repo = createTaskSupabaseRepository(clientWith({ data:row, error:null }, calls));
+    let threw = false;
+    try { await repo.update('db1', { company_id:'evil', deleted_at:'evil' }); }
+    catch (e) { threw = e.message.includes('keine erlaubten Änderungen'); }
+    assert(threw, 'update lehnt reine geschützte/no-op Änderungen ab');
+    assert(!calls.some(c => c[0] === 'update'), 'bei no-op wird kein Supabase-Update gesendet');
+  }
+
+  {
+    const calls = [];
+    const repo = createTaskSupabaseRepository(clientWith({ data:row, error:null }, calls));
+    let threw = false;
+    try { await repo.update('db1'); } catch (e) { threw = e.message.includes('ungültige Änderungen'); }
+    assert(threw, 'update validiert fehlende changes');
+  }
+
+  {
+    const calls = [];
+    const repo = createTaskSupabaseRepository(clientWith({ data:row, error:null }, calls));
+    let threw = false;
+    try { await repo.create({ titel:'X', prioritaet:'kritisch' }); } catch (e) { threw = e.message.includes('ungültige Priorität'); }
+    assert(threw, 'create validiert Priorität clientseitig');
+  }
+
+  {
+    const calls = [];
+    const repo = createTaskSupabaseRepository(clientWith({ data:row, error:null }, calls));
+    let threw = false;
+    try { await repo.update('db1', { status:'kaputt' }); } catch (e) { threw = e.message.includes('ungültiger Status'); }
+    assert(threw, 'update validiert Status clientseitig');
+  }
+
+  {
+    const calls = [];
     const repo = createTaskSupabaseRepository(clientWith({ data:{...row, deleted_at:'2026-08-28T12:00:00Z'}, error:null }, calls));
     await repo.remove('db1');
     const patch = calls.find(c => c[0] === 'update')[1];
