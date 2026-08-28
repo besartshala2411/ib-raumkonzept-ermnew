@@ -41,3 +41,6 @@ jobs:
 
       - name: Task Supabase repository tests
         run: npm run test:task-supabase-repository
+
+      - name: Task runtime gate tests
+        run: npm run test:task-runtime-gate
