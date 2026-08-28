@@ -9,6 +9,7 @@ function deferred(){ let resolve,reject; const promise=new Promise((res,rej)=>{r
   let storageValues={IB_TASKS_SUPABASE_PILOT:'1',IB_TASKS_SUPABASE_WRITE_PILOT:null};
   global.S={aufgaben:[{id:'legacy',titel:'Legacy'}]};
   global.localStorage={getItem(key){return storageValues[key] || null;}};
+  global.sessionStorage={getItem(key){return storageValues[key] || null;}};
   const calls={create:0,update:0,remove:0,legacySave:0,legacyStatus:0,legacyDelete:0,enter:0,logout:0};
   const mappedRepo={
     async list(){ return [{id:'db',titel:'Supabase',status:'offen',projektId:null,zugeordnet:null}]; },
@@ -29,7 +30,7 @@ function deferred(){ let resolve,reject; const promise=new Promise((res,rej)=>{r
   assert(bootstrap.getTaskRuntime().mode==='supabase','initialisiert den freigegebenen Supabase-READ-Modus');
   assert(bootstrap.getVisibleTasks(legacyRef)[0].id==='db','liefert im Pilot die relational gelesenen Aufgaben');
   assert(bootstrap.isTaskReadPilotRequested(global.localStorage),'READ-Pilot erkennt die explizite Anforderung');
-  assert(!bootstrap.isTaskWritePilotEnabled(global.localStorage),'WRITE-Pilot ist unabhängig vom READ-Flag standardmäßig aus');
+  assert(!bootstrap.isTaskWritePilotEnabled(global.sessionStorage),'WRITE-Pilot ist unabhängig vom READ-Flag standardmäßig aus');
 
   let seen=null;
   bootstrap.withVisibleTasks(()=>{ seen=global.S.aufgaben; });
