@@ -8,8 +8,10 @@ function deferred(){ let resolve,reject; const promise=new Promise((res,rej)=>{r
 
   const legacyTasks=[{id:'legacy',titel:'Legacy',status:'offen'}];
   global.S={aufgaben:legacyTasks};
-  const flags={IB_TASKS_SUPABASE_PILOT:'1',IB_TASKS_SUPABASE_WRITE_PILOT:'1'};
-  global.localStorage={getItem(key){return flags[key] || null;}};
+  const localFlags={IB_TASKS_SUPABASE_PILOT:'1'};
+  const sessionFlags={IB_TASKS_SUPABASE_WRITE_PILOT:'1'};
+  global.localStorage={getItem(key){return localFlags[key] || null;}};
+  global.sessionStorage={getItem(key){return sessionFlags[key] || null;}};
   global.getSupabaseClient=async()=>({from(){}});
   global.createTaskSupabaseRepository=()=>({});
   global.location={hash:'#aufgaben'};
@@ -19,6 +21,10 @@ function deferred(){ let resolve,reject; const promise=new Promise((res,rej)=>{r
   const firstPreflight=deferred();
   global.TaskRuntimeGate={prepareTaskSupabaseRuntime:async()=>firstPreflight.promise};
   const bootstrap=require('../src/modules/tasks/taskRuntimeBootstrap.js');
+  assert(bootstrap.isTaskReadPilotRequested(global.localStorage),
+    'Auth-Race-Test aktiviert READ ausschließlich über localStorage');
+  assert(bootstrap.isTaskWritePilotEnabled(global.sessionStorage),
+    'Auth-Race-Test aktiviert WRITE ausschließlich über tab-lokales sessionStorage');
 
   const staleInit=bootstrap.initializeTaskRuntime({legacyTasks,client:{from(){}}});
   await tick();
