@@ -88,12 +88,14 @@ async function main(){
   assert(window.hasAdminAccess()===true,'Audit läuft mit Admin-Zugriff für alle sichtbaren Reiter');
   assert(window.document.querySelectorAll('.navItem').length===modules.length,'Admin-Sidebar enthält jeden registrierten Reiter');
   for(const mod of modules){
-    // Der App-Boot kann in JSDOM noch testinterne asynchrone Storage-/Sync-Arbeit abschließen.
-    // Vor jedem isolierten Klick stellen wir deshalb den synthetischen Test-Login samt Mitarbeiter-
-    // Datensatz wieder her und bauen exakt dieselbe Sidebar wie enterApp() neu auf.
+    // Jeder Klick startet deterministisch von einer ANDEREN Route. So prüfen wir wirklich den
+    // hashchange-Pfad des inline onclick-Handlers und geraten nicht in den Sonderfall, dass ein
+    // erneuter Klick auf denselben Hash naturgemäß kein hashchange-Event auslöst.
     ensureAuditAdmin();
     window.buildSidebar();
-    window.route(window.location.hash||'#dashboard');
+    const baseline=mod.id==='dashboard'?'projekte':'dashboard';
+    window.history.replaceState(null,'','#'+baseline);
+    window.route('#'+baseline);
     const btn=window.document.querySelector('.navItem[data-route="'+mod.id+'"]');
     assert(!!btn,'Sidebar-Reiter '+mod.id+' ist vorhanden');
     if(!btn) continue;
