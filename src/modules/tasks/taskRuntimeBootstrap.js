@@ -11,6 +11,7 @@
   let bridgeInstalled = false;
   let initializePromise = null;
   let runtimeGeneration = 0;
+  let mutationEpoch = 0;
   const mutationsInFlight = new Set();
 
   function storageFlagEnabled(storage, key) {
@@ -41,6 +42,7 @@
 
   function resetTaskRuntime(reason, legacyTasks) {
     runtimeGeneration++;
+    mutationEpoch++;
     runtime = {
       mode: 'legacy',
       reason: reason || 'reset',
@@ -95,8 +97,9 @@
     return runtime.mode === 'supabase' && isTaskReadPilotRequested(getTaskReadStorage());
   }
 
-  function isMutationResultCurrent(generation) {
+  function isMutationResultCurrent(generation, epoch) {
     return generation === runtimeGeneration
+      && epoch === mutationEpoch
       && isSupabaseReadActive()
       && isTaskWritePilotEnabled(getTaskWriteStorage());
   }
@@ -153,9 +156,16 @@
   function mutationMode() {
     const readStorage = getTaskReadStorage();
     if (runtime.mode === 'supabase') {
-      if (!isTaskReadPilotRequested(readStorage)) return 'pilot-unavailable';
+      if (!isTaskReadPilotRequested(readStorage)) {
+        mutationEpoch++;
+        return 'pilot-unavailable';
+      }
       const writeStorage = getTaskWriteStorage();
-      return isTaskWritePilotEnabled(writeStorage) ? 'supabase-write' : 'supabase-readonly';
+      if (!isTaskWritePilotEnabled(writeStorage)) {
+        mutationEpoch++;
+        return 'supabase-readonly';
+      }
+      return 'supabase-write';
     }
     if (isTaskReadPilotRequested(readStorage)) return 'pilot-unavailable';
     return 'legacy';
@@ -202,6 +212,7 @@
       }
       const args = arguments;
       const generation = runtimeGeneration;
+      const epoch = mutationEpoch;
       const key = String(generation) + ':' + mutationKey(name, args);
       if (mutationsInFlight.has(key)) {
         mutationBusy();
@@ -211,7 +222,7 @@
       Promise.resolve()
         .then(() => supabaseHandler.apply(this, args))
         .catch((error) => {
-          if (isMutationResultCurrent(generation)) mutationFailed(error);
+          if (isMutationResultCurrent(generation, epoch)) mutationFailed(error);
         })
         .finally(() => { mutationsInFlight.delete(key); });
     }
@@ -224,6 +235,7 @@
     wrapTaskMutation('saveAufgabe', async function () {
       if (!runtime.repository || typeof runtime.repository.create !== 'function') throw new Error('Task-Repository nicht verfügbar.');
       const generation = runtimeGeneration;
+      const epoch = mutationEpoch;
       const byId = (id) => global.document && global.document.getElementById(id);
       const titelEl = byId('agTitel');
       const titel = titelEl && String(titelEl.value || '').trim();
@@ -240,7 +252,7 @@
         zugeordnet: byId('agZuge') && byId('agZuge').value || null,
         status: 'offen',
       });
-      if (!isMutationResultCurrent(generation)) return;
+      if (!isMutationResultCurrent(generation, epoch)) return;
       runtime.tasks = [created].concat((runtime.tasks || []).filter((task) => task.id !== created.id));
       if (typeof global.closeModal === 'function') global.closeModal();
       rerenderTasks();
@@ -250,8 +262,9 @@
     wrapTaskMutation('setAufgabeStatus', async function (id, status) {
       if (!runtime.repository || typeof runtime.repository.update !== 'function') throw new Error('Task-Repository nicht verfügbar.');
       const generation = runtimeGeneration;
+      const epoch = mutationEpoch;
       const updated = await runtime.repository.update(id, { status });
-      if (!isMutationResultCurrent(generation)) return;
+      if (!isMutationResultCurrent(generation, epoch)) return;
       runtime.tasks = (runtime.tasks || []).map((task) => task.id === id ? updated : task);
       rerenderTasks();
     });
@@ -259,8 +272,9 @@
     wrapTaskMutation('deleteAufgabe', async function (id) {
       if (!runtime.repository || typeof runtime.repository.remove !== 'function') throw new Error('Task-Repository nicht verfügbar.');
       const generation = runtimeGeneration;
+      const epoch = mutationEpoch;
       await runtime.repository.remove(id);
-      if (!isMutationResultCurrent(generation)) return;
+      if (!isMutationResultCurrent(generation, epoch)) return;
       runtime.tasks = (runtime.tasks || []).filter((task) => task.id !== id);
       rerenderTasks();
       notify('Aufgabe gelöscht.', 'success');
