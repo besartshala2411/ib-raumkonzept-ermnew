@@ -57,6 +57,16 @@ function deferred() {
   await tick();
   assert(repositoryUpdates === 1, 'WRITE startet bei explizit aktiviertem tab-lokalem Flag');
 
+  const busyToastCount = toastEvents.length;
+  global.setAufgabeStatus('task-1', 'erledigt');
+  await tick();
+  assert(repositoryUpdates === 1,
+    'doppelte Mutation derselben Aufgabe startet keinen zweiten Supabase-WRITE solange der erste läuft');
+  assert(legacyUpdates === 0,
+    'doppelte laufende Mutation fällt niemals auf Legacy zurück');
+  assert(toastEvents.length === busyToastCount + 1 && toastEvents.at(-1).type === 'warn',
+    'doppelte laufende Mutation wird als bereits laufender WRITE signalisiert');
+
   sessionFlags.IB_TASKS_SUPABASE_WRITE_PILOT = null;
   pendingUpdate.resolve();
   await tick();
