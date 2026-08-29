@@ -50,6 +50,10 @@ Wenn `sessionStorage` nicht sicher verfügbar ist, rollt die Aktivierung das REA
 
 Danach muss `TaskRuntimeBootstrap.getTaskRuntime().mode` den Wert `supabase` liefern und `TaskRuntimeBootstrap.isTaskWritePilotEnabled(sessionStorage)` muss `true` sein. Ist eine der Bedingungen nicht erfüllt, **keine Mutation durchführen**.
 
+### Netlify Branch-Deploy
+
+Für den mobilen Pilot darf nicht die Production-URL auf `main` verwendet werden. Netlify muss den Branch `phase3c-followup-cutover-readiness` als separaten Branch-Deploy veröffentlichen. Die Production-Branch-Einstellung bleibt dabei auf `main`; der Branch-Deploy wird nur für den Pilot aktiviert. Nach Aktivierung der Branch-Deploy-Einstellung genügt ein neuer Push auf diesen Branch, um den separaten Test-Deploy auszulösen.
+
 ## Testsequenz
 
 ### 1. Create
