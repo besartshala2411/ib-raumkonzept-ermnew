@@ -301,12 +301,19 @@
   }
 
   function loadStyles(){
-    if(!global.document||global.document.getElementById('uiuxFoundationStyles')) return;
-    const link=global.document.createElement('link');
-    link.id='uiuxFoundationStyles';
-    link.rel='stylesheet';
-    link.href='./src/ui/uiuxFoundation.css';
-    global.document.head.appendChild(link);
+    if(!global.document) return;
+    const styles=[
+      ['uiuxFoundationStyles','./src/ui/uiuxFoundation.css'],
+      ['uiuxProjectWorkspaceStyles','./src/ui/projectWorkspace.css']
+    ];
+    styles.forEach(([id,href])=>{
+      if(global.document.getElementById(id)) return;
+      const link=global.document.createElement('link');
+      link.id=id;
+      link.rel='stylesheet';
+      link.href=href;
+      global.document.head.appendChild(link);
+    });
   }
 
   function install(){
