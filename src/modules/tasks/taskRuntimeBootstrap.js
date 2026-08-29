@@ -133,6 +133,22 @@
     global[name] = wrapped;
   }
 
+  // index.html registriert Module über reg(..., renderAufgaben) und speichert dabei
+  // die damalige Funktionsreferenz in MODULES. Ein späteres Ersetzen von
+  // window.renderAufgaben erreicht diesen bereits registrierten Callback deshalb
+  // nicht zuverlässig. Die Route selbst ist hingegen der gemeinsame Dispatch-Pfad.
+  // Während genau dieses synchronen Render-Aufrufs wird S.aufgaben temporär auf den
+  // Supabase-Runtime-Cache gelegt und direkt danach wieder auf das Legacy-Array
+  // zurückgestellt. Damit bleibt der No-State-Cutover unverändert erhalten.
+  function wrapRouteReadBridge() {
+    const original = global.route;
+    if (typeof original !== 'function' || original.__taskPilotReadWrapped) return;
+    function wrapped() { return withVisibleTasks(original, this, arguments); }
+    wrapped.__taskPilotReadWrapped = true;
+    wrapped.__taskPilotOriginal = original;
+    global.route = wrapped;
+  }
+
   function notify(message, type) {
     if (typeof global.toast === 'function') global.toast(message, type || 'info');
   }
@@ -316,6 +332,7 @@
   function installTaskReadPilotBridge() {
     if (bridgeInstalled) return;
     bridgeInstalled = true;
+    wrapRouteReadBridge();
     wrapReadFunction('renderAufgaben');
     wrapReadFunction('renderProjektDetail');
     wrapReadFunction('globalSearchIndex');
