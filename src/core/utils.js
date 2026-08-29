@@ -229,13 +229,14 @@ function debounce(fn, ms){
 /* UI/UX branch loader: presentation/navigation only; no persistence or pilot flags. */
 (function loadUIUXFoundation(global){
   if (typeof document === 'undefined' || !global) return;
-  const src = './src/ui/uiuxFoundation.js';
-  if (document.readyState === 'loading' && typeof document.write === 'function') {
-    document.write('<script src="' + src + '"></scr' + 'ipt>');
-    return;
+  function appendUIUXScript(){
+    if (document.getElementById('uiuxFoundationScript')) return;
+    const el = document.createElement('script');
+    el.id = 'uiuxFoundationScript';
+    el.src = './src/ui/uiuxFoundation.js';
+    el.async = false;
+    document.head.appendChild(el);
   }
-  const el = document.createElement('script');
-  el.src = src;
-  el.async = false;
-  document.head.appendChild(el);
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', appendUIUXScript, { once: true });
+  else appendUIUXScript();
 })(typeof window !== 'undefined' ? window : null);
