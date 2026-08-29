@@ -84,17 +84,29 @@ function deferred() {
     'Cross-Operation-Konflikt derselben Aufgabe wird als bereits laufender WRITE signalisiert');
 
   sessionFlags.IB_TASKS_SUPABASE_WRITE_PILOT = null;
+  const disabledToastCount = toastEvents.length;
+  global.setAufgabeStatus('task-1', 'offen');
+  await tick();
+  assert(repositoryUpdates === 1,
+    'beobachtete WRITE-Deaktivierung startet während eines laufenden Requests keinen zweiten Supabase-WRITE');
+  assert(legacyUpdates === 0,
+    'beobachtete WRITE-Deaktivierung fällt während eines laufenden Requests nicht auf Legacy zurück');
+  assert(toastEvents.length === disabledToastCount + 1 && toastEvents.at(-1).type === 'warn',
+    'beobachtete WRITE-Deaktivierung wird als READ-only-Zustand signalisiert');
+
+  sessionFlags.IB_TASKS_SUPABASE_WRITE_PILOT = '1';
   pendingUpdate.resolve();
   await tick();
   await tick();
 
   assert(bootstrap.getTaskRuntime().tasks[0].status === 'offen',
-    'verspätetes WRITE-Ergebnis wird nach WRITE-Deaktivierung nicht in den Runtime-Cache übernommen');
+    'verspätetes WRITE-Ergebnis bleibt nach beobachtetem Off-On-Toggle ungültig und wird nicht in den Runtime-Cache übernommen');
   assert(legacyUpdates === 0,
     'verspätetes WRITE-Ergebnis fällt niemals auf eine Legacy-Mutation zurück');
   assert(repositoryRemoves === 0 && legacyRemoves === 0,
     'blockiertes Cross-Operation-Delete bleibt auch nach Abschluss des ersten WRITEs ohne Nebenwirkung');
 
+  sessionFlags.IB_TASKS_SUPABASE_WRITE_PILOT = null;
   const toastCount = toastEvents.length;
   global.setAufgabeStatus('task-1', 'erledigt');
   await tick();
