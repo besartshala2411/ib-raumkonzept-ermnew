@@ -96,7 +96,9 @@
   }
 
   function isMutationResultCurrent(generation) {
-    return generation === runtimeGeneration && isSupabaseReadActive();
+    return generation === runtimeGeneration
+      && isSupabaseReadActive()
+      && isTaskWritePilotEnabled(getTaskWriteStorage());
   }
 
   function getVisibleTasks(legacyTasks) {
