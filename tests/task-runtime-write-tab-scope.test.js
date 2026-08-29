@@ -9,9 +9,9 @@ function tick(){ return new Promise(resolve=>setTimeout(resolve,0)); }
   global.localStorage={getItem(k){return local[k]||null;}};
   global.sessionStorage={getItem(k){return session[k]||null;}};
   global.S={aufgaben:[{id:'legacy'}]};
-  let updates=0, legacyUpdates=0, lastToast='';
+  let updates=0, legacyUpdates=0, listCalls=0, lastToast='';
   const repo={
-    async list(){return [{id:'db',titel:'DB',status:'offen',projektId:null,zugeordnet:null}];},
+    async list(){listCalls++;return [{id:'db',titel:'DB',status:'offen',projektId:null,zugeordnet:null}];},
     async update(id,changes){updates++;return {id,titel:'DB',projektId:null,zugeordnet:null,...changes};}
   };
   global.createTaskSupabaseRepository=()=>({});
@@ -22,6 +22,8 @@ function tick(){ return new Promise(resolve=>setTimeout(resolve,0)); }
   const bootstrap=require('../src/modules/tasks/taskRuntimeBootstrap.js');
   await bootstrap.initializeTaskRuntime({legacyTasks:global.S.aufgaben,client:{from(){}}});
   bootstrap.installTaskWritePilotBridge();
+
+  assert(bootstrap.getVisibleTasks(global.S.aufgaben)[0].id==='db','aktiver READ-Pilot liefert Supabase-Tasks als sichtbaren Runtime-State');
 
   global.setAufgabeStatus('db','erledigt');
   await tick();
@@ -35,8 +37,13 @@ function tick(){ return new Promise(resolve=>setTimeout(resolve,0)); }
   assert(bootstrap.getTaskRuntime().tasks[0].status==='erledigt','tab-lokal freigegebener Write aktualisiert Runtime-Cache');
 
   // Wird das READ-Flag in einer bereits initialisierten Supabase-Runtime entfernt,
-  // darf ein zurückgelassenes WRITE-Flag bis zum Reload/Reset nicht weiter schreiben.
+  // dürfen weder stale Reads noch ein zurückgelassenes WRITE-Flag weiter Supabase nutzen.
   local.IB_TASKS_SUPABASE_PILOT=null;
+  assert(bootstrap.getVisibleTasks(global.S.aufgaben)[0].id==='legacy','entferntes READ-Flag fällt für sichtbare Tasks sofort auf Legacy zurück');
+  const beforeReloadListCalls=listCalls;
+  await bootstrap.reloadSupabaseTasks();
+  assert(listCalls===beforeReloadListCalls,'entferntes READ-Flag verhindert weitere Supabase-Reload-Reads');
+
   global.setAufgabeStatus('db','offen');
   await tick();
   assert(updates===1 && legacyUpdates===0,'entferntes READ-Flag stoppt WRITE sofort auch bei stale Supabase-Runtime');
