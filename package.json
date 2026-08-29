@@ -14,8 +14,9 @@
     "test:task-runtime-write-tab-scope": "node tests/task-runtime-write-tab-scope.test.js",
     "test:task-runtime-write-flag-race": "node tests/task-runtime-write-flag-race.test.js",
     "test:task-runtime-flag-integrity": "node tests/task-runtime-flag-integrity.test.js",
+    "test:task-runtime-logout-write-failure": "node tests/task-runtime-logout-write-failure.test.js",
     "test:task-write-pilot-lifecycle": "node tests/task-write-pilot-lifecycle.test.js",
-    "test:phase3c-readiness": "npm run test:task-runtime-gate && npm run test:task-runtime-bootstrap && npm run test:task-runtime-auth-race && npm run test:task-runtime-write-tab-scope && npm run test:task-runtime-write-flag-race && npm run test:task-runtime-flag-integrity && npm run test:task-write-pilot-lifecycle"
+    "test:phase3c-readiness": "npm run test:task-runtime-gate && npm run test:task-runtime-bootstrap && npm run test:task-runtime-auth-race && npm run test:task-runtime-write-tab-scope && npm run test:task-runtime-write-flag-race && npm run test:task-runtime-flag-integrity && npm run test:task-runtime-logout-write-failure && npm run test:task-write-pilot-lifecycle"
   },
   "dependencies": {
     "web-push": "^3.6.7"
