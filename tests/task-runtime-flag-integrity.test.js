@@ -71,6 +71,19 @@ function tick(){ return new Promise(resolve=>setTimeout(resolve,0)); }
   assert(!mutationThrew && updates===1 && legacyUpdates===0,'werfender localStorage-Property-Zugriff blockiert stale WRITE ohne Exception oder Legacy-Fallback');
   assert(/nicht schreibbereit/i.test(lastToast),'gesperrter READ-Storage wird sichtbar fail-closed blockiert');
 
+  bootstrap.resetTaskRuntime('blocked-storage-init',global.S.aufgaben);
+  let gateStorage='unset';
+  global.TaskRuntimeGate={async prepareTaskSupabaseRuntime(opts){
+    gateStorage=opts.storage;
+    if(!bootstrap.isTaskReadPilotRequested(opts.storage)) return {mode:'legacy',reason:'feature-flag-off',tasks:opts.legacyTasks,repository:null,mapper:null};
+    return {mode:'supabase',reason:'ready',tasks:await repo.list(),repository:repo,mapper:{}};
+  }};
+  const beforeBlockedInitLists=listCalls;
+  const blockedInit=await bootstrap.initializeTaskRuntime({legacyTasks:global.S.aufgaben,client:{from(){}}});
+  assert(gateStorage===null,'gesperrter localStorage-Zugriff wird beim Runtime-Start als nicht verfügbar an das Gate übergeben');
+  assert(blockedInit.mode==='legacy' && blockedInit.reason==='feature-flag-off','Runtime-Start mit gesperrtem READ-Storage bleibt fail-closed im Legacy-Modus');
+  assert(listCalls===beforeBlockedInitLists,'Runtime-Start mit gesperrtem READ-Storage führt keinen Supabase-Task-Read aus');
+
   console.log(`\n${passed} Tests bestanden, ${failed} fehlgeschlagen.`);
   process.exit(failed?1:0);
 })().catch(e=>{console.error(e);process.exit(1);});
