@@ -37,6 +37,10 @@ function debounce(fn, ms){
   function storageRemove(storage, key) {
     if (storage && typeof storage.removeItem === 'function') storage.removeItem(key);
   }
+  function storageEnabled(storage, key) {
+    try { return !!storage && typeof storage.getItem === 'function' && storage.getItem(key) === '1'; }
+    catch (_) { return false; }
+  }
   function getStorage(name) {
     try { return global[name] || null; } catch (_) { return null; }
   }
@@ -48,17 +52,24 @@ function debounce(fn, ms){
       return false;
     }
   }
+  function getState() {
+    const read = storageEnabled(getStorage('localStorage'), READ_FLAG);
+    const write = storageEnabled(getStorage('sessionStorage'), WRITE_FLAG);
+    return { read, write, active: read && write };
+  }
   function enable() {
     const local = getStorage('localStorage');
     const session = getStorage('sessionStorage');
     try {
       storageSet(local, READ_FLAG, '1');
       storageSet(session, WRITE_FLAG, '1');
-      return { ok: true };
+      const state = getState();
+      if (!state.active) throw new Error('Pilot-Flags konnten nicht bestätigt werden.');
+      return { ok: true, state };
     } catch (error) {
       try { storageRemove(session, WRITE_FLAG); } catch (_) {}
       try { storageRemove(local, READ_FLAG); } catch (_) {}
-      return { ok: false, error };
+      return { ok: false, error, state: getState() };
     }
   }
   function disable() {
@@ -67,7 +78,8 @@ function debounce(fn, ms){
     let ok = true;
     try { storageRemove(session, WRITE_FLAG); } catch (_) { ok = false; }
     try { storageRemove(local, READ_FLAG); } catch (_) { ok = false; }
-    return { ok };
+    const state = getState();
+    return { ok: ok && !state.read && !state.write, state };
   }
   function reload() {
     if (global.location && typeof global.location.reload === 'function') global.location.reload();
@@ -81,17 +93,27 @@ function debounce(fn, ms){
     panel.setAttribute('role', 'dialog');
     panel.setAttribute('aria-label', 'Task WRITE Pilot Steuerung');
     panel.style.cssText = 'position:fixed;z-index:2147483647;left:12px;right:12px;bottom:12px;padding:14px;border:2px solid #b45309;border-radius:12px;background:#fff;color:#111;font:14px/1.4 system-ui,-apple-system,sans-serif;box-shadow:0 8px 30px rgba(0,0,0,.25)';
-    panel.innerHTML = '<strong>Phase 3C · Task WRITE Pilot</strong><div style="margin:6px 0 10px">Nur für den kontrollierten Test. Aktivierung gilt für READ in dieser Origin und WRITE nur in diesem Tab.</div>';
+
+    const title = document.createElement('strong');
+    title.textContent = 'Phase 3C · Task WRITE Pilot';
+    const help = document.createElement('div');
+    help.style.cssText = 'margin:6px 0 6px';
+    help.textContent = 'Nur für den kontrollierten Test. READ gilt für diese Origin, WRITE nur für diesen Tab.';
+    const status = document.createElement('div');
+    status.id = 'taskPilotMobileStatus';
+    status.style.cssText = 'margin:0 0 10px;font-weight:700';
 
     const activate = document.createElement('button');
     activate.type = 'button';
     activate.textContent = 'Pilot aktivieren';
     activate.style.cssText = 'padding:10px 14px;margin-right:8px;font:inherit;font-weight:600';
     activate.onclick = function () {
+      if (getState().active) return;
       if (typeof global.confirm === 'function' && !global.confirm('Task WRITE Pilot jetzt in diesem Tab aktivieren?')) return;
       const result = enable();
       if (!result.ok) {
         if (typeof global.alert === 'function') global.alert('Pilot konnte nicht sicher aktiviert werden. Flags wurden zurückgesetzt.');
+        renderState();
         return;
       }
       reload();
@@ -106,13 +128,27 @@ function debounce(fn, ms){
       reload();
     };
 
+    function renderState() {
+      const state = getState();
+      if (state.active) status.textContent = 'Status: AKTIV · READ + WRITE';
+      else if (state.read) status.textContent = 'Status: READ-only · WRITE nicht aktiv';
+      else if (state.write) status.textContent = 'Status: inkonsistent · WRITE ohne READ wird nicht verwendet';
+      else status.textContent = 'Status: AUS';
+      activate.disabled = state.active;
+      deactivate.disabled = !state.read && !state.write;
+    }
+
+    panel.appendChild(title);
+    panel.appendChild(help);
+    panel.appendChild(status);
     panel.appendChild(activate);
     panel.appendChild(deactivate);
     (document.body || document.documentElement).appendChild(panel);
+    renderState();
     return true;
   }
 
-  global.TaskPilotMobileControl = { READ_FLAG, WRITE_FLAG, CONTROL_PARAM, controlRequested, enable, disable, install };
+  global.TaskPilotMobileControl = { READ_FLAG, WRITE_FLAG, CONTROL_PARAM, controlRequested, getState, enable, disable, install };
   if (typeof document !== 'undefined') {
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', install, { once: true });
     else install();
@@ -141,15 +177,11 @@ function debounce(fn, ms){
     './src/modules/tasks/taskRuntimeBootstrap.js',
   ];
 
-  // Während des HTML-Parsens synchron einfügen, damit alle drei Module vor dem
-  // bestehenden Hauptscript verfügbar sind. Der gesplittete End-Tag vermeidet,
-  // dass der Smoke-Test-Loader das externe JS beim Inline-Einsetzen abschneidet.
   if (document.readyState === 'loading' && typeof document.write === 'function') {
     document.write(scripts.map(src => '<script src="' + src + '"></scr' + 'ipt>').join(''));
     return;
   }
 
-  // Defensive Fallback-Variante für spätes Laden; Reihenfolge bleibt erhalten.
   let chain = Promise.resolve();
   for (const src of scripts) {
     chain = chain.then(() => new Promise((resolve, reject) => {
