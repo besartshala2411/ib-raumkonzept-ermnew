@@ -57,6 +57,23 @@ function debounce(fn, ms){
     const write = storageEnabled(getStorage('sessionStorage'), WRITE_FLAG);
     return { read, write, active: read && write };
   }
+  function getRuntimeState() {
+    const bootstrap = global.TaskRuntimeBootstrap;
+    if (!bootstrap || typeof bootstrap.getTaskRuntime !== 'function') {
+      return { available: false, mode: 'unavailable', reason: 'bootstrap-unavailable', taskCount: null };
+    }
+    try {
+      const runtime = bootstrap.getTaskRuntime() || {};
+      return {
+        available: true,
+        mode: runtime.mode || 'unknown',
+        reason: runtime.reason || '',
+        taskCount: Array.isArray(runtime.tasks) ? runtime.tasks.length : null,
+      };
+    } catch (error) {
+      return { available: false, mode: 'error', reason: String(error && error.message ? error.message : error), taskCount: null };
+    }
+  }
   function enable() {
     const local = getStorage('localStorage');
     const session = getStorage('sessionStorage');
@@ -101,7 +118,10 @@ function debounce(fn, ms){
     help.textContent = 'Nur für den kontrollierten Test. READ gilt für diese Origin, WRITE nur für diesen Tab.';
     const status = document.createElement('div');
     status.id = 'taskPilotMobileStatus';
-    status.style.cssText = 'margin:0 0 10px;font-weight:700';
+    status.style.cssText = 'margin:0 0 4px;font-weight:700';
+    const runtimeStatus = document.createElement('div');
+    runtimeStatus.id = 'taskPilotRuntimeStatus';
+    runtimeStatus.style.cssText = 'margin:0 0 10px;font-size:12px;word-break:break-word';
 
     const activate = document.createElement('button');
     activate.type = 'button';
@@ -134,6 +154,15 @@ function debounce(fn, ms){
       else if (state.read) status.textContent = 'Status: READ-only · WRITE nicht aktiv';
       else if (state.write) status.textContent = 'Status: inkonsistent · WRITE ohne READ wird nicht verwendet';
       else status.textContent = 'Status: AUS';
+
+      const runtime = getRuntimeState();
+      if (!state.read) runtimeStatus.textContent = 'Runtime: nicht angefordert';
+      else if (!runtime.available) runtimeStatus.textContent = 'Runtime: noch nicht verfügbar · ' + runtime.reason;
+      else {
+        const count = runtime.taskCount === null ? '' : ' · Tasks: ' + runtime.taskCount;
+        const reason = runtime.reason ? ' · Grund: ' + runtime.reason : '';
+        runtimeStatus.textContent = 'Runtime: ' + runtime.mode + count + reason;
+      }
       activate.disabled = state.active;
       deactivate.disabled = !state.read && !state.write;
     }
@@ -141,14 +170,16 @@ function debounce(fn, ms){
     panel.appendChild(title);
     panel.appendChild(help);
     panel.appendChild(status);
+    panel.appendChild(runtimeStatus);
     panel.appendChild(activate);
     panel.appendChild(deactivate);
     (document.body || document.documentElement).appendChild(panel);
     renderState();
+    if (typeof global.setInterval === 'function') global.setInterval(renderState, 1000);
     return true;
   }
 
-  global.TaskPilotMobileControl = { READ_FLAG, WRITE_FLAG, CONTROL_PARAM, controlRequested, getState, enable, disable, install };
+  global.TaskPilotMobileControl = { READ_FLAG, WRITE_FLAG, CONTROL_PARAM, controlRequested, getState, getRuntimeState, enable, disable, install };
   if (typeof document !== 'undefined') {
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', install, { once: true });
     else install();
