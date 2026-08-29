@@ -203,7 +203,7 @@
       Promise.resolve()
         .then(() => supabaseHandler.apply(this, args))
         .catch((error) => {
-          if (generation === runtimeGeneration) mutationFailed(error);
+          if (isMutationResultCurrent(generation)) mutationFailed(error);
         })
         .finally(() => { mutationsInFlight.delete(key); });
     }
