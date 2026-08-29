@@ -25,6 +25,14 @@ assert(control.controlRequested('?ibTaskPilotControl=1')===true,'exakter URL-Con
 assert(control.controlRequested('?ibTaskPilotControl=true')===false && control.controlRequested('?IBTASKPILOTCONTROL=1')===false,'nur exakter Control-Parameterwert aktiviert die Sichtbarkeit');
 assert(local.getItem(control.READ_FLAG)===null && session.getItem(control.WRITE_FLAG)===null,'bloßes Laden setzt keinerlei Pilot-Flags');
 assert(control.getState().active===false && control.getState().read===false && control.getState().write===false,'Status ist ohne Flags eindeutig AUS');
+assert(control.getRuntimeState().available===false && control.getRuntimeState().mode==='unavailable','Runtime-Diagnose meldet fehlenden Bootstrap lesend und ohne Seiteneffekt');
+
+global.TaskRuntimeBootstrap={
+  getTaskRuntime(){return {mode:'supabase',reason:'pilot-ready',tasks:[{id:'a'},{id:'b'}]};},
+};
+let runtimeState=control.getRuntimeState();
+assert(runtimeState.available===true && runtimeState.mode==='supabase' && runtimeState.reason==='pilot-ready' && runtimeState.taskCount===2,'Runtime-Diagnose zeigt Modus, Grund und sichtbare Task-Anzahl');
+delete global.TaskRuntimeBootstrap;
 
 let result=control.enable();
 assert(result.ok===true,'mobile Aktivierung setzt beide benötigten Flags erfolgreich');
