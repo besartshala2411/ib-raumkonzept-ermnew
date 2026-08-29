@@ -66,6 +66,14 @@ async function main(){
   window.LC.cloudSyncEnabled=false;
   window.enterApp();
 
+  // Der echte App-Start stößt einige absichtlich asynchrone Storage-/Sync-Prüfungen an. Für den
+  // Klick-Audit warten wir deren kurze Startphase ab, damit der Test nicht gegen einen parallelen
+  // Test-Hydration-Lauf konkurriert. Danach wird der synthetische Admin erneut eindeutig gesetzt.
+  await new Promise(resolve=>setTimeout(resolve,650));
+  ensureAuditAdmin();
+  window.buildSidebar();
+  window.route(window.location.hash||'#dashboard');
+
   console.log('\n== Sidebar / Modul-Navigation ==');
   const modules=window.MODULES||[];
   assert(modules.length>=20,'mindestens 20 registrierte ERM-Module vorhanden ('+modules.length+')');
