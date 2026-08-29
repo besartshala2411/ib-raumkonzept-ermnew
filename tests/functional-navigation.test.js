@@ -8,10 +8,25 @@ html=html.replace(/<script src="\.\/([^"]+)"><\/script>/g,(match,relPath)=>{
   const filePath=path.join(__dirname,'..',relPath);
   return '<script>\n'+fs.readFileSync(filePath,'utf8')+'\n</script>';
 });
+// utils.js lädt die UI/UX-Schicht im echten Browser absichtlich dynamisch nach DOMContentLoaded.
+// Für diesen Offline-JSDOM-Test wird nur dieser Netzwerk-Ladevorgang neutralisiert; die UI/UX-
+// Schicht hat eine eigene Testsuite und darf hier keinen localhost-Fetch erzeugen.
+html=html.replace(/\.\/src\/ui\/uiuxFoundation\.js/g,'data:text/javascript,void%200');
 
 let failed=0,passed=0;
 function assert(cond,msg){
   if(cond){passed++;console.log('  OK  '+msg);}else{failed++;console.log('  FAIL '+msg);}
+}
+function waitFor(predicate,timeoutMs=250){
+  const started=Date.now();
+  return new Promise(resolve=>{
+    const check=()=>{
+      if(predicate()) return resolve(true);
+      if(Date.now()-started>=timeoutMs) return resolve(false);
+      setTimeout(check,5);
+    };
+    check();
+  });
 }
 
 async function main(){
@@ -63,16 +78,23 @@ async function main(){
   }
 
   console.log('\n== Direkte Sidebar-Klicks ==');
+  window.S.currentUserId='audit-admin';
   window.buildSidebar();
-  const buttons=Array.from(window.document.querySelectorAll('.navItem'));
-  assert(buttons.length===modules.length,'Admin-Sidebar enthält jeden registrierten Reiter');
-  for(const btn of buttons){
-    const id=btn.dataset.route;
+  assert(window.hasAdminAccess()===true,'Audit läuft mit Admin-Zugriff für alle sichtbaren Reiter');
+  assert(window.document.querySelectorAll('.navItem').length===modules.length,'Admin-Sidebar enthält jeden registrierten Reiter');
+  for(const mod of modules){
+    window.S.currentUserId='audit-admin';
+    const btn=window.document.querySelector('.navItem[data-route="'+mod.id+'"]');
+    assert(!!btn,'Sidebar-Reiter '+mod.id+' ist vorhanden');
+    if(!btn) continue;
     btn.click();
-    await new Promise(resolve=>setTimeout(resolve,0));
+    const arrived=await waitFor(()=>{
+      const active=window.document.querySelector('.navItem.active');
+      return window.location.hash==='#'+mod.id && active && active.dataset.route===mod.id;
+    });
     const active=window.document.querySelector('.navItem.active');
     const view=window.document.getElementById('view');
-    assert(active&&active.dataset.route===id&&!view.textContent.includes('Fehler beim Laden des Moduls'),'Klick auf '+id+' führt in die richtige Ansicht');
+    assert(arrived&&active&&active.dataset.route===mod.id&&!view.textContent.includes('Fehler beim Laden des Moduls'),'Klick auf '+mod.id+' führt in die richtige Ansicht');
   }
 
   console.log('\n== Kern-Verknüpfungen ==');
