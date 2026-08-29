@@ -16,7 +16,8 @@ function deferred(){ let resolve,reject; const promise=new Promise((res,rej)=>{r
   global.createTaskSupabaseRepository=()=>({});
   global.location={hash:'#aufgaben'};
   global.route=()=>{};
-  global.toast=()=>{};
+  const toastEvents=[];
+  global.toast=(message,type)=>toastEvents.push({message,type});
 
   const firstPreflight=deferred();
   global.TaskRuntimeGate={prepareTaskSupabaseRuntime:async()=>firstPreflight.promise};
@@ -101,6 +102,28 @@ function deferred(){ let resolve,reject; const promise=new Promise((res,rej)=>{r
     'verspäteter WRITE-Abschluss überschreibt den Logout-Reset nicht');
   assert(bootstrap.getVisibleTasks(legacyTasks)[0].id==='legacy',
     'verspäteter WRITE-Abschluss macht keine alten Runtime-Tasks sichtbar');
+
+  // Wird READ während eines bereits laufenden Writes deaktiviert, darf auch ein
+  // später Fehler dieses alten Pilot-Writes keine Fehlermeldung mehr in die nun
+  // wieder aktive Legacy-UI schreiben.
+  bootstrap.resetTaskRuntime('write-error-race-prep',legacyTasks);
+  localFlags.IB_TASKS_SUPABASE_PILOT='1';
+  const pendingFailure=deferred();
+  const failingRepo={
+    list:async()=>[{id:'task-error',titel:'Fehler',status:'offen'}],
+    update:async()=>pendingFailure.promise,
+  };
+  global.TaskRuntimeGate.prepareTaskSupabaseRuntime=async()=>({mode:'supabase',reason:'ready',tasks:await failingRepo.list(),repository:failingRepo,mapper:{}});
+  await bootstrap.initializeTaskRuntime({legacyTasks,client:{from(){}}});
+  const toastCountBeforeLateFailure=toastEvents.length;
+  global.setAufgabeStatus('task-error','erledigt');
+  await tick();
+  localFlags.IB_TASKS_SUPABASE_PILOT=null;
+  pendingFailure.reject(new Error('late write failure'));
+  await tick(); await tick();
+  assert(toastEvents.length===toastCountBeforeLateFailure,
+    'verspäteter WRITE-Fehler nach READ-Deaktivierung schreibt keine stale Pilot-Meldung in die Legacy-UI');
+  localFlags.IB_TASKS_SUPABASE_PILOT='1';
 
   // Regression: Ein finally() aus Generation N darf nach Reset nicht den Lock eines
   // neuen Writes in Generation N+1 mit derselben Task-ID entfernen.
