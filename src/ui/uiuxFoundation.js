@@ -17,7 +17,6 @@
     urlaub:['Mitarbeiter','Kalender'],
     dashboard:['Projekte','Aufgaben','Kalender']
   };
-  const SECTION_PREFIX='uiux-section-';
 
   function normalizeLabel(value){
     return String(value||'')
@@ -58,25 +57,6 @@
     });
   }
 
-  function syncSection(body,view,active){
-    Array.from(body.classList).filter(name=>name.indexOf(SECTION_PREFIX)===0).forEach(name=>body.classList.remove(name));
-    const key=active&&active.key?active.key:'';
-    if(key) body.classList.add(SECTION_PREFIX+key);
-    if(key) view.setAttribute('data-uiux-section',key);
-    else view.removeAttribute('data-uiux-section');
-    return key;
-  }
-
-  function decorateView(view){
-    view.classList.add('uiuxViewEnhanced');
-    view.querySelectorAll('.pageHead').forEach(head=>head.classList.add('uiuxPrimaryHead'));
-    view.querySelectorAll('.pageHead .btn').forEach((button,index)=>{
-      if(index===0) button.classList.add('uiuxPrimaryAction');
-    });
-    view.querySelectorAll('.card').forEach(card=>card.classList.add('uiuxCard'));
-    view.querySelectorAll('.kpi').forEach(kpi=>kpi.classList.add('uiuxKpi'));
-  }
-
   function makeContextLinks(items,active){
     const doc=global.document;
     if(!doc||!active) return null;
@@ -89,8 +69,7 @@
 
     const wrap=doc.createElement('nav');
     wrap.id='uiuxContextLinks';
-    wrap.setAttribute('aria-label','Verknüpfte Bereiche für '+active.label);
-    wrap.setAttribute('data-uiux-source',active.key);
+    wrap.setAttribute('aria-label','Verknüpfte Bereiche');
     const caption=doc.createElement('span');
     caption.className='uiuxContextLabel';
     caption.textContent='Verknüpft';
@@ -120,12 +99,9 @@
 
     const items=findNavigation();
     syncAria(items);
-    const active=activeNavigation(items);
-    syncSection(body,view,active);
-    decorateView(view);
-
     const old=global.document.getElementById('uiuxContextLinks');
     if(old) old.remove();
+    const active=activeNavigation(items);
     const links=makeContextLinks(items,active);
     if(links) view.insertBefore(links,view.firstChild);
     return true;
@@ -168,5 +144,5 @@
     return true;
   }
 
-  return {RELATIONS,SECTION_PREFIX,normalizeLabel,relationsFor,navLabel,findNavigation,activeNavigation,syncAria,syncSection,decorateView,makeContextLinks,enhance,install};
+  return {RELATIONS,normalizeLabel,relationsFor,navLabel,findNavigation,activeNavigation,syncAria,makeContextLinks,enhance,install};
 });
