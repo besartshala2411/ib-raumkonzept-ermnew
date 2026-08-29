@@ -13,6 +13,8 @@ assert(pure.normalizeLabel('  Mitarbeiter  ')==='mitarbeiter','deutsche Navigati
 assert(pure.relationsFor('Aufgaben').join('|')==='Projekte|Mitarbeiter|Kalender','Aufgaben verknüpfen die relevanten bestehenden Bereiche');
 assert(pure.relationsFor('Unbekannt').length===0,'unbekannte Bereiche erzeugen keine geratenen Links');
 assert(pure.SECTION_CLASSES.includes('uiux-section-dashboard'),'Section-Klassen sind explizit und begrenzt');
+assert(pure.PRIMARY_NAV_KEYS.has('dashboard')&&pure.PRIMARY_NAV_KEYS.has('projekte')&&pure.PRIMARY_NAV_KEYS.has('rechnungen'),'Hauptnavigation konzentriert sich auf den Kernprozess');
+assert(!pure.PRIMARY_NAV_KEYS.has('fuhrpark')&&!pure.PRIMARY_NAV_KEYS.has('passwoerter'),'Spezialbereiche bleiben außerhalb der Hauptnavigation ohne funktional entfernt zu werden');
 
 const dom=new JSDOM(`<!doctype html><html><head></head><body>
   <aside id="sidebar">
@@ -20,6 +22,8 @@ const dom=new JSDOM(`<!doctype html><html><head></head><body>
     <button class="navItem"><span class="navIcon">P</span>Projekte</button>
     <button class="navItem"><span class="navIcon">M</span>Mitarbeiter</button>
     <button class="navItem"><span class="navIcon">K</span>Kalender</button>
+    <button class="navItem"><span class="navIcon">F</span>Fuhrpark</button>
+    <button class="navItem"><span class="navIcon">S</span>Schlüssel</button>
   </aside>
   <main id="view">
     <div class="pageHead"><div><div class="pageTitle">Aufgaben</div></div><button class="btn">Neu</button></div>
@@ -39,6 +43,8 @@ const ui=require('../src/ui/uiuxFoundation.js');
 
 ui.enhance();
 const context=document.getElementById('uiuxContextLinks');
+const sidebar=document.getElementById('sidebar');
+const moreToggle=document.getElementById('uiuxMoreNavToggle');
 assert(document.body.classList.contains('uiux-foundation'),'Foundation aktiviert nur die UI-Klasse am Body');
 assert(document.body.classList.contains('uiux-section-aufgaben'),'aktive Ansicht erhält genau die passende Section-Klasse');
 assert(document.body.getAttribute('data-uiux-section')==='aufgaben','aktive Ansicht wird als rein visuelles Datenattribut gespiegelt');
@@ -52,6 +58,14 @@ assert(document.querySelector('.tableWrap').getAttribute('tabindex')==='0','brei
 assert(!!context && context.getAttribute('aria-label')==='Verknüpfte Bereiche','kontextuelle Verknüpfungsnavigation wird zugänglich erzeugt');
 assert(Array.from(context.querySelectorAll('.uiuxContextChip')).map(x=>x.textContent).join('|')==='Projekte|Mitarbeiter|Kalender','nur tatsächlich vorhandene Nav-Bereiche werden angeboten');
 assert(document.getElementById('existing').textContent==='Inhalt','bestehender View-Inhalt bleibt unangetastet');
+assert(document.querySelectorAll('.uiuxNavPrimary').length===4,'Kernbereiche werden als Hauptnavigation markiert');
+assert(document.querySelectorAll('.uiuxNavSecondary').length===2,'Spezialbereiche werden als erweiterte Navigation markiert');
+assert(!!moreToggle&&moreToggle.getAttribute('aria-expanded')==='false','erweiterte Navigation startet kompakt und zugänglich');
+assert(moreToggle.textContent==='Weitere Bereiche (2)','Mehr-Schalter zeigt die Anzahl der ausgeblendeten Spezialbereiche');
+moreToggle.click();
+assert(sidebar.classList.contains('uiuxNavExpanded')&&moreToggle.getAttribute('aria-expanded')==='true','Mehr-Schalter öffnet alle vorhandenen Spezialbereiche ohne Routen zu verändern');
+moreToggle.click();
+assert(!sidebar.classList.contains('uiuxNavExpanded'),'Mehr-Schalter kann die Navigation wieder verdichten');
 
 const sameContext=context;
 ui.enhance();
@@ -77,6 +91,13 @@ projectButton.classList.add('active');
 ui.enhance();
 assert(document.body.classList.contains('uiux-section-projekte')&&!document.body.classList.contains('uiux-section-aufgaben'),'Section-Klasse wechselt ohne Altklasse sauber mit');
 assert(Array.from(document.querySelectorAll('#uiuxContextLinks .uiuxContextChip')).map(x=>x.textContent).join('|')==='Aufgaben','Projekt-Verknüpfungen zeigen weiterhin nur vorhandene Bereiche');
+
+const fleetButton=Array.from(document.querySelectorAll('.navItem')).find(x=>x.textContent.includes('Fuhrpark'));
+projectButton.classList.remove('active');
+fleetButton.classList.add('active');
+ui.enhance();
+assert(sidebar.classList.contains('uiuxNavExpanded'),'direkt geöffneter Spezialbereich bleibt sichtbar statt durch die Verdichtung versteckt zu werden');
+assert(fleetButton.classList.contains('uiuxNavSecondary'),'Spezialbereich bleibt funktional vorhandener Nav-Reiter');
 
 assert(!Object.prototype.hasOwnProperty.call(global,'S'),'UI/UX-Modul erzeugt oder verändert keinen Legacy-State');
 assert(!Object.prototype.hasOwnProperty.call(global,'TaskRuntimeBootstrap'),'UI/UX-Modul koppelt sich nicht an die Task-Runtime');
