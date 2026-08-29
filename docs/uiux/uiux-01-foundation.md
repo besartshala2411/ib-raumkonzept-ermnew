@@ -23,10 +23,33 @@ Die Bedienoberfläche des ERM schrittweise modernisieren, ohne die gerade stabil
 4. Modals/Formulare auf mobile Breiten, Fokus und sichere Touch-Ziele prüfen.
 5. Dashboard-Informationshierarchie verbessern, nachdem Shell und Aufgabenansicht stabil sind.
 
+## Umgesetzter Foundation-Schritt
+
+Die UI/UX-Schicht liegt branch-isoliert unter `src/ui/` und wird über `src/core/utils.js` nachgeladen. Sie greift weder auf Supabase noch auf `S` oder die Task-Runtime zu.
+
+- Touch-Ziele für Navigation, Buttons, Tabs und Formulare sind auf mindestens 44 px angehoben.
+- iPad-/Tablet-Abstände, Sidebar-Breite, Karten und Inhaltsbreiten sind harmonisiert.
+- Auf kleinen Viewports werden zentrale Grids einspaltig, Modals als besser erreichbare Bottom-Sheets dargestellt und Aktionsflächen vergrößert.
+- Fokuszustände und `aria-current` verbessern Tastatur- und Screenreader-Navigation.
+- Die neue Leiste **Verknüpft** verbindet inhaltlich passende Module, z. B. Aufgaben mit Projekte/Mitarbeiter/Kalender und Projekte mit Aufgaben/Kunden/Zeiterfassung.
+- Diese Verknüpfungen erfinden ausdrücklich keine eigenen Routen. Sie suchen die bereits vorhandenen Navigationselemente und delegieren den Klick an genau diese bestehende Navigation. Fehlt ein Bereich in der aktuellen App, wird dafür kein Link angezeigt.
+- Die Verknüpfung ist ausschließlich Navigation; sie verändert keine Datensätze, Flags oder Persistenz.
+
+## Sicherheits- und Regressionstest
+
+`tests/uiux-foundation.test.js` prüft insbesondere:
+
+- stabile Normalisierung und Relationstabellen;
+- nur tatsächlich vorhandene Navigation wird angeboten;
+- Klicks werden an bestehende Nav-Controls delegiert;
+- bestehender View-Inhalt bleibt erhalten;
+- kein Legacy-State `S` und keine `TaskRuntimeBootstrap`-Kopplung wird erzeugt;
+- die bestehende Phase-3C-Readiness-Suite bleibt ein separates CI-Gate.
+
 ## Vorgehen
 
 Jede Etappe bleibt klein und reviewbar. Funktionale Änderungen an Persistenz/Auth werden getrennt behandelt. Vor und nach UI-Codeänderungen werden mindestens Legacy-Smoke-Tests und die Phase-3C-Readiness-Suite ausgeführt. Browser-/iPad-Prüfung folgt erst nach grüner CI.
 
-## Nächster Code-Schritt
+## Nächster sicherer UI/UX-Schritt
 
-Als erster Implementierungsschritt wird ausschließlich die responsive App-Shell untersucht und mit Regressionstests abgesichert. Task-Repository, Task-Runtime, Supabase-Konfiguration und Passwortlogik bleiben unangetastet.
+Nach grüner CI und erfolgreichem Deploy-Preview wird die Informationshierarchie der Hauptansichten weiter vereinheitlicht: Seitenkopf, primäre Aktionen, Dashboard-KPIs und Aufgaben-Karten. Dabei bleiben Repository-, Auth-, Passwort- und Supabase-Verträge unverändert.
