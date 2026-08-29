@@ -234,6 +234,7 @@
   function installTaskWritePilotBridge() {
     wrapTaskMutation('saveAufgabe', async function () {
       if (!runtime.repository || typeof runtime.repository.create !== 'function') throw new Error('Task-Repository nicht verfügbar.');
+      if (typeof runtime.repository.list !== 'function') throw new Error('Task-Repository kann den Create nicht verifizieren.');
       const generation = runtimeGeneration;
       const epoch = mutationEpoch;
       const byId = (id) => global.document && global.document.getElementById(id);
@@ -253,10 +254,23 @@
         status: 'offen',
       });
       if (!isMutationResultCurrent(generation, epoch)) return;
-      runtime.tasks = [created].concat((runtime.tasks || []).filter((task) => task.id !== created.id));
+      if (!created || !created.id) {
+        throw new Error('Create lieferte keine Task-ID; keine weitere Aufgabe erstellen.');
+      }
+
+      // Live-Gate: Ein bestätigter INSERT reicht nicht. Direkt danach wird über denselben
+      // RLS-/Mapping-READ erneut gelistet. Nur wenn der neue Datensatz dort sichtbar ist,
+      // übernehmen wir ihn in die Runtime und schließen das Formular. Das verhindert einen
+      // scheinbar erfolgreichen Create mit anschließend leerer Aufgabenansicht.
+      const verifiedTasks = await runtime.repository.list();
+      if (!isMutationResultCurrent(generation, epoch)) return;
+      if (!Array.isArray(verifiedTasks) || !verifiedTasks.some((task) => task && task.id === created.id)) {
+        throw new Error('Create wurde bestätigt, ist im anschließenden Supabase-READ aber nicht sichtbar. Keine weitere Aufgabe erstellen.');
+      }
+      runtime.tasks = verifiedTasks;
       if (typeof global.closeModal === 'function') global.closeModal();
       rerenderTasks();
-      notify('Aufgabe gespeichert.', 'success');
+      notify('Aufgabe gespeichert und per READ verifiziert.', 'success');
     });
 
     wrapTaskMutation('setAufgabeStatus', async function (id, status) {
