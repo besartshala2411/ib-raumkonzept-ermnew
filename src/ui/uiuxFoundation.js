@@ -18,6 +18,11 @@
     dashboard:['Projekte','Aufgaben','Kalender']
   };
 
+  const SECTION_CLASSES=[
+    'uiux-section-dashboard','uiux-section-aufgaben','uiux-section-projekte','uiux-section-kunden',
+    'uiux-section-mitarbeiter','uiux-section-kalender','uiux-section-zeiterfassung','uiux-section-rechnungen','uiux-section-urlaub'
+  ];
+
   function normalizeLabel(value){
     return String(value||'')
       .toLocaleLowerCase('de-DE')
@@ -54,6 +59,33 @@
     items.forEach(item=>{
       if(item.el.classList.contains('active')) item.el.setAttribute('aria-current','page');
       else item.el.removeAttribute('aria-current');
+    });
+  }
+
+  function applySection(body,active){
+    if(!body) return '';
+    SECTION_CLASSES.forEach(name=>body.classList.remove(name));
+    const key=active?normalizeLabel(active.label):'';
+    if(key&&RELATIONS[key]) body.classList.add('uiux-section-'+key);
+    if(key) body.setAttribute('data-uiux-section',key);
+    else body.removeAttribute('data-uiux-section');
+    return key;
+  }
+
+  function decorateView(view){
+    if(!view) return;
+    const cards=Array.from(view.querySelectorAll('.card'));
+    cards.forEach(card=>card.classList.add('uiuxCard'));
+    Array.from(view.querySelectorAll('.kpi')).forEach(kpi=>kpi.classList.add('uiuxKpi'));
+    Array.from(view.querySelectorAll('.quickTile')).forEach(tile=>tile.classList.add('uiuxQuickTile'));
+    Array.from(view.querySelectorAll('.pageHead')).forEach(head=>{
+      head.classList.add('uiuxPrimaryHead');
+      const directButtons=Array.from(head.querySelectorAll('.btn'));
+      if(directButtons.length) directButtons[directButtons.length-1].classList.add('uiuxPrimaryAction');
+    });
+    Array.from(view.querySelectorAll('.tableWrap')).forEach(table=>{
+      table.setAttribute('tabindex','0');
+      if(!table.getAttribute('aria-label')) table.setAttribute('aria-label','Tabelle horizontal scrollen');
     });
   }
 
@@ -99,9 +131,12 @@
 
     const items=findNavigation();
     syncAria(items);
+    const active=activeNavigation(items);
+    applySection(body,active);
+    decorateView(view);
+
     const old=global.document.getElementById('uiuxContextLinks');
     if(old) old.remove();
-    const active=activeNavigation(items);
     const links=makeContextLinks(items,active);
     if(links) view.insertBefore(links,view.firstChild);
     return true;
@@ -130,12 +165,12 @@
     const start=()=>{
       enhance();
       global.addEventListener&&global.addEventListener('hashchange',scheduleEnhance);
-      const navRoot=global.document.getElementById('sidebar')||global.document.body;
-      if(navRoot&&typeof global.MutationObserver==='function'){
+      const observerRoot=global.document.getElementById('appShell')||global.document.body;
+      if(observerRoot&&typeof global.MutationObserver==='function'){
         const observer=new global.MutationObserver(records=>{
-          if(records.some(record=>record.type==='attributes'&&record.attributeName==='class')) scheduleEnhance();
+          if(records.some(record=>record.type==='attributes'||record.type==='childList')) scheduleEnhance();
         });
-        observer.observe(navRoot,{attributes:true,subtree:true,attributeFilter:['class']});
+        observer.observe(observerRoot,{attributes:true,childList:true,subtree:true,attributeFilter:['class']});
         global.__uiuxFoundationObserver=observer;
       }
     };
@@ -144,5 +179,5 @@
     return true;
   }
 
-  return {RELATIONS,normalizeLabel,relationsFor,navLabel,findNavigation,activeNavigation,syncAria,makeContextLinks,enhance,install};
+  return {RELATIONS,SECTION_CLASSES,normalizeLabel,relationsFor,navLabel,findNavigation,activeNavigation,syncAria,applySection,decorateView,makeContextLinks,enhance,install};
 });
