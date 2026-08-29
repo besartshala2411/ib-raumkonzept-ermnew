@@ -8,9 +8,9 @@
 
   const RELATIONS={
     aufgaben:['Projekte','Mitarbeiter','Kalender'],
-    projekte:['Aufgaben','Kunden','Zeiterfassung'],
+    projekte:['Aufgaben','Kunden','Stundenzettel'],
     kunden:['Projekte','Rechnungen','Aufgaben'],
-    mitarbeiter:['Aufgaben','Zeiterfassung','Urlaub'],
+    mitarbeiter:['Aufgaben','Stundenzettel','Urlaub'],
     kalender:['Aufgaben','Projekte','Mitarbeiter'],
     zeiterfassung:['Projekte','Mitarbeiter','Aufgaben'],
     stundenzettel:['Projekte','Mitarbeiter','Aufgaben'],
@@ -22,6 +22,9 @@
   const PRIMARY_NAV_KEYS=new Set([
     'dashboard','kunden','projekte','aufgaben','kalender','mitarbeiter','stundenzettel','rechnungen'
   ]);
+
+  const WORKFLOW_KEYS=['kunden','projekte','aufgaben','stundenzettel','rechnungen'];
+  const MOBILE_NAV_KEYS=['dashboard','projekte','aufgaben','kalender'];
 
   const SECTION_CLASSES=[
     'uiux-section-dashboard','uiux-section-aufgaben','uiux-section-projekte','uiux-section-kunden',
@@ -78,15 +81,37 @@
     return key;
   }
 
+  function isBackAction(button){
+    const text=String(button&&button.textContent||'').toLocaleLowerCase('de-DE');
+    return text.includes('zurück')||text.includes('alle ');
+  }
+
+  function classifyPageActions(head){
+    if(!head) return null;
+    const buttons=Array.from(head.querySelectorAll('.btn'));
+    buttons.forEach(button=>button.classList.remove('uiuxPrimaryAction','uiuxSecondaryAction','uiuxDangerAction'));
+    buttons.filter(button=>button.classList.contains('danger')).forEach(button=>button.classList.add('uiuxDangerAction'));
+
+    let primary=buttons.find(button=>button.classList.contains('primary')&&!button.classList.contains('danger'))||null;
+    if(!primary){
+      const candidates=buttons.filter(button=>!button.classList.contains('danger')&&!isBackAction(button));
+      primary=candidates.length?candidates[candidates.length-1]:null;
+    }
+    if(primary) primary.classList.add('uiuxPrimaryAction');
+    buttons.filter(button=>button!==primary&&!button.classList.contains('danger')).forEach(button=>button.classList.add('uiuxSecondaryAction'));
+    return primary;
+  }
+
   function decorateView(view){
     if(!view) return;
     Array.from(view.querySelectorAll('.card')).forEach(card=>card.classList.add('uiuxCard'));
     Array.from(view.querySelectorAll('.kpi')).forEach(kpi=>kpi.classList.add('uiuxKpi'));
     Array.from(view.querySelectorAll('.quickTile')).forEach(tile=>tile.classList.add('uiuxQuickTile'));
+    Array.from(view.querySelectorAll('.formRow')).forEach(row=>row.classList.add('uiuxFormRow'));
+    Array.from(view.querySelectorAll('table')).forEach(table=>table.classList.add('uiuxDataTable'));
     Array.from(view.querySelectorAll('.pageHead')).forEach(head=>{
       head.classList.add('uiuxPrimaryHead');
-      const directButtons=Array.from(head.querySelectorAll('.btn'));
-      if(directButtons.length) directButtons[directButtons.length-1].classList.add('uiuxPrimaryAction');
+      classifyPageActions(head);
     });
     Array.from(view.querySelectorAll('.tableWrap')).forEach(table=>{
       table.setAttribute('tabindex','0');
@@ -138,8 +163,15 @@
     toggle.textContent=expanded?'Weniger anzeigen':'Weitere Bereiche ('+count+')';
   }
 
+  function workflowTargets(items,active){
+    if(!active||!WORKFLOW_KEYS.includes(active.key)) return [];
+    return WORKFLOW_KEYS.map(key=>items.find(item=>item.key===key)||null).filter(Boolean);
+  }
+
   function contextTargets(items,active){
     if(!active) return [];
+    const workflow=workflowTargets(items,active);
+    if(workflow.length) return workflow;
     return relationsFor(active.label).map(label=>{
       const key=normalizeLabel(label);
       return items.find(item=>item.key===key)||null;
@@ -157,21 +189,28 @@
     if(!doc||!active) return null;
     const targets=contextTargets(items,active);
     if(!targets.length) return null;
+    const workflowMode=WORKFLOW_KEYS.includes(active.key)&&workflowTargets(items,active).length>0;
 
     const wrap=doc.createElement('nav');
     wrap.id='uiuxContextLinks';
-    wrap.setAttribute('aria-label','Verknüpfte Bereiche');
+    wrap.setAttribute('aria-label',workflowMode?'Arbeitsfluss':'Verknüpfte Bereiche');
     wrap.setAttribute('data-uiux-signature',contextSignature(items,active));
+    if(workflowMode) wrap.classList.add('uiuxWorkflowLinks');
     const caption=doc.createElement('span');
     caption.className='uiuxContextLabel';
-    caption.textContent='Schnell wechseln';
+    caption.textContent=workflowMode?'Arbeitsfluss':'Schnell wechseln';
     wrap.appendChild(caption);
 
-    targets.forEach(target=>{
+    targets.forEach((target,index)=>{
       const button=doc.createElement('button');
       button.type='button';
       button.className='uiuxContextChip';
-      button.textContent=target.label;
+      if(workflowMode) button.classList.add('uiuxWorkflowStep');
+      if(target===active||target.el.classList.contains('active')){
+        button.classList.add('active');
+        button.setAttribute('aria-current','step');
+      }
+      button.textContent=workflowMode?(index+1)+'. '+target.label:target.label;
       button.setAttribute('aria-label','Zu '+target.label+' wechseln');
       button.addEventListener('click',()=>{
         if(target.el&&typeof target.el.click==='function') target.el.click();
@@ -179,6 +218,43 @@
       wrap.appendChild(button);
     });
     return wrap;
+  }
+
+  function mobileNavSignature(items,active){
+    const keys=MOBILE_NAV_KEYS.map(key=>items.find(item=>item.key===key)?key:'').filter(Boolean).join('|');
+    return keys+'@'+(active?active.key:'');
+  }
+
+  function ensureMobileNavigation(items,active){
+    const doc=global.document;
+    if(!doc||!doc.body) return null;
+    const targets=MOBILE_NAV_KEYS.map(key=>items.find(item=>item.key===key)||null).filter(Boolean);
+    let nav=doc.getElementById('uiuxMobileNav');
+    if(!targets.length){ if(nav) nav.remove(); return null; }
+    const signature=mobileNavSignature(items,active);
+    if(nav&&nav.getAttribute('data-uiux-signature')===signature) return nav;
+    if(nav) nav.remove();
+
+    nav=doc.createElement('nav');
+    nav.id='uiuxMobileNav';
+    nav.setAttribute('aria-label','Schnellnavigation');
+    nav.setAttribute('data-uiux-signature',signature);
+    targets.forEach(target=>{
+      const button=doc.createElement('button');
+      button.type='button';
+      button.className='uiuxMobileNavItem';
+      button.textContent=target.label;
+      if(target===active||target.el.classList.contains('active')){
+        button.classList.add('active');
+        button.setAttribute('aria-current','page');
+      }
+      button.addEventListener('click',()=>{
+        if(target.el&&typeof target.el.click==='function') target.el.click();
+      });
+      nav.appendChild(button);
+    });
+    doc.body.appendChild(nav);
+    return nav;
   }
 
   function shouldRefreshForViewMutations(records){
@@ -205,6 +281,7 @@
     applySection(body,active);
     decorateView(view);
     ensureNavigationToggle(sidebar,items,active);
+    ensureMobileNavigation(items,active);
 
     const old=global.document.getElementById('uiuxContextLinks');
     const signature=contextSignature(items,active);
@@ -272,5 +349,5 @@
     return true;
   }
 
-  return {RELATIONS,PRIMARY_NAV_KEYS,SECTION_CLASSES,normalizeLabel,relationsFor,navLabel,findNavigation,activeNavigation,syncAria,applySection,decorateView,isPrimaryNavigation,ensureNavigationToggle,syncNavigationToggle,contextTargets,contextSignature,makeContextLinks,shouldRefreshForViewMutations,enhance,install};
+  return {RELATIONS,PRIMARY_NAV_KEYS,WORKFLOW_KEYS,MOBILE_NAV_KEYS,SECTION_CLASSES,normalizeLabel,relationsFor,navLabel,findNavigation,activeNavigation,syncAria,applySection,isBackAction,classifyPageActions,decorateView,isPrimaryNavigation,ensureNavigationToggle,syncNavigationToggle,workflowTargets,contextTargets,contextSignature,makeContextLinks,mobileNavSignature,ensureMobileNavigation,shouldRefreshForViewMutations,enhance,install};
 });
