@@ -57,8 +57,12 @@ async function main(){
     },50);
   });
 
-  window.S.mitarbeiter.push({id:'audit-admin',name:'Audit Admin',position:'',rolle:'Geschäftsführer',tel:'',email:'audit@example.test',adresse:'',eintritt:'2024-01-01',status:'aktiv',urlaubstageJahr:30,stundenlohn:20,dokumente:[]});
-  window.S.currentUserId='audit-admin';
+  const auditAdmin={id:'audit-admin',name:'Audit Admin',position:'',rolle:'Geschäftsführer',tel:'',email:'audit@example.test',adresse:'',eintritt:'2024-01-01',status:'aktiv',urlaubstageJahr:30,stundenlohn:20,dokumente:[]};
+  function ensureAuditAdmin(){
+    if(!window.S.mitarbeiter.some(m=>m.id===auditAdmin.id)) window.S.mitarbeiter.push({...auditAdmin});
+    window.S.currentUserId=auditAdmin.id;
+  }
+  ensureAuditAdmin();
   window.LC.cloudSyncEnabled=false;
   window.enterApp();
 
@@ -69,7 +73,7 @@ async function main(){
   assert(new Set(ids).size===ids.length,'keine doppelten Modul-IDs registriert');
 
   for(const mod of modules){
-    window.S.currentUserId='audit-admin';
+    ensureAuditAdmin();
     let threw=false;
     try{window.route('#'+mod.id);}catch(e){threw=true;runtimeErrors.push(mod.id+': '+e.message);}
     const view=window.document.getElementById('view');
@@ -79,15 +83,15 @@ async function main(){
   }
 
   console.log('\n== Direkte Sidebar-Klicks ==');
-  window.S.currentUserId='audit-admin';
+  ensureAuditAdmin();
   window.buildSidebar();
   assert(window.hasAdminAccess()===true,'Audit läuft mit Admin-Zugriff für alle sichtbaren Reiter');
   assert(window.document.querySelectorAll('.navItem').length===modules.length,'Admin-Sidebar enthält jeden registrierten Reiter');
   for(const mod of modules){
     // Der App-Boot kann in JSDOM noch testinterne asynchrone Storage-/Sync-Arbeit abschließen.
-    // Vor jedem isolierten Klick stellen wir deshalb ausschließlich den synthetischen Test-Login
-    // wieder her und bauen dieselbe Sidebar wie der echte enterApp()-Pfad neu auf.
-    window.S.currentUserId='audit-admin';
+    // Vor jedem isolierten Klick stellen wir deshalb den synthetischen Test-Login samt Mitarbeiter-
+    // Datensatz wieder her und bauen exakt dieselbe Sidebar wie enterApp() neu auf.
+    ensureAuditAdmin();
     window.buildSidebar();
     window.route(window.location.hash||'#dashboard');
     const btn=window.document.querySelector('.navItem[data-route="'+mod.id+'"]');
