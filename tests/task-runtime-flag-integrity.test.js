@@ -59,6 +59,18 @@ function tick(){ return new Promise(resolve=>setTimeout(resolve,0)); }
   assert(updates===1 && legacyUpdates===0,'malformiertes READ-Flag blockiert stale Supabase-WRITE fail-closed');
   assert(/nicht schreibbereit/i.test(lastToast),'stale Runtime mit ungültigem READ-Flag wird sichtbar blockiert');
 
+  local.IB_TASKS_SUPABASE_PILOT='1';
+  Object.defineProperty(global,'localStorage',{configurable:true,get(){throw new Error('localStorage getter blocked');}});
+  const getterBlockedListCalls=listCalls;
+  assert(bootstrap.getVisibleTasks(global.S.aufgaben)[0].id==='legacy','werfender localStorage-Property-Zugriff fällt sofort auf Legacy-Sicht zurück');
+  await bootstrap.reloadSupabaseTasks();
+  assert(listCalls===getterBlockedListCalls,'werfender localStorage-Property-Zugriff verhindert weitere Supabase-Reload-Reads');
+  let mutationThrew=false;
+  try { global.setAufgabeStatus('db','erledigt'); } catch (_) { mutationThrew=true; }
+  await tick();
+  assert(!mutationThrew && updates===1 && legacyUpdates===0,'werfender localStorage-Property-Zugriff blockiert stale WRITE ohne Exception oder Legacy-Fallback');
+  assert(/nicht schreibbereit/i.test(lastToast),'gesperrter READ-Storage wird sichtbar fail-closed blockiert');
+
   console.log(`\n${passed} Tests bestanden, ${failed} fehlgeschlagen.`);
   process.exit(failed?1:0);
 })().catch(e=>{console.error(e);process.exit(1);});
