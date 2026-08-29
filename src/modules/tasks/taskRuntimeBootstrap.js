@@ -85,6 +85,10 @@
     return runtime.mode === 'supabase' && isTaskReadPilotRequested(global.localStorage);
   }
 
+  function isMutationResultCurrent(generation) {
+    return generation === runtimeGeneration && isSupabaseReadActive();
+  }
+
   function getVisibleTasks(legacyTasks) {
     return isSupabaseReadActive() && Array.isArray(runtime.tasks)
       ? runtime.tasks
@@ -223,7 +227,7 @@
         zugeordnet: byId('agZuge') && byId('agZuge').value || null,
         status: 'offen',
       });
-      if (generation !== runtimeGeneration || runtime.mode !== 'supabase') return;
+      if (!isMutationResultCurrent(generation)) return;
       runtime.tasks = [created].concat((runtime.tasks || []).filter((task) => task.id !== created.id));
       if (typeof global.closeModal === 'function') global.closeModal();
       rerenderTasks();
@@ -234,7 +238,7 @@
       if (!runtime.repository || typeof runtime.repository.update !== 'function') throw new Error('Task-Repository nicht verfügbar.');
       const generation = runtimeGeneration;
       const updated = await runtime.repository.update(id, { status });
-      if (generation !== runtimeGeneration || runtime.mode !== 'supabase') return;
+      if (!isMutationResultCurrent(generation)) return;
       runtime.tasks = (runtime.tasks || []).map((task) => task.id === id ? updated : task);
       rerenderTasks();
     });
@@ -243,7 +247,7 @@
       if (!runtime.repository || typeof runtime.repository.remove !== 'function') throw new Error('Task-Repository nicht verfügbar.');
       const generation = runtimeGeneration;
       await runtime.repository.remove(id);
-      if (generation !== runtimeGeneration || runtime.mode !== 'supabase') return;
+      if (!isMutationResultCurrent(generation)) return;
       runtime.tasks = (runtime.tasks || []).filter((task) => task.id !== id);
       rerenderTasks();
       notify('Aufgabe gelöscht.', 'success');
