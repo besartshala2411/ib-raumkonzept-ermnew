@@ -74,12 +74,13 @@ body.uiux-foundation .uiuxMoreNavToggle:focus-visible{
 body.uiux-foundation .pageHead{
   position:relative;
   gap:18px;
-  margin-bottom:24px;
+  margin-bottom:22px;
   align-items:center;
 }
 
 body.uiux-foundation .uiuxPrimaryHead{
-  padding-bottom:4px;
+  padding:2px 0 16px;
+  border-bottom:1px solid color-mix(in srgb,var(--border) 78%,transparent);
 }
 
 body.uiux-foundation .pageTitle{
@@ -134,6 +135,31 @@ body.uiux-foundation .btn{
   font-weight:650;
 }
 
+body.uiux-foundation .uiuxPrimaryAction{
+  font-weight:800;
+  box-shadow:0 6px 18px color-mix(in srgb,var(--primary) 15%,transparent);
+}
+
+body.uiux-foundation .uiuxSecondaryAction{
+  box-shadow:none;
+  opacity:.88;
+}
+
+body.uiux-foundation .uiuxSecondaryAction:hover,
+body.uiux-foundation .uiuxSecondaryAction:focus-visible{
+  opacity:1;
+}
+
+body.uiux-foundation .uiuxDangerAction{
+  box-shadow:none!important;
+  opacity:.72;
+}
+
+body.uiux-foundation .uiuxDangerAction:hover,
+body.uiux-foundation .uiuxDangerAction:focus-visible{
+  opacity:1;
+}
+
 body.uiux-foundation .iconBtn,
 body.uiux-foundation .tickerBtn{
   min-width:var(--uiux-touch);
@@ -150,11 +176,6 @@ body.uiux-foundation .navItem.active{
   font-weight:750;
 }
 
-body.uiux-foundation .uiuxPrimaryAction{
-  font-weight:800;
-  box-shadow:0 6px 18px color-mix(in srgb,var(--primary) 15%,transparent);
-}
-
 body.uiux-foundation :is(button,a,input,select,textarea,[tabindex]):focus-visible{
   outline:3px solid color-mix(in srgb,var(--primary) 72%,transparent);
   outline-offset:2px;
@@ -169,6 +190,17 @@ body.uiux-foundation textarea{
 body.uiux-foundation textarea{
   min-height:108px;
   resize:vertical;
+}
+
+body.uiux-foundation .uiuxFormRow{
+  min-width:0;
+}
+
+body.uiux-foundation .uiuxFormRow > label{
+  display:block;
+  margin-bottom:6px;
+  font-weight:700;
+  line-height:1.25;
 }
 
 body.uiux-foundation .tableWrap{
@@ -191,6 +223,19 @@ body.uiux-foundation th{
 body.uiux-foundation td,
 body.uiux-foundation th{
   vertical-align:middle;
+}
+
+body.uiux-foundation .uiuxDataTable tbody tr{
+  transition:background-color .12s ease;
+}
+
+body.uiux-foundation .uiuxDataTable tbody tr:hover{
+  background:color-mix(in srgb,var(--primary) 4%,transparent);
+}
+
+body.uiux-foundation .uiuxDataTable th{
+  font-size:12px;
+  letter-spacing:.01em;
 }
 
 body.uiux-foundation .tabs{
@@ -235,6 +280,10 @@ body.uiux-section-dashboard .uiuxQuickTile{
   min-height:96px;
 }
 
+body.uiux-section-dashboard .uiuxCard{
+  box-shadow:0 4px 18px rgba(15,23,42,.035);
+}
+
 body.uiux-section-aufgaben .uiuxCard,
 body.uiux-section-projekte .uiuxCard,
 body.uiux-section-kunden .uiuxCard{
@@ -257,6 +306,12 @@ body.uiux-section-kunden .tableWrap,
 body.uiux-section-mitarbeiter .tableWrap,
 body.uiux-section-rechnungen .tableWrap{
   box-shadow:0 8px 24px rgba(15,23,42,.04);
+}
+
+body.uiux-section-kunden .pageHead .uiuxDangerAction,
+body.uiux-section-projekte .pageHead .uiuxDangerAction,
+body.uiux-section-mitarbeiter .pageHead .uiuxDangerAction{
+  order:20;
 }
 
 body.uiux-section-kalender .card,
@@ -306,6 +361,27 @@ body.uiux-section-stundenzettel .card{
   background:color-mix(in srgb,var(--primary) 8%,var(--card2));
 }
 
+#uiuxContextLinks.uiuxWorkflowLinks{
+  gap:6px;
+  background:color-mix(in srgb,var(--card) 96%,transparent);
+}
+
+#uiuxContextLinks .uiuxWorkflowStep{
+  position:relative;
+  font-weight:700;
+}
+
+#uiuxContextLinks .uiuxWorkflowStep.active{
+  color:var(--text);
+  border-color:color-mix(in srgb,var(--primary) 62%,var(--border));
+  background:color-mix(in srgb,var(--primary) 11%,var(--card2));
+  font-weight:850;
+}
+
+#uiuxMobileNav{
+  display:none;
+}
+
 @media (min-width:1181px){
   body.uiux-foundation #view{padding-bottom:64px;}
   body.uiux-foundation .grid.cols-4{gap:20px;}
@@ -323,12 +399,15 @@ body.uiux-section-stundenzettel .card{
 @media (max-width:760px){
   :root{--uiux-gap:14px;}
   body.uiux-foundation #view{
-    padding:14px 14px calc(78px + env(safe-area-inset-bottom));
+    padding:14px 14px calc(106px + env(safe-area-inset-bottom));
   }
   body.uiux-foundation .pageHead{
     margin-bottom:18px;
     gap:12px;
     align-items:stretch;
+  }
+  body.uiux-foundation .uiuxPrimaryHead{
+    padding-bottom:13px;
   }
   body.uiux-foundation .pageHead > :first-child{
     flex:1 1 100%;
@@ -337,6 +416,11 @@ body.uiux-section-stundenzettel .card{
   body.uiux-foundation .pageHead > div > .btn:only-child{
     width:100%;
     justify-content:center;
+  }
+  body.uiux-foundation .pageHead .uiuxDangerAction{
+    width:auto;
+    align-self:flex-start;
+    opacity:.66;
   }
   body.uiux-foundation .grid.cols-2,
   body.uiux-foundation .grid.cols-3,
@@ -401,6 +485,40 @@ body.uiux-section-stundenzettel .card{
   #uiuxContextLinks::-webkit-scrollbar{display:none;}
   #uiuxContextLinks .uiuxContextLabel,
   #uiuxContextLinks .uiuxContextChip{flex:0 0 auto;}
+
+  #uiuxMobileNav{
+    position:fixed;
+    left:max(8px,env(safe-area-inset-left));
+    right:max(8px,env(safe-area-inset-right));
+    bottom:max(8px,env(safe-area-inset-bottom));
+    z-index:50;
+    display:grid;
+    grid-template-columns:repeat(4,minmax(0,1fr));
+    gap:6px;
+    padding:7px;
+    border:1px solid var(--border);
+    border-radius:18px;
+    background:color-mix(in srgb,var(--card) 94%,transparent);
+    box-shadow:0 14px 38px rgba(15,23,42,.18);
+    backdrop-filter:blur(14px);
+    -webkit-backdrop-filter:blur(14px);
+  }
+  #uiuxMobileNav .uiuxMobileNavItem{
+    min-height:48px;
+    border:0;
+    border-radius:12px;
+    padding:7px 5px;
+    background:transparent;
+    color:var(--text-dim);
+    font:inherit;
+    font-size:11px;
+    font-weight:750;
+    cursor:pointer;
+  }
+  #uiuxMobileNav .uiuxMobileNavItem.active{
+    color:var(--text);
+    background:color-mix(in srgb,var(--primary) 11%,var(--card2));
+  }
 }
 
 @media (max-width:430px){
@@ -408,6 +526,7 @@ body.uiux-section-stundenzettel .card{
   body.uiux-foundation .pageTitle{font-size:23px;}
   body.uiux-foundation .btn{min-height:46px;}
   #uiuxContextLinks{margin-left:0;margin-right:0;}
+  #uiuxMobileNav{left:6px;right:6px;bottom:max(6px,env(safe-area-inset-bottom));}
 }
 
 @media (prefers-reduced-motion:reduce){
