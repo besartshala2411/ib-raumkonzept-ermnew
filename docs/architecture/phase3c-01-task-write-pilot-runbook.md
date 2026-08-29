@@ -16,6 +16,8 @@ Den relationalen Aufgabenpfad im Browser kontrolliert für Create, Status-Update
   - `IB_TASKS_SUPABASE_PILOT=1` liegt in `localStorage` und aktiviert den READ-Pilot für die Origin.
   - `IB_TASKS_SUPABASE_WRITE_PILOT=1` liegt absichtlich in `sessionStorage` und aktiviert WRITE nur im aktuellen Browser-Tab.
 - Ein WRITE-Flag in `localStorage` allein wird ignoriert. Dadurch werden parallel geöffnete Tabs nicht versehentlich schreibend aktiviert.
+- Fehlendes oder gesperrtes `sessionStorage` bleibt fail-closed; WRITE wird dann nicht aktiviert.
+- Wenn das READ-Flag in einer bereits initialisierten Supabase-Runtime entfernt wird, werden Task-Mutationen sofort fail-closed blockiert. Ein zurückgelassenes WRITE-Flag darf bis zum vorgesehenen Reload/Runtime-Reset weder Supabase noch Legacy beschreiben.
 - Wenn der READ-Pilot angefordert ist, aber der Supabase-Preflight fehlschlägt, werden Task-Mutationen fail-closed blockiert. Es gibt dann keinen Legacy-Schreibfallback.
 - Bei einem Fehler nach Beginn einer Supabase-Mutation wird niemals dieselbe Mutation zusätzlich in Legacy ausgeführt.
 
@@ -28,7 +30,9 @@ Den relationalen Aufgabenpfad im Browser kontrolliert für Create, Status-Update
 
 ## Aktivierung
 
-Nur nach Freigabe im Test-Browser und ausschließlich in dem Tab, in dem der WRITE-Pilot ausgeführt wird:
+Nur nach Freigabe im Test-Browser und ausschließlich in dem Tab, in dem der WRITE-Pilot ausgeführt wird.
+
+### Desktop / DevTools
 
 ```js
 localStorage.setItem('IB_TASKS_SUPABASE_PILOT', '1');
@@ -36,7 +40,19 @@ sessionStorage.setItem('IB_TASKS_SUPABASE_WRITE_PILOT', '1');
 location.reload();
 ```
 
+### iPad / Chrome / Safari ohne DevTools
+
+Auf dem Phase-3C-Teststand die aktuelle App-URL einmal mit dem Query-Parameter `ibTaskPilotControl=1` öffnen. Beispiel: aus `https://test.example/app#aufgaben` wird `https://test.example/app?ibTaskPilotControl=1#aufgaben`.
+
+Der Parameter **aktiviert den Pilot nicht automatisch**. Er blendet nur den branch-spezifischen Dialog `Phase 3C · Task WRITE Pilot` ein. Dort `Pilot aktivieren` wählen und die Sicherheitsabfrage bestätigen. Erst dieser Klick setzt READ in `localStorage` und WRITE in `sessionStorage` und lädt die Seite neu.
+
+Wenn `sessionStorage` nicht sicher verfügbar ist, rollt die Aktivierung das READ-Flag wieder zurück und bleibt fail-closed. Der Dialog bietet außerdem `Pilot deaktivieren`; dabei werden WRITE zuerst tab-lokal und READ anschließend origin-weit entfernt und die Seite neu geladen.
+
 Danach muss `TaskRuntimeBootstrap.getTaskRuntime().mode` den Wert `supabase` liefern und `TaskRuntimeBootstrap.isTaskWritePilotEnabled(sessionStorage)` muss `true` sein. Ist eine der Bedingungen nicht erfüllt, **keine Mutation durchführen**.
+
+### Netlify Branch-Deploy
+
+Für den mobilen Pilot darf nicht die Production-URL auf `main` verwendet werden. Netlify muss den Branch `phase3c-followup-cutover-readiness` als separaten Branch-Deploy veröffentlichen. Die Production-Branch-Einstellung bleibt dabei auf `main`; der Branch-Deploy wird nur für den Pilot aktiviert. Nach Aktivierung der Branch-Deploy-Einstellung genügt ein neuer Push auf diesen Branch, um den separaten Test-Deploy auszulösen.
 
 ## Testsequenz
 
@@ -84,9 +100,16 @@ Erwartung:
 
 WRITE-Flag aktiv lassen, READ-Preflight absichtlich **nicht** manipulieren. Fail-closed wird primär automatisiert getestet. Ein absichtliches Live-Stören der Verbindung ist für den Pilot nicht erforderlich.
 
+Automatisiert wird zusätzlich geprüft:
+
+- fehlendes oder gesperrtes `sessionStorage` aktiviert keinen WRITE-Pfad;
+- ein entferntes READ-Flag stoppt WRITE sofort auch dann, wenn die aktuelle Runtime noch `supabase` ist;
+- Legacy-Schreiben wird erst nach deaktiviertem READ-Flag und Runtime-Reset/Reload wieder freigegeben;
+- die iPad-/Mobile-Steuerung aktiviert über den URL-Parameter selbst keine Flags und rollt eine fehlgeschlagene WRITE-Aktivierung vollständig zurück.
+
 ## Deaktivierung
 
-Nach Abschluss im Pilot-Tab:
+Nach Abschluss im Pilot-Tab in dieser Reihenfolge:
 
 ```js
 sessionStorage.removeItem('IB_TASKS_SUPABASE_WRITE_PILOT');
@@ -94,7 +117,11 @@ localStorage.removeItem('IB_TASKS_SUPABASE_PILOT');
 location.reload();
 ```
 
-Erwartung: Task-Modul läuft wieder vollständig über den unveränderten Legacy-Pfad. Andere Tabs waren zu keinem Zeitpunkt durch das WRITE-Flag aktiviert.
+Auf iPad/Chrome/Safari alternativ den eingeblendeten `Pilot deaktivieren`-Button verwenden.
+
+Zwischen Entfernen der Flags und dem Reload bleiben Mutationen fail-closed, falls die Runtime noch den vorherigen Supabase-Zustand hält. Erst der Reload/Runtime-Reset stellt den unveränderten Legacy-Schreibpfad wieder her.
+
+Erwartung: Task-Modul läuft nach dem Reload wieder vollständig über den unveränderten Legacy-Pfad. Andere Tabs waren zu keinem Zeitpunkt durch das WRITE-Flag aktiviert.
 
 ## Abbruchkriterien
 

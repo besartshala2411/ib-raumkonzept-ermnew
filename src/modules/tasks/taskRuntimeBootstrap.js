@@ -11,6 +11,7 @@
   let bridgeInstalled = false;
   let initializePromise = null;
   let runtimeGeneration = 0;
+  let mutationEpoch = 0;
   const mutationsInFlight = new Set();
 
   function storageFlagEnabled(storage, key) {
@@ -29,16 +30,19 @@
     return storageFlagEnabled(storage, TASK_WRITE_FLAG);
   }
 
+  function getTaskReadStorage() {
+    try { return global && global.localStorage ? global.localStorage : null; }
+    catch (_) { return null; }
+  }
+
   function getTaskWriteStorage() {
-    // WRITE ist absichtlich ausschließlich tab-lokal. Wenn sessionStorage nicht
-    // verfügbar oder gesperrt ist, muss der Pilot fail-closed bleiben; ein
-    // origin-weites localStorage-Flag darf niemals als Ersatz dienen.
     try { return global && global.sessionStorage ? global.sessionStorage : null; }
     catch (_) { return null; }
   }
 
   function resetTaskRuntime(reason, legacyTasks) {
     runtimeGeneration++;
+    mutationEpoch++;
     runtime = {
       mode: 'legacy',
       reason: reason || 'reset',
@@ -57,6 +61,7 @@
     const gate = global.TaskRuntimeGate;
     const createRepository = global.createTaskSupabaseRepository;
     const generation = runtimeGeneration;
+    const readStorage = opts.storage || getTaskReadStorage();
 
     if (!gate || typeof gate.prepareTaskSupabaseRuntime !== 'function') {
       if (generation === runtimeGeneration) {
@@ -72,26 +77,42 @@
     if (generation !== runtimeGeneration) return runtime;
 
     const prepared = await gate.prepareTaskSupabaseRuntime({
-      storage: opts.storage || global.localStorage,
+      storage: readStorage,
       client,
       createRepository,
       legacyTasks,
     });
     if (generation !== runtimeGeneration) return runtime;
+    if (prepared && prepared.mode === 'supabase' && !isTaskReadPilotRequested(readStorage)) {
+      runtime = { mode: 'legacy', reason: 'feature-flag-off-during-init', tasks: legacyTasks, repository: null, mapper: null };
+      return runtime;
+    }
     runtime = prepared;
     return runtime;
   }
 
   function getTaskRuntime() { return runtime; }
+
+  function isSupabaseReadActive() {
+    return runtime.mode === 'supabase' && isTaskReadPilotRequested(getTaskReadStorage());
+  }
+
+  function isMutationResultCurrent(generation, epoch) {
+    return generation === runtimeGeneration
+      && epoch === mutationEpoch
+      && isSupabaseReadActive()
+      && isTaskWritePilotEnabled(getTaskWriteStorage());
+  }
+
   function getVisibleTasks(legacyTasks) {
-    return runtime.mode === 'supabase' && Array.isArray(runtime.tasks)
+    return isSupabaseReadActive() && Array.isArray(runtime.tasks)
       ? runtime.tasks
       : (Array.isArray(legacyTasks) ? legacyTasks : []);
   }
 
   function withVisibleTasks(fn, thisArg, args) {
     const state = global.S;
-    if (!state || !Array.isArray(state.aufgaben) || runtime.mode !== 'supabase') {
+    if (!state || !Array.isArray(state.aufgaben) || !isSupabaseReadActive()) {
       return fn.apply(thisArg, args || []);
     }
     const legacyTasks = state.aufgaben;
@@ -112,6 +133,22 @@
     global[name] = wrapped;
   }
 
+  // index.html registriert Module über reg(..., renderAufgaben) und speichert dabei
+  // die damalige Funktionsreferenz in MODULES. Ein späteres Ersetzen von
+  // window.renderAufgaben erreicht diesen bereits registrierten Callback deshalb
+  // nicht zuverlässig. Die Route selbst ist hingegen der gemeinsame Dispatch-Pfad.
+  // Während genau dieses synchronen Render-Aufrufs wird S.aufgaben temporär auf den
+  // Supabase-Runtime-Cache gelegt und direkt danach wieder auf das Legacy-Array
+  // zurückgestellt. Damit bleibt der No-State-Cutover unverändert erhalten.
+  function wrapRouteReadBridge() {
+    const original = global.route;
+    if (typeof original !== 'function' || original.__taskPilotReadWrapped) return;
+    function wrapped() { return withVisibleTasks(original, this, arguments); }
+    wrapped.__taskPilotReadWrapped = true;
+    wrapped.__taskPilotOriginal = original;
+    global.route = wrapped;
+  }
+
   function notify(message, type) {
     if (typeof global.toast === 'function') global.toast(message, type || 'info');
   }
@@ -123,24 +160,30 @@
   }
 
   async function reloadSupabaseTasks() {
-    if (runtime.mode !== 'supabase' || !runtime.repository || typeof runtime.repository.list !== 'function') return runtime;
+    if (!isSupabaseReadActive() || !runtime.repository || typeof runtime.repository.list !== 'function') return runtime;
     const generation = runtimeGeneration;
     const tasks = await runtime.repository.list();
-    if (generation !== runtimeGeneration || runtime.mode !== 'supabase') return runtime;
+    if (generation !== runtimeGeneration || !isSupabaseReadActive()) return runtime;
     runtime.tasks = tasks;
     rerenderTasks();
     return runtime;
   }
 
   function mutationMode() {
+    const readStorage = getTaskReadStorage();
     if (runtime.mode === 'supabase') {
+      if (!isTaskReadPilotRequested(readStorage)) {
+        mutationEpoch++;
+        return 'pilot-unavailable';
+      }
       const writeStorage = getTaskWriteStorage();
-      return isTaskWritePilotEnabled(writeStorage) ? 'supabase-write' : 'supabase-readonly';
+      if (!isTaskWritePilotEnabled(writeStorage)) {
+        mutationEpoch++;
+        return 'supabase-readonly';
+      }
+      return 'supabase-write';
     }
-    // Sobald der READ-Pilot ausdrücklich angefordert wurde, ist Legacy-Schreiben kein
-    // zulässiger Fallback mehr. Das gilt auch vor/bei fehlgeschlagenem Preflight.
-    // So kann ein Supabase-Ausfall keine unbemerkte Divergenz zwischen beiden Stores erzeugen.
-    if (isTaskReadPilotRequested(global.localStorage)) return 'pilot-unavailable';
+    if (isTaskReadPilotRequested(readStorage)) return 'pilot-unavailable';
     return 'legacy';
   }
 
@@ -185,9 +228,7 @@
       }
       const args = arguments;
       const generation = runtimeGeneration;
-      // Der Lock ist an die Auth-/Runtime-Generation gebunden. Nach einem Reset darf
-      // ein verspätetes finally() aus der alten Generation niemals den Lock eines
-      // neuen Writes derselben Aufgabe entfernen.
+      const epoch = mutationEpoch;
       const key = String(generation) + ':' + mutationKey(name, args);
       if (mutationsInFlight.has(key)) {
         mutationBusy();
@@ -197,7 +238,7 @@
       Promise.resolve()
         .then(() => supabaseHandler.apply(this, args))
         .catch((error) => {
-          if (generation === runtimeGeneration) mutationFailed(error);
+          if (isMutationResultCurrent(generation, epoch)) mutationFailed(error);
         })
         .finally(() => { mutationsInFlight.delete(key); });
     }
@@ -209,7 +250,9 @@
   function installTaskWritePilotBridge() {
     wrapTaskMutation('saveAufgabe', async function () {
       if (!runtime.repository || typeof runtime.repository.create !== 'function') throw new Error('Task-Repository nicht verfügbar.');
+      if (typeof runtime.repository.list !== 'function') throw new Error('Task-Repository kann den Create nicht verifizieren.');
       const generation = runtimeGeneration;
+      const epoch = mutationEpoch;
       const byId = (id) => global.document && global.document.getElementById(id);
       const titelEl = byId('agTitel');
       const titel = titelEl && String(titelEl.value || '').trim();
@@ -226,18 +269,32 @@
         zugeordnet: byId('agZuge') && byId('agZuge').value || null,
         status: 'offen',
       });
-      if (generation !== runtimeGeneration || runtime.mode !== 'supabase') return;
-      runtime.tasks = [created].concat((runtime.tasks || []).filter((task) => task.id !== created.id));
+      if (!isMutationResultCurrent(generation, epoch)) return;
+      if (!created || !created.id) {
+        throw new Error('Create lieferte keine Task-ID; keine weitere Aufgabe erstellen.');
+      }
+
+      // Live-Gate: Ein bestätigter INSERT reicht nicht. Direkt danach wird über denselben
+      // RLS-/Mapping-READ erneut gelistet. Nur wenn der neue Datensatz dort sichtbar ist,
+      // übernehmen wir ihn in die Runtime und schließen das Formular. Das verhindert einen
+      // scheinbar erfolgreichen Create mit anschließend leerer Aufgabenansicht.
+      const verifiedTasks = await runtime.repository.list();
+      if (!isMutationResultCurrent(generation, epoch)) return;
+      if (!Array.isArray(verifiedTasks) || !verifiedTasks.some((task) => task && task.id === created.id)) {
+        throw new Error('Create wurde bestätigt, ist im anschließenden Supabase-READ aber nicht sichtbar. Keine weitere Aufgabe erstellen.');
+      }
+      runtime.tasks = verifiedTasks;
       if (typeof global.closeModal === 'function') global.closeModal();
       rerenderTasks();
-      notify('Aufgabe gespeichert.', 'success');
+      notify('Aufgabe gespeichert und per READ verifiziert.', 'success');
     });
 
     wrapTaskMutation('setAufgabeStatus', async function (id, status) {
       if (!runtime.repository || typeof runtime.repository.update !== 'function') throw new Error('Task-Repository nicht verfügbar.');
       const generation = runtimeGeneration;
+      const epoch = mutationEpoch;
       const updated = await runtime.repository.update(id, { status });
-      if (generation !== runtimeGeneration || runtime.mode !== 'supabase') return;
+      if (!isMutationResultCurrent(generation, epoch)) return;
       runtime.tasks = (runtime.tasks || []).map((task) => task.id === id ? updated : task);
       rerenderTasks();
     });
@@ -245,8 +302,9 @@
     wrapTaskMutation('deleteAufgabe', async function (id) {
       if (!runtime.repository || typeof runtime.repository.remove !== 'function') throw new Error('Task-Repository nicht verfügbar.');
       const generation = runtimeGeneration;
+      const epoch = mutationEpoch;
       await runtime.repository.remove(id);
-      if (generation !== runtimeGeneration || runtime.mode !== 'supabase') return;
+      if (!isMutationResultCurrent(generation, epoch)) return;
       runtime.tasks = (runtime.tasks || []).filter((task) => task.id !== id);
       rerenderTasks();
       notify('Aufgabe gelöscht.', 'success');
@@ -274,6 +332,7 @@
   function installTaskReadPilotBridge() {
     if (bridgeInstalled) return;
     bridgeInstalled = true;
+    wrapRouteReadBridge();
     wrapReadFunction('renderAufgaben');
     wrapReadFunction('renderProjektDetail');
     wrapReadFunction('globalSearchIndex');
@@ -282,9 +341,6 @@
     const originalEnterApp = global.enterApp;
     if (typeof originalEnterApp === 'function' && !originalEnterApp.__taskPilotReadWrapped) {
       function wrappedEnterApp() {
-        // Auth-/Benutzerwechsel darf niemals Tasks aus einem vorherigen Runtime-Cache
-        // kurz anzeigen. Vor dem ersten Render deshalb immer auf den lokalen Legacy-
-        // Snapshot zurücksetzen; der RLS-gescopte Supabase-READ folgt danach asynchron.
         const legacyTasks = global.S && Array.isArray(global.S.aufgaben) ? global.S.aufgaben : [];
         resetTaskRuntime('auth-transition', legacyTasks);
         const result = originalEnterApp.apply(this, arguments);

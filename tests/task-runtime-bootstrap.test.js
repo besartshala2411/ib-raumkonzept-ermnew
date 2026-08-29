@@ -11,9 +11,10 @@ function deferred(){ let resolve,reject; const promise=new Promise((res,rej)=>{r
   global.localStorage={getItem(key){return storageValues[key] || null;}};
   global.sessionStorage={getItem(key){return storageValues[key] || null;}};
   const calls={create:0,update:0,remove:0,legacySave:0,legacyStatus:0,legacyDelete:0,enter:0,logout:0};
+  const createdRows=[];
   const mappedRepo={
-    async list(){ return [{id:'db',titel:'Supabase',status:'offen',projektId:null,zugeordnet:null}]; },
-    async create(data){ calls.create++; return {id:'db-new',...data}; },
+    async list(){ return [{id:'db',titel:'Supabase',status:'offen',projektId:null,zugeordnet:null}].concat(createdRows.map(row=>({...row}))); },
+    async create(data){ calls.create++; const created={id:'db-new',...data}; createdRows.unshift(created); return {...created}; },
     async update(id,changes){ calls.update++; return {id,titel:'Supabase',projektId:null,zugeordnet:null,...changes}; },
     async remove(id){ calls.remove++; return {id,titel:'Supabase',deletedAt:new Date().toISOString(),projektId:null,zugeordnet:null}; },
   };
@@ -75,20 +76,31 @@ function deferred(){ let resolve,reject; const promise=new Promise((res,rej)=>{r
   // Doppel-Klick auf Speichern darf keinen zweiten INSERT starten, solange der erste
   // Request noch läuft. Nach Abschluss muss ein späterer neuer Versuch wieder möglich sein.
   const pendingCreate=deferred();
-  mappedRepo.create=async(data)=>{ calls.create++; await pendingCreate.promise; return {id:'db-new',...data}; };
+  mappedRepo.create=async(data)=>{
+    calls.create++;
+    await pendingCreate.promise;
+    const created={id:'db-new',...data};
+    createdRows.unshift(created);
+    return {...created};
+  };
   global.saveAufgabe();
   global.saveAufgabe();
   await tick();
   assert(calls.create===1,'doppelter Create startet während laufendem Request nur einen Supabase-INSERT');
   assert(/bereits gespeichert/i.test(lastToast),'paralleler Create wird sichtbar als laufende Speicherung blockiert');
   pendingCreate.resolve();
-  await tick(); await tick();
-  assert(bootstrap.getTaskRuntime().tasks.some(t=>t.id==='db-new'),'abgeschlossener Create aktualisiert den Runtime-Task-Cache');
+  await tick(); await tick(); await tick();
+  assert(bootstrap.getTaskRuntime().tasks.some(t=>t.id==='db-new'),'abgeschlossener Create aktualisiert den Runtime-Task-Cache erst nach erfolgreichem READ-Back');
   assert(global.S.aufgaben===legacyRef && calls.legacySave===0,'Create verändert Legacy-State nicht und ruft Legacy-Save nicht auf');
 
-  mappedRepo.create=async(data)=>{ calls.create++; return {id:'db-new-2',...data}; };
+  mappedRepo.create=async(data)=>{
+    calls.create++;
+    const created={id:'db-new-2',...data};
+    createdRows.unshift(created);
+    return {...created};
+  };
   global.saveAufgabe();
-  await tick(); await tick();
+  await tick(); await tick(); await tick();
   assert(calls.create===2,'nach Abschluss wird ein späterer Create wieder zugelassen');
 
   // Statusänderung und Delete derselben Aufgabe teilen denselben Lock-Key. Damit
