@@ -53,11 +53,23 @@ assert(!!context && context.getAttribute('aria-label')==='Verknüpfte Bereiche',
 assert(Array.from(context.querySelectorAll('.uiuxContextChip')).map(x=>x.textContent).join('|')==='Projekte|Mitarbeiter|Kalender','nur tatsächlich vorhandene Nav-Bereiche werden angeboten');
 assert(document.getElementById('existing').textContent==='Inhalt','bestehender View-Inhalt bleibt unangetastet');
 
-let clicked=false;
+const sameContext=context;
+ui.enhance();
+assert(document.getElementById('uiuxContextLinks')===sameContext,'wiederholtes UI-Enhancement ersetzt die Verknüpfungsleiste nicht unnötig');
+assert(ui.shouldRefreshForViewMutations([{type:'childList',addedNodes:[sameContext],removedNodes:[]}])===false,'eigene Verknüpfungsleiste löst keinen rekursiven Render-Zyklus aus');
+const realViewNode=document.createElement('section');
+assert(ui.shouldRefreshForViewMutations([{type:'childList',addedNodes:[realViewNode],removedNodes:[]}])===true,'echte View-Neuinhalte lösen weiterhin ein UI-Refresh aus');
+
+let contextClicked=false;
 const projectButton=Array.from(document.querySelectorAll('.navItem')).find(x=>x.textContent.includes('Projekte'));
-projectButton.addEventListener('click',()=>{clicked=true;});
+projectButton.addEventListener('click',()=>{contextClicked=true;});
 context.querySelector('.uiuxContextChip').click();
-assert(clicked,'Verknüpfung delegiert an die bestehende Navigation statt eigene Routen zu erfinden');
+assert(contextClicked,'Verknüpfung delegiert an die bestehende Navigation statt eigene Routen zu erfinden');
+
+let directSidebarClicks=0;
+projectButton.addEventListener('click',()=>{directSidebarClicks++;});
+projectButton.click();
+assert(directSidebarClicks===1,'direkter Klick auf linken Navigationsreiter bleibt unverändert funktionsfähig');
 
 const taskButton=document.querySelector('.navItem.active');
 taskButton.classList.remove('active');
