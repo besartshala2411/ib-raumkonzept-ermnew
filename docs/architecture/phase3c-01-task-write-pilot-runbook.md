@@ -30,13 +30,23 @@ Den relationalen Aufgabenpfad im Browser kontrolliert für Create, Status-Update
 
 ## Aktivierung
 
-Nur nach Freigabe im Test-Browser und ausschließlich in dem Tab, in dem der WRITE-Pilot ausgeführt wird:
+Nur nach Freigabe im Test-Browser und ausschließlich in dem Tab, in dem der WRITE-Pilot ausgeführt wird.
+
+### Desktop / DevTools
 
 ```js
 localStorage.setItem('IB_TASKS_SUPABASE_PILOT', '1');
 sessionStorage.setItem('IB_TASKS_SUPABASE_WRITE_PILOT', '1');
 location.reload();
 ```
+
+### iPad / Chrome / Safari ohne DevTools
+
+Auf dem Phase-3C-Teststand die aktuelle App-URL einmal mit dem Query-Parameter `ibTaskPilotControl=1` öffnen. Beispiel: aus `https://test.example/app#aufgaben` wird `https://test.example/app?ibTaskPilotControl=1#aufgaben`.
+
+Der Parameter **aktiviert den Pilot nicht automatisch**. Er blendet nur den branch-spezifischen Dialog `Phase 3C · Task WRITE Pilot` ein. Dort `Pilot aktivieren` wählen und die Sicherheitsabfrage bestätigen. Erst dieser Klick setzt READ in `localStorage` und WRITE in `sessionStorage` und lädt die Seite neu.
+
+Wenn `sessionStorage` nicht sicher verfügbar ist, rollt die Aktivierung das READ-Flag wieder zurück und bleibt fail-closed. Der Dialog bietet außerdem `Pilot deaktivieren`; dabei werden WRITE zuerst tab-lokal und READ anschließend origin-weit entfernt und die Seite neu geladen.
 
 Danach muss `TaskRuntimeBootstrap.getTaskRuntime().mode` den Wert `supabase` liefern und `TaskRuntimeBootstrap.isTaskWritePilotEnabled(sessionStorage)` muss `true` sein. Ist eine der Bedingungen nicht erfüllt, **keine Mutation durchführen**.
 
@@ -90,7 +100,8 @@ Automatisiert wird zusätzlich geprüft:
 
 - fehlendes oder gesperrtes `sessionStorage` aktiviert keinen WRITE-Pfad;
 - ein entferntes READ-Flag stoppt WRITE sofort auch dann, wenn die aktuelle Runtime noch `supabase` ist;
-- Legacy-Schreiben wird erst nach deaktiviertem READ-Flag und Runtime-Reset/Reload wieder freigegeben.
+- Legacy-Schreiben wird erst nach deaktiviertem READ-Flag und Runtime-Reset/Reload wieder freigegeben;
+- die iPad-/Mobile-Steuerung aktiviert über den URL-Parameter selbst keine Flags und rollt eine fehlgeschlagene WRITE-Aktivierung vollständig zurück.
 
 ## Deaktivierung
 
@@ -101,6 +112,8 @@ sessionStorage.removeItem('IB_TASKS_SUPABASE_WRITE_PILOT');
 localStorage.removeItem('IB_TASKS_SUPABASE_PILOT');
 location.reload();
 ```
+
+Auf iPad/Chrome/Safari alternativ den eingeblendeten `Pilot deaktivieren`-Button verwenden.
 
 Zwischen Entfernen der Flags und dem Reload bleiben Mutationen fail-closed, falls die Runtime noch den vorherigen Supabase-Zustand hält. Erst der Reload/Runtime-Reset stellt den unveränderten Legacy-Schreibpfad wieder her.
 
