@@ -11,207 +11,72 @@ body.uiux-foundation.uiux-section-projekte #view:has(#pjGrid){
   align-content:start;
   max-width:none;
 }
-
-body.uiux-foundation.uiux-section-projekte #view:has(#pjGrid) > #uiuxContextLinks{
-  grid-area:context;
-  width:100%;
-  max-width:none;
-  margin-bottom:0;
-}
-
-body.uiux-foundation.uiux-section-projekte #view:has(#pjGrid) > .pageHead{
-  grid-area:head;
-  width:100%;
-  max-width:none;
-  margin-bottom:0;
-  padding:2px 0 12px;
-}
-
+body.uiux-foundation.uiux-section-projekte #view:has(#pjGrid) > #uiuxContextLinks{grid-area:context;width:100%;max-width:none;margin-bottom:0;}
+body.uiux-foundation.uiux-section-projekte #view:has(#pjGrid) > .pageHead{grid-area:head;width:100%;max-width:none;margin-bottom:0;padding:2px 0 12px;}
 body.uiux-foundation.uiux-section-projekte #view:has(#pjGrid) > .filterBar{
-  grid-area:filters;
-  width:100%;
-  max-width:none;
-  margin:0;
-  padding:10px;
-  display:grid;
-  grid-template-columns:minmax(0,1fr) minmax(180px,240px);
-  gap:10px;
-  border:1px solid var(--border);
-  border-radius:14px;
-  background:var(--card);
-  box-shadow:0 4px 18px rgba(15,23,42,.04);
+  grid-area:filters;width:100%;max-width:none;margin:0;padding:10px;display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(180px,240px);gap:10px;border:1px solid var(--border);
+  border-radius:14px;background:var(--card);box-shadow:0 4px 18px rgba(15,23,42,.04);
 }
-
 body.uiux-foundation.uiux-section-projekte #view:has(#pjGrid) > .filterBar input,
-body.uiux-foundation.uiux-section-projekte #view:has(#pjGrid) > .filterBar select{
-  width:100%;
-  min-width:0!important;
-  background:var(--card2);
-}
-
+body.uiux-foundation.uiux-section-projekte #view:has(#pjGrid) > .filterBar select{width:100%;min-width:0!important;background:var(--card2);}
 body.uiux-foundation.uiux-section-projekte #view:has(#pjGrid) > .card:has(#pjMapWrap){
-  grid-area:map;
-  width:100%;
-  max-width:none;
-  margin:0!important;
-  padding:0!important;
-  overflow:hidden;
-  position:sticky;
-  top:0;
-  align-self:start;
-  min-height:560px;
-  border-radius:16px;
-  box-shadow:0 10px 32px rgba(15,23,42,.08);
+  grid-area:map;width:100%;max-width:none;margin:0!important;padding:0!important;overflow:hidden;position:sticky;top:0;
+  align-self:start;min-height:560px;border-radius:16px;box-shadow:0 10px 32px rgba(15,23,42,.08);
 }
-
 body.uiux-foundation.uiux-section-projekte #pjMapStatus{
-  min-height:0;
-  padding:8px 12px 0!important;
-  position:absolute;
-  z-index:500;
-  left:10px;
-  top:10px;
-  max-width:calc(100% - 20px);
-  border-radius:10px;
-  background:color-mix(in srgb,var(--card) 88%,transparent);
-  backdrop-filter:blur(8px);
-  -webkit-backdrop-filter:blur(8px);
+  min-height:0;padding:8px 12px 0!important;position:absolute;z-index:500;left:10px;top:10px;max-width:calc(100% - 20px);
+  border-radius:10px;background:color-mix(in srgb,var(--card) 88%,transparent);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
 }
-
-body.uiux-foundation.uiux-section-projekte #pjMapWrap{
-  height:560px!important;
-  min-height:560px;
-  background:var(--card2);
-}
-
+body.uiux-foundation.uiux-section-projekte #pjMapWrap{height:560px!important;min-height:560px;background:var(--card2);}
 body.uiux-foundation.uiux-section-projekte #pjGrid{
-  grid-area:projects;
-  width:100%;
-  max-width:none;
-  margin:0;
-  display:grid;
-  grid-template-columns:repeat(3,minmax(0,1fr));
-  gap:12px;
-  align-content:start;
+  grid-area:projects;width:100%;max-width:none;margin:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-content:start;
 }
-
 body.uiux-foundation.uiux-section-projekte #pjGrid > .card{
-  min-width:0;
-  padding:14px 14px 13px;
-  border-radius:13px;
-  box-shadow:0 4px 14px rgba(15,23,42,.04);
-  display:flex;
-  flex-direction:column;
-  gap:2px;
-  min-height:150px;
-  background:linear-gradient(180deg,var(--card),color-mix(in srgb,var(--card2) 44%,var(--card)));
+  min-width:0;padding:0 14px 13px;border-radius:13px;box-shadow:0 4px 14px rgba(15,23,42,.04);display:flex;flex-direction:column;
+  gap:2px;min-height:276px;overflow:hidden;background:linear-gradient(180deg,var(--card),color-mix(in srgb,var(--card2) 44%,var(--card)));
 }
+body.uiux-foundation.uiux-section-projekte #pjGrid > .card:hover{transform:translateY(-2px);border-color:color-mix(in srgb,var(--primary) 48%,var(--border));box-shadow:0 10px 26px rgba(15,23,42,.10);}
+body.uiux-foundation.uiux-section-projekte #pjGrid > .card > div:not(.projectWorkspaceEnhancement){margin-left:0;margin-right:0;}
+body.uiux-foundation.uiux-section-projekte #pjGrid > .card > div:first-of-type:not(.projectWorkspaceEnhancement){gap:8px;}
+body.uiux-foundation.uiux-section-projekte #pjGrid > .card > div:first-of-type:not(.projectWorkspaceEnhancement) b{font-size:14px;line-height:1.25;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;}
+body.uiux-foundation.uiux-section-projekte #pjGrid .pageSub{min-height:38px;margin:6px 0 8px!important;font-size:12px;line-height:1.4;}
+body.uiux-foundation.uiux-section-projekte #pjGrid .progressBar{height:6px;margin-top:auto;margin-bottom:9px!important;border-radius:999px;overflow:hidden;}
+body.uiux-foundation.uiux-section-projekte #pjGrid .badge{flex:0 0 auto;font-size:10px;padding:3px 7px;}
 
-body.uiux-foundation.uiux-section-projekte #pjGrid > .card:hover{
-  transform:translateY(-2px);
-  border-color:color-mix(in srgb,var(--primary) 48%,var(--border));
-  box-shadow:0 10px 26px rgba(15,23,42,.10);
-}
-
-body.uiux-foundation.uiux-section-projekte #pjGrid > .card > div:first-child{
-  gap:8px;
-}
-
-body.uiux-foundation.uiux-section-projekte #pjGrid > .card > div:first-child b{
-  font-size:14px;
-  line-height:1.25;
-  overflow:hidden;
-  display:-webkit-box;
-  -webkit-line-clamp:2;
-  -webkit-box-orient:vertical;
-}
-
-body.uiux-foundation.uiux-section-projekte #pjGrid .pageSub{
-  min-height:38px;
-  margin:6px 0 8px!important;
-  font-size:12px;
-  line-height:1.4;
-}
-
-body.uiux-foundation.uiux-section-projekte #pjGrid .progressBar{
-  height:6px;
-  margin-top:auto;
-  margin-bottom:9px!important;
-  border-radius:999px;
-  overflow:hidden;
-}
-
-body.uiux-foundation.uiux-section-projekte #pjGrid .badge{
-  flex:0 0 auto;
-  font-size:10px;
-  padding:3px 7px;
-}
-
-body.uiux-foundation.uiux-section-projekte .leaflet-control-zoom a{
-  min-width:36px;
-  min-height:36px;
-  line-height:36px;
-}
+body.uiux-foundation.uiux-section-projekte .projectWorkspaceEnhancement{margin:0 -14px 10px;display:flex;flex-direction:column;border-bottom:1px solid color-mix(in srgb,var(--border) 80%,transparent);}
+body.uiux-foundation.uiux-section-projekte .projectWorkspaceMedia{position:relative;height:92px;overflow:hidden;background:linear-gradient(135deg,color-mix(in srgb,var(--primary) 14%,var(--card2)),var(--card2));}
+body.uiux-foundation.uiux-section-projekte .projectWorkspacePhoto{width:100%;height:100%;display:block;object-fit:cover;filter:saturate(.88) contrast(.97);}
+body.uiux-foundation.uiux-section-projekte .projectWorkspacePhotoPlaceholder{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:34px;color:color-mix(in srgb,var(--primary) 72%,var(--text-dim2));background:radial-gradient(circle at 32% 35%,color-mix(in srgb,var(--primary) 18%,transparent),transparent 42%),linear-gradient(135deg,var(--card2),color-mix(in srgb,var(--primary) 6%,var(--card)));}
+body.uiux-foundation.uiux-section-projekte .projectWorkspaceMediaProgress{position:absolute;right:8px;bottom:8px;padding:4px 7px;border-radius:999px;background:rgba(10,15,25,.72);color:#fff;font-size:10px;font-weight:850;backdrop-filter:blur(5px);}
+body.uiux-foundation.uiux-section-projekte .projectWorkspaceInfo{padding:9px 12px 10px;display:flex;flex-direction:column;gap:5px;min-width:0;}
+body.uiux-foundation.uiux-section-projekte .projectWorkspaceCustomer{font-size:11.5px;font-weight:800;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+body.uiux-foundation.uiux-section-projekte .projectWorkspacePeriod{font-size:10.5px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+body.uiux-foundation.uiux-section-projekte .projectWorkspaceMeta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:1px;color:var(--text-dim2);font-size:10px;font-weight:700;}
+body.uiux-foundation.uiux-section-projekte .projectWorkspaceWarning{margin-top:2px;padding:5px 7px;border-radius:8px;background:var(--amber-bg);color:var(--amber);font-size:10.5px;font-weight:800;}
+body.uiux-foundation.uiux-section-projekte .projectWorkspaceCardWarning{border-color:color-mix(in srgb,var(--amber) 46%,var(--border));}
+body.uiux-foundation.uiux-section-projekte .projectWorkspaceCardWarning:hover{border-color:color-mix(in srgb,var(--amber) 72%,var(--border));}
+body.uiux-foundation.uiux-section-projekte .leaflet-control-zoom a{min-width:36px;min-height:36px;line-height:36px;}
 
 @media (min-width:1500px){
-  body.uiux-foundation.uiux-section-projekte #view:has(#pjGrid){
-    grid-template-columns:minmax(0,1.8fr) minmax(380px,.8fr);
-  }
-  body.uiux-foundation.uiux-section-projekte #pjGrid{
-    grid-template-columns:repeat(4,minmax(0,1fr));
-  }
+  body.uiux-foundation.uiux-section-projekte #view:has(#pjGrid){grid-template-columns:minmax(0,1.8fr) minmax(380px,.8fr);}
+  body.uiux-foundation.uiux-section-projekte #pjGrid{grid-template-columns:repeat(4,minmax(0,1fr));}
 }
-
 @media (min-width:900px) and (max-width:1250px){
-  body.uiux-foundation.uiux-section-projekte #view:has(#pjGrid){
-    grid-template-columns:minmax(0,1.35fr) minmax(300px,.9fr);
-    gap:12px;
-  }
-  body.uiux-foundation.uiux-section-projekte #pjGrid{
-    grid-template-columns:repeat(2,minmax(0,1fr));
-  }
-  body.uiux-foundation.uiux-section-projekte #view:has(#pjGrid) > .card:has(#pjMapWrap),
-  body.uiux-foundation.uiux-section-projekte #pjMapWrap{
-    min-height:520px;
-    height:520px!important;
-  }
+  body.uiux-foundation.uiux-section-projekte #view:has(#pjGrid){grid-template-columns:minmax(0,1.35fr) minmax(300px,.9fr);gap:12px;}
+  body.uiux-foundation.uiux-section-projekte #pjGrid{grid-template-columns:repeat(2,minmax(0,1fr));}
+  body.uiux-foundation.uiux-section-projekte #view:has(#pjGrid) > .card:has(#pjMapWrap),body.uiux-foundation.uiux-section-projekte #pjMapWrap{min-height:520px;height:520px!important;}
 }
-
 @media (max-width:899px){
-  body.uiux-foundation.uiux-section-projekte #view:has(#pjGrid){
-    display:grid;
-    grid-template-columns:1fr;
-    grid-template-areas:
-      "context"
-      "head"
-      "filters"
-      "map"
-      "projects";
-    gap:12px;
-  }
-  body.uiux-foundation.uiux-section-projekte #view:has(#pjGrid) > .filterBar{
-    grid-template-columns:1fr;
-  }
-  body.uiux-foundation.uiux-section-projekte #view:has(#pjGrid) > .card:has(#pjMapWrap){
-    position:relative;
-    min-height:360px;
-  }
-  body.uiux-foundation.uiux-section-projekte #pjMapWrap{
-    min-height:360px;
-    height:360px!important;
-  }
-  body.uiux-foundation.uiux-section-projekte #pjGrid{
-    grid-template-columns:repeat(2,minmax(0,1fr));
-  }
+  body.uiux-foundation.uiux-section-projekte #view:has(#pjGrid){display:grid;grid-template-columns:1fr;grid-template-areas:"context" "head" "filters" "map" "projects";gap:12px;}
+  body.uiux-foundation.uiux-section-projekte #view:has(#pjGrid) > .filterBar{grid-template-columns:1fr;}
+  body.uiux-foundation.uiux-section-projekte #view:has(#pjGrid) > .card:has(#pjMapWrap){position:relative;min-height:360px;}
+  body.uiux-foundation.uiux-section-projekte #pjMapWrap{min-height:360px;height:360px!important;}
+  body.uiux-foundation.uiux-section-projekte #pjGrid{grid-template-columns:repeat(2,minmax(0,1fr));}
+  body.uiux-foundation.uiux-section-projekte #pjGrid > .card{min-height:260px;}
 }
-
 @media (max-width:560px){
-  body.uiux-foundation.uiux-section-projekte #pjGrid{
-    grid-template-columns:1fr;
-  }
-  body.uiux-foundation.uiux-section-projekte #view:has(#pjGrid) > .card:has(#pjMapWrap),
-  body.uiux-foundation.uiux-section-projekte #pjMapWrap{
-    min-height:300px;
-    height:300px!important;
-  }
+  body.uiux-foundation.uiux-section-projekte #pjGrid{grid-template-columns:1fr;}
+  body.uiux-foundation.uiux-section-projekte #view:has(#pjGrid) > .card:has(#pjMapWrap),body.uiux-foundation.uiux-section-projekte #pjMapWrap{min-height:300px;height:300px!important;}
+  body.uiux-foundation.uiux-section-projekte .projectWorkspaceMedia{height:126px;}
 }
