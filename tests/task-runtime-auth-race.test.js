@@ -36,6 +36,24 @@ function deferred(){ let resolve,reject; const promise=new Promise((res,rej)=>{r
   assert(bootstrap.getVisibleTasks(legacyTasks)[0].id==='legacy',
     'nach verspätetem Preflight bleiben nur Legacy-Aufgaben sichtbar');
 
+  // Wird READ während eines laufenden Preflights deaktiviert, darf dessen späteres
+  // Supabase-Ergebnis nicht im Runtime-Cache landen. Sonst könnte ein erneutes Setzen
+  // des Flags ohne frischen Preflight veraltete Daten wieder sichtbar machen.
+  bootstrap.resetTaskRuntime('flag-race-prep',legacyTasks);
+  localFlags.IB_TASKS_SUPABASE_PILOT='1';
+  const flagRacePreflight=deferred();
+  global.TaskRuntimeGate.prepareTaskSupabaseRuntime=async()=>flagRacePreflight.promise;
+  const flagRaceInit=bootstrap.initializeTaskRuntime({legacyTasks,client:{from(){}}});
+  await tick();
+  localFlags.IB_TASKS_SUPABASE_PILOT=null;
+  flagRacePreflight.resolve({mode:'supabase',reason:'ready',tasks:[{id:'stale-flag'}],repository:{list:async()=>[]},mapper:{}});
+  await flagRaceInit;
+  assert(bootstrap.getTaskRuntime().mode==='legacy' && bootstrap.getTaskRuntime().reason==='feature-flag-off-during-init',
+    'READ-Deaktivierung während Preflight verwirft das verspätete Supabase-Ergebnis');
+  localFlags.IB_TASKS_SUPABASE_PILOT='1';
+  assert(bootstrap.getTaskRuntime().mode==='legacy' && bootstrap.getVisibleTasks(legacyTasks)[0].id==='legacy',
+    'erneutes READ-Setzen ohne neuen Preflight reaktiviert keinen stale Runtime-Cache');
+
   // Ein alter refresh-Promise darf beim Abschluss nicht das Promise einer neuen
   // Auth-Generation löschen und dadurch einen dritten parallelen Preflight erlauben.
   const p1=deferred(), p2=deferred();
