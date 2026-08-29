@@ -78,6 +78,12 @@ function tick(){ return new Promise(resolve=>setTimeout(resolve,0)); }
   await tick();
   assert(updates===2 && legacyUpdates===0,'fehlendes sessionStorage bleibt fail-closed und fällt nicht auf localStorage-WRITE zurück');
 
+  global.sessionStorage={getItem(){throw new Error('sessionStorage getItem blocked');}};
+  global.setAufgabeStatus('db','offen');
+  await tick();
+  assert(updates===2 && legacyUpdates===0,'werfendes sessionStorage.getItem bleibt fail-closed ohne Supabase- oder Legacy-WRITE');
+  assert(/nur lesend/i.test(lastToast),'werfendes sessionStorage.getItem bleibt sichtbar READ-only');
+
   Object.defineProperty(global,'sessionStorage',{
     configurable:true,
     get(){ throw new Error('session storage blocked'); }
