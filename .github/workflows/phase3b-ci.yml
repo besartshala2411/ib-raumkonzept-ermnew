@@ -65,3 +65,6 @@ jobs:
 
       - name: Phase 3C readiness aggregate
         run: npm run test:phase3c-readiness
+
+      - name: UI/UX foundation tests
+        run: npm run test:uiux-foundation
