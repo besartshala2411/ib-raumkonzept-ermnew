@@ -69,6 +69,7 @@ async function main(){
   assert(new Set(ids).size===ids.length,'keine doppelten Modul-IDs registriert');
 
   for(const mod of modules){
+    window.S.currentUserId='audit-admin';
     let threw=false;
     try{window.route('#'+mod.id);}catch(e){threw=true;runtimeErrors.push(mod.id+': '+e.message);}
     const view=window.document.getElementById('view');
@@ -83,7 +84,12 @@ async function main(){
   assert(window.hasAdminAccess()===true,'Audit läuft mit Admin-Zugriff für alle sichtbaren Reiter');
   assert(window.document.querySelectorAll('.navItem').length===modules.length,'Admin-Sidebar enthält jeden registrierten Reiter');
   for(const mod of modules){
+    // Der App-Boot kann in JSDOM noch testinterne asynchrone Storage-/Sync-Arbeit abschließen.
+    // Vor jedem isolierten Klick stellen wir deshalb ausschließlich den synthetischen Test-Login
+    // wieder her und bauen dieselbe Sidebar wie der echte enterApp()-Pfad neu auf.
     window.S.currentUserId='audit-admin';
+    window.buildSidebar();
+    window.route(window.location.hash||'#dashboard');
     const btn=window.document.querySelector('.navItem[data-route="'+mod.id+'"]');
     assert(!!btn,'Sidebar-Reiter '+mod.id+' ist vorhanden');
     if(!btn) continue;
