@@ -57,5 +57,8 @@ jobs:
       - name: Task runtime write tab-scope tests
         run: npm run test:task-runtime-write-tab-scope
 
+      - name: Task runtime flag integrity tests
+        run: node tests/task-runtime-flag-integrity.test.js
+
       - name: Task WRITE pilot lifecycle dry-run
         run: npm run test:task-write-pilot-lifecycle
