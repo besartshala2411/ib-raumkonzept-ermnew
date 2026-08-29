@@ -95,14 +95,17 @@ function deferred() {
     'beobachtete WRITE-Deaktivierung wird als READ-only-Zustand signalisiert');
 
   sessionFlags.IB_TASKS_SUPABASE_WRITE_PILOT = '1';
-  pendingUpdate.resolve();
+  const staleFailureToastCount = toastEvents.length;
+  pendingUpdate.reject(new Error('verspäteter WRITE-Fehler'));
   await tick();
   await tick();
 
   assert(bootstrap.getTaskRuntime().tasks[0].status === 'offen',
-    'verspätetes WRITE-Ergebnis bleibt nach beobachtetem Off-On-Toggle ungültig und wird nicht in den Runtime-Cache übernommen');
+    'verspäteter WRITE-Fehler bleibt nach beobachtetem Off-On-Toggle ungültig und verändert den Runtime-Cache nicht');
+  assert(toastEvents.length === staleFailureToastCount,
+    'verspäteter WRITE-Fehler erzeugt nach beobachtetem Off-On-Toggle keine stale Fehlermeldung');
   assert(legacyUpdates === 0,
-    'verspätetes WRITE-Ergebnis fällt niemals auf eine Legacy-Mutation zurück');
+    'verspäteter WRITE-Fehler fällt niemals auf eine Legacy-Mutation zurück');
   assert(repositoryRemoves === 0 && legacyRemoves === 0,
     'blockiertes Cross-Operation-Delete bleibt auch nach Abschluss des ersten WRITEs ohne Nebenwirkung');
 
