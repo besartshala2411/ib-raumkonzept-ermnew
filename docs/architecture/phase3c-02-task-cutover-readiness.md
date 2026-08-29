@@ -27,6 +27,7 @@ Vor jedem weiteren Task-Cutover müssen auf dem Arbeitsbranch grün sein:
 - Fehlender/gesperrter Storage darf keinen WRITE-Pfad öffnen.
 - Bei angefordertem READ und fehlgeschlagenem Preflight gibt es keinen Legacy-Schreibfallback.
 - Entfernen des READ-Flags stoppt weitere Supabase-Reads und -Writes sofort, auch bei einer noch vorhandenen Supabase-Runtime.
+- Wird READ während eines laufenden Preflights entfernt, wird dessen späteres Supabase-Ergebnis verworfen; erneutes Aktivieren des Flags allein darf keinen veralteten Runtime-Cache reaktivieren.
 - Ergebnisse bereits laufender Mutationen dürfen nach Pilot-Deaktivierung den Runtime-Cache nicht mehr aktualisieren.
 - Auth-Wechsel und Logout verwerfen den Supabase-Task-Cache vor einem neuen Benutzer-Render.
 
