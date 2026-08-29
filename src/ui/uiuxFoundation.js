@@ -74,8 +74,7 @@
 
   function decorateView(view){
     if(!view) return;
-    const cards=Array.from(view.querySelectorAll('.card'));
-    cards.forEach(card=>card.classList.add('uiuxCard'));
+    Array.from(view.querySelectorAll('.card')).forEach(card=>card.classList.add('uiuxCard'));
     Array.from(view.querySelectorAll('.kpi')).forEach(kpi=>kpi.classList.add('uiuxKpi'));
     Array.from(view.querySelectorAll('.quickTile')).forEach(tile=>tile.classList.add('uiuxQuickTile'));
     Array.from(view.querySelectorAll('.pageHead')).forEach(head=>{
@@ -89,19 +88,30 @@
     });
   }
 
-  function makeContextLinks(items,active){
-    const doc=global.document;
-    if(!doc||!active) return null;
-    const wanted=relationsFor(active.label);
-    const targets=wanted.map(label=>{
+  function contextTargets(items,active){
+    if(!active) return [];
+    return relationsFor(active.label).map(label=>{
       const key=normalizeLabel(label);
       return items.find(item=>item.key===key)||null;
     }).filter(Boolean);
+  }
+
+  function contextSignature(items,active){
+    const source=active?normalizeLabel(active.label):'';
+    const targets=contextTargets(items,active).map(item=>item.key).join('|');
+    return source+'>'+targets;
+  }
+
+  function makeContextLinks(items,active){
+    const doc=global.document;
+    if(!doc||!active) return null;
+    const targets=contextTargets(items,active);
     if(!targets.length) return null;
 
     const wrap=doc.createElement('nav');
     wrap.id='uiuxContextLinks';
     wrap.setAttribute('aria-label','Verknüpfte Bereiche');
+    wrap.setAttribute('data-uiux-signature',contextSignature(items,active));
     const caption=doc.createElement('span');
     caption.className='uiuxContextLabel';
     caption.textContent='Verknüpft';
@@ -121,6 +131,15 @@
     return wrap;
   }
 
+  function shouldRefreshForViewMutations(records){
+    return Array.from(records||[]).some(record=>{
+      if(record.type!=='childList') return false;
+      const changed=[...Array.from(record.addedNodes||[]),...Array.from(record.removedNodes||[])];
+      if(!changed.length) return false;
+      return changed.some(node=>!(node&&node.nodeType===1&&node.id==='uiuxContextLinks'));
+    });
+  }
+
   let scheduled=false;
   function enhance(){
     if(!global.document) return false;
@@ -136,6 +155,8 @@
     decorateView(view);
 
     const old=global.document.getElementById('uiuxContextLinks');
+    const signature=contextSignature(items,active);
+    if(old&&old.getAttribute('data-uiux-signature')===signature) return true;
     if(old) old.remove();
     const links=makeContextLinks(items,active);
     if(links) view.insertBefore(links,view.firstChild);
@@ -164,20 +185,40 @@
     loadStyles();
     const start=()=>{
       enhance();
-      global.addEventListener&&global.addEventListener('hashchange',scheduleEnhance);
-      const observerRoot=global.document.getElementById('appShell')||global.document.body;
-      if(observerRoot&&typeof global.MutationObserver==='function'){
-        const observer=new global.MutationObserver(records=>{
-          if(records.some(record=>record.type==='attributes'||record.type==='childList')) scheduleEnhance();
+      if(global.addEventListener) global.addEventListener('hashchange',scheduleEnhance);
+
+      const sidebar=global.document.getElementById('sidebar');
+      if(sidebar&&typeof sidebar.addEventListener==='function'){
+        sidebar.addEventListener('click',event=>{
+          const target=event&&event.target&&typeof event.target.closest==='function'?event.target.closest('.navItem'):null;
+          if(target) scheduleEnhance();
         });
-        observer.observe(observerRoot,{attributes:true,childList:true,subtree:true,attributeFilter:['class']});
-        global.__uiuxFoundationObserver=observer;
       }
+
+      const observers=[];
+      if(typeof global.MutationObserver==='function'){
+        if(sidebar){
+          const navObserver=new global.MutationObserver(records=>{
+            if(records.some(record=>record.type==='attributes'&&record.attributeName==='class')) scheduleEnhance();
+          });
+          navObserver.observe(sidebar,{attributes:true,subtree:true,attributeFilter:['class']});
+          observers.push(navObserver);
+        }
+        const view=global.document.getElementById('view');
+        if(view){
+          const viewObserver=new global.MutationObserver(records=>{
+            if(shouldRefreshForViewMutations(records)) scheduleEnhance();
+          });
+          viewObserver.observe(view,{childList:true,subtree:true});
+          observers.push(viewObserver);
+        }
+      }
+      global.__uiuxFoundationObserver={disconnect(){observers.forEach(observer=>observer.disconnect());}};
     };
     if(global.document.readyState==='loading') global.document.addEventListener('DOMContentLoaded',start,{once:true});
     else start();
     return true;
   }
 
-  return {RELATIONS,SECTION_CLASSES,normalizeLabel,relationsFor,navLabel,findNavigation,activeNavigation,syncAria,applySection,decorateView,makeContextLinks,enhance,install};
+  return {RELATIONS,SECTION_CLASSES,normalizeLabel,relationsFor,navLabel,findNavigation,activeNavigation,syncAria,applySection,decorateView,contextTargets,contextSignature,makeContextLinks,shouldRefreshForViewMutations,enhance,install};
 });
