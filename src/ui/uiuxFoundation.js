@@ -13,14 +13,20 @@
     mitarbeiter:['Aufgaben','Zeiterfassung','Urlaub'],
     kalender:['Aufgaben','Projekte','Mitarbeiter'],
     zeiterfassung:['Projekte','Mitarbeiter','Aufgaben'],
+    stundenzettel:['Projekte','Mitarbeiter','Aufgaben'],
     rechnungen:['Kunden','Projekte'],
     urlaub:['Mitarbeiter','Kalender'],
     dashboard:['Projekte','Aufgaben','Kalender']
   };
 
+  const PRIMARY_NAV_KEYS=new Set([
+    'dashboard','kunden','projekte','aufgaben','kalender','mitarbeiter','stundenzettel','rechnungen'
+  ]);
+
   const SECTION_CLASSES=[
     'uiux-section-dashboard','uiux-section-aufgaben','uiux-section-projekte','uiux-section-kunden',
-    'uiux-section-mitarbeiter','uiux-section-kalender','uiux-section-zeiterfassung','uiux-section-rechnungen','uiux-section-urlaub'
+    'uiux-section-mitarbeiter','uiux-section-kalender','uiux-section-zeiterfassung','uiux-section-stundenzettel',
+    'uiux-section-rechnungen','uiux-section-urlaub'
   ];
 
   function normalizeLabel(value){
@@ -88,6 +94,50 @@
     });
   }
 
+  function isPrimaryNavigation(item){
+    return !!(item&&PRIMARY_NAV_KEYS.has(item.key));
+  }
+
+  function ensureNavigationToggle(sidebar,items,active){
+    if(!sidebar||!global.document) return null;
+    const secondary=items.filter(item=>!isPrimaryNavigation(item));
+    items.forEach(item=>{
+      item.el.classList.toggle('uiuxNavPrimary',isPrimaryNavigation(item));
+      item.el.classList.toggle('uiuxNavSecondary',!isPrimaryNavigation(item));
+    });
+
+    let toggle=global.document.getElementById('uiuxMoreNavToggle');
+    if(!secondary.length){
+      if(toggle) toggle.remove();
+      sidebar.classList.remove('uiuxNavExpanded');
+      return null;
+    }
+
+    if(!toggle){
+      toggle=global.document.createElement('button');
+      toggle.id='uiuxMoreNavToggle';
+      toggle.type='button';
+      toggle.className='uiuxMoreNavToggle';
+      toggle.addEventListener('click',()=>{
+        sidebar.classList.toggle('uiuxNavExpanded');
+        syncNavigationToggle(sidebar,toggle,secondary.length);
+      });
+      sidebar.appendChild(toggle);
+    }
+
+    if(active&&!isPrimaryNavigation(active)) sidebar.classList.add('uiuxNavExpanded');
+    syncNavigationToggle(sidebar,toggle,secondary.length);
+    return toggle;
+  }
+
+  function syncNavigationToggle(sidebar,toggle,count){
+    if(!sidebar||!toggle) return;
+    const expanded=sidebar.classList.contains('uiuxNavExpanded');
+    toggle.setAttribute('aria-expanded',expanded?'true':'false');
+    toggle.setAttribute('aria-controls','sidebar');
+    toggle.textContent=expanded?'Weniger anzeigen':'Weitere Bereiche ('+count+')';
+  }
+
   function contextTargets(items,active){
     if(!active) return [];
     return relationsFor(active.label).map(label=>{
@@ -114,7 +164,7 @@
     wrap.setAttribute('data-uiux-signature',contextSignature(items,active));
     const caption=doc.createElement('span');
     caption.className='uiuxContextLabel';
-    caption.textContent='Verknüpft';
+    caption.textContent='Schnell wechseln';
     wrap.appendChild(caption);
 
     targets.forEach(target=>{
@@ -145,6 +195,7 @@
     if(!global.document) return false;
     const body=global.document.body;
     const view=global.document.getElementById('view');
+    const sidebar=global.document.getElementById('sidebar');
     if(!body||!view) return false;
     body.classList.add('uiux-foundation');
 
@@ -153,6 +204,7 @@
     const active=activeNavigation(items);
     applySection(body,active);
     decorateView(view);
+    ensureNavigationToggle(sidebar,items,active);
 
     const old=global.document.getElementById('uiuxContextLinks');
     const signature=contextSignature(items,active);
@@ -220,5 +272,5 @@
     return true;
   }
 
-  return {RELATIONS,SECTION_CLASSES,normalizeLabel,relationsFor,navLabel,findNavigation,activeNavigation,syncAria,applySection,decorateView,contextTargets,contextSignature,makeContextLinks,shouldRefreshForViewMutations,enhance,install};
+  return {RELATIONS,PRIMARY_NAV_KEYS,SECTION_CLASSES,normalizeLabel,relationsFor,navLabel,findNavigation,activeNavigation,syncAria,applySection,decorateView,isPrimaryNavigation,ensureNavigationToggle,syncNavigationToggle,contextTargets,contextSignature,makeContextLinks,shouldRefreshForViewMutations,enhance,install};
 });
