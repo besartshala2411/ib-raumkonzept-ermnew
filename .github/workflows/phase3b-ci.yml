@@ -68,3 +68,6 @@ jobs:
 
       - name: UI/UX foundation tests
         run: npm run test:uiux-foundation
+
+      - name: Full sidebar functional navigation audit
+        run: npm run test:functional-navigation
