@@ -30,9 +30,6 @@
   }
 
   function getTaskWriteStorage() {
-    // WRITE ist absichtlich ausschließlich tab-lokal. Wenn sessionStorage nicht
-    // verfügbar oder gesperrt ist, muss der Pilot fail-closed bleiben; ein
-    // origin-weites localStorage-Flag darf niemals als Ersatz dienen.
     try { return global && global.sessionStorage ? global.sessionStorage : null; }
     catch (_) { return null; }
   }
@@ -83,15 +80,20 @@
   }
 
   function getTaskRuntime() { return runtime; }
+
+  function isSupabaseReadActive() {
+    return runtime.mode === 'supabase' && isTaskReadPilotRequested(global.localStorage);
+  }
+
   function getVisibleTasks(legacyTasks) {
-    return runtime.mode === 'supabase' && Array.isArray(runtime.tasks)
+    return isSupabaseReadActive() && Array.isArray(runtime.tasks)
       ? runtime.tasks
       : (Array.isArray(legacyTasks) ? legacyTasks : []);
   }
 
   function withVisibleTasks(fn, thisArg, args) {
     const state = global.S;
-    if (!state || !Array.isArray(state.aufgaben) || runtime.mode !== 'supabase') {
+    if (!state || !Array.isArray(state.aufgaben) || !isSupabaseReadActive()) {
       return fn.apply(thisArg, args || []);
     }
     const legacyTasks = state.aufgaben;
@@ -123,10 +125,10 @@
   }
 
   async function reloadSupabaseTasks() {
-    if (runtime.mode !== 'supabase' || !runtime.repository || typeof runtime.repository.list !== 'function') return runtime;
+    if (!isSupabaseReadActive() || !runtime.repository || typeof runtime.repository.list !== 'function') return runtime;
     const generation = runtimeGeneration;
     const tasks = await runtime.repository.list();
-    if (generation !== runtimeGeneration || runtime.mode !== 'supabase') return runtime;
+    if (generation !== runtimeGeneration || !isSupabaseReadActive()) return runtime;
     runtime.tasks = tasks;
     rerenderTasks();
     return runtime;
@@ -134,18 +136,10 @@
 
   function mutationMode() {
     if (runtime.mode === 'supabase') {
-      // WRITE darf nur existieren, solange auch der origin-weite READ-Pilot weiterhin
-      // ausdrücklich angefordert ist. Wird READ in einem laufenden Tab entfernt,
-      // blockieren wir sofort fail-closed bis zum vorgesehenen Reload/Runtime-Reset.
-      // So kann ein zurückgelassenes sessionStorage-WRITE-Flag keine stale Supabase-
-      // Runtime weiter beschreiben.
       if (!isTaskReadPilotRequested(global.localStorage)) return 'pilot-unavailable';
       const writeStorage = getTaskWriteStorage();
       return isTaskWritePilotEnabled(writeStorage) ? 'supabase-write' : 'supabase-readonly';
     }
-    // Sobald der READ-Pilot ausdrücklich angefordert wurde, ist Legacy-Schreiben kein
-    // zulässiger Fallback mehr. Das gilt auch vor/bei fehlgeschlagenem Preflight.
-    // So kann ein Supabase-Ausfall keine unbemerkte Divergenz zwischen beiden Stores erzeugen.
     if (isTaskReadPilotRequested(global.localStorage)) return 'pilot-unavailable';
     return 'legacy';
   }
@@ -191,9 +185,6 @@
       }
       const args = arguments;
       const generation = runtimeGeneration;
-      // Der Lock ist an die Auth-/Runtime-Generation gebunden. Nach einem Reset darf
-      // ein verspätetes finally() aus der alten Generation niemals den Lock eines
-      // neuen Writes derselben Aufgabe entfernen.
       const key = String(generation) + ':' + mutationKey(name, args);
       if (mutationsInFlight.has(key)) {
         mutationBusy();
@@ -288,9 +279,6 @@
     const originalEnterApp = global.enterApp;
     if (typeof originalEnterApp === 'function' && !originalEnterApp.__taskPilotReadWrapped) {
       function wrappedEnterApp() {
-        // Auth-/Benutzerwechsel darf niemals Tasks aus einem vorherigen Runtime-Cache
-        // kurz anzeigen. Vor dem ersten Render deshalb immer auf den lokalen Legacy-
-        // Snapshot zurücksetzen; der RLS-gescopte Supabase-READ folgt danach asynchron.
         const legacyTasks = global.S && Array.isArray(global.S.aufgaben) ? global.S.aufgaben : [];
         resetTaskRuntime('auth-transition', legacyTasks);
         const result = originalEnterApp.apply(this, arguments);
