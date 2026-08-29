@@ -18,7 +18,9 @@ function deferred() {
   const sessionFlags = { IB_TASKS_SUPABASE_WRITE_PILOT: '1' };
   const pendingUpdate = deferred();
   let repositoryUpdates = 0;
+  let repositoryRemoves = 0;
   let legacyUpdates = 0;
+  let legacyRemoves = 0;
   const toastEvents = [];
 
   global.S = { aufgaben: legacyTasks };
@@ -29,7 +31,7 @@ function deferred() {
   global.toast = (message, type) => toastEvents.push({ message, type });
   global.setAufgabeStatus = () => { legacyUpdates++; };
   global.saveAufgabe = () => {};
-  global.deleteAufgabe = () => {};
+  global.deleteAufgabe = () => { legacyRemoves++; };
 
   const repository = {
     list: async () => [{ id: 'task-1', titel: 'Pilot', status: 'offen' }],
@@ -37,6 +39,10 @@ function deferred() {
       repositoryUpdates++;
       await pendingUpdate.promise;
       return { id, titel: 'Pilot', ...changes };
+    },
+    remove: async (id) => {
+      repositoryRemoves++;
+      return { id, deletedAt: new Date().toISOString() };
     },
   };
   global.TaskRuntimeGate = {
@@ -67,6 +73,16 @@ function deferred() {
   assert(toastEvents.length === busyToastCount + 1 && toastEvents.at(-1).type === 'warn',
     'doppelte laufende Mutation wird als bereits laufender WRITE signalisiert');
 
+  const crossOperationToastCount = toastEvents.length;
+  global.deleteAufgabe('task-1');
+  await tick();
+  assert(repositoryRemoves === 0,
+    'konkurrierendes Delete derselben Aufgabe startet keinen zweiten Supabase-WRITE');
+  assert(legacyRemoves === 0,
+    'konkurrierendes Delete derselben Aufgabe fällt niemals auf Legacy zurück');
+  assert(toastEvents.length === crossOperationToastCount + 1 && toastEvents.at(-1).type === 'warn',
+    'Cross-Operation-Konflikt derselben Aufgabe wird als bereits laufender WRITE signalisiert');
+
   sessionFlags.IB_TASKS_SUPABASE_WRITE_PILOT = null;
   pendingUpdate.resolve();
   await tick();
@@ -76,6 +92,8 @@ function deferred() {
     'verspätetes WRITE-Ergebnis wird nach WRITE-Deaktivierung nicht in den Runtime-Cache übernommen');
   assert(legacyUpdates === 0,
     'verspätetes WRITE-Ergebnis fällt niemals auf eine Legacy-Mutation zurück');
+  assert(repositoryRemoves === 0 && legacyRemoves === 0,
+    'blockiertes Cross-Operation-Delete bleibt auch nach Abschluss des ersten WRITEs ohne Nebenwirkung');
 
   const toastCount = toastEvents.length;
   global.setAufgabeStatus('task-1', 'erledigt');
