@@ -2,9 +2,9 @@
 
 Basis: grüner Phase-3C-Checkpoint `ad3cd645267b769bc57f347e5bb9f0c1f811b760`.
 
-## Ziel
+## Status
 
-Die Bedienoberfläche des ERM schrittweise modernisieren, ohne die gerade stabilisierte Datenmigration zu vermischen.
+Die responsive UI/UX-Foundation ist auf dem isolierten Branch `phase3c-uiux-foundation` technisch abgeschlossen. Der Stand verändert keine Persistenz-, Auth-, Passwort- oder Supabase-Verträge und bleibt vollständig vom Production-Branch getrennt.
 
 ## Harte Grenzen
 
@@ -13,43 +13,36 @@ Die Bedienoberfläche des ERM schrittweise modernisieren, ohne die gerade stabil
 - Kein Realtime-Cutover.
 - Keine Änderung am Passwortmodul.
 - Keine implizite Aktivierung des Task-Supabase-Piloten.
-- Bestehende Daten- und Mutationsverträge bleiben unverändert; UI/UX-Änderungen müssen gegen die vorhandenen Smoke-/Phase-3C-Tests laufen.
+- Bestehende Daten- und Mutationsverträge bleiben unverändert.
 
-## Erste UI/UX-Etappe
+## Abgeschlossene UI/UX-Bausteine
 
-1. App-Shell und Navigation auf iPad/Mobile konsistent machen.
-2. Seitenkopf, Abstände, Karten und Aktionsbuttons vereinheitlichen.
-3. Aufgabenansicht für Touch-Bedienung und kleine Viewports verbessern, ohne Task-Logik zu verändern.
-4. Modals/Formulare auf mobile Breiten, Fokus und sichere Touch-Ziele prüfen.
-5. Dashboard-Informationshierarchie verbessern, nachdem Shell und Aufgabenansicht stabil sind.
+- App-Shell, Inhaltsbreiten, Seitenköpfe und Abstände sind über Desktop, iPad/Tablet und Mobile vereinheitlicht.
+- Navigation, Buttons, Tabs, Eingaben und Schnellzugriffe verwenden sichere Touch-Ziele von mindestens 44 px.
+- Dashboard-KPIs, Karten und Quick-Tiles folgen einer gemeinsamen visuellen Hierarchie.
+- Aufgaben, Projekte, Kunden, Mitarbeiter, Kalender, Zeiterfassung, Rechnungen und Urlaub erhalten ausschließlich aus der aktiven bestehenden Navigation abgeleitete Section-Klassen. Es werden keine Datenzustände dafür verwendet oder verändert.
+- Bestehende Karten, KPIs, Quick-Tiles und Hauptaktionen werden rein dekorativ markiert; die ursprünglichen DOM-Inhalte und Event-Handler bleiben erhalten.
+- Tabellen sind auf schmalen Geräten horizontal touch-scrollbar und per Tastatur fokussierbar.
+- Formulare, Modals und Modal-Aktionen sind für Mobile/iPad vergrößert; Modals werden auf kleinen Viewports als erreichbare Bottom-Sheets dargestellt.
+- Fokuszustände, `aria-current` und reduzierte Bewegung verbessern Barrierefreiheit und Tastaturbedienung.
+- Die Leiste **Verknüpft** verbindet Aufgaben, Projekte, Kunden, Mitarbeiter, Kalender, Zeiterfassung, Rechnungen und Urlaub nur über tatsächlich vorhandene Navigationselemente. Sie delegiert Klicks an die bestehende Navigation und erfindet keine eigenen Routen.
+- Der UI/UX-Loader läuft erst nach dem Parser-/DOM-Boot, damit der bestehende Legacy-App-Start nicht blockiert wird.
 
-## Umgesetzter Foundation-Schritt
+## Sicherheits- und Regressionstests
 
-Die UI/UX-Schicht liegt branch-isoliert unter `src/ui/` und wird über `src/core/utils.js` nachgeladen. Sie greift weder auf Supabase noch auf `S` oder die Task-Runtime zu.
+`tests/uiux-foundation.test.js` prüft unter anderem:
 
-- Touch-Ziele für Navigation, Buttons, Tabs und Formulare sind auf mindestens 44 px angehoben.
-- iPad-/Tablet-Abstände, Sidebar-Breite, Karten und Inhaltsbreiten sind harmonisiert.
-- Auf kleinen Viewports werden zentrale Grids einspaltig, Modals als besser erreichbare Bottom-Sheets dargestellt und Aktionsflächen vergrößert.
-- Fokuszustände und `aria-current` verbessern Tastatur- und Screenreader-Navigation.
-- Die neue Leiste **Verknüpft** verbindet inhaltlich passende Module, z. B. Aufgaben mit Projekte/Mitarbeiter/Kalender und Projekte mit Aufgaben/Kunden/Zeiterfassung.
-- Diese Verknüpfungen erfinden ausdrücklich keine eigenen Routen. Sie suchen die bereits vorhandenen Navigationselemente und delegieren den Klick an genau diese bestehende Navigation. Fehlt ein Bereich in der aktuellen App, wird dafür kein Link angezeigt.
-- Die Verknüpfung ist ausschließlich Navigation; sie verändert keine Datensätze, Flags oder Persistenz.
-
-## Sicherheits- und Regressionstest
-
-`tests/uiux-foundation.test.js` prüft insbesondere:
-
-- stabile Normalisierung und Relationstabellen;
-- nur tatsächlich vorhandene Navigation wird angeboten;
-- Klicks werden an bestehende Nav-Controls delegiert;
+- stabile Normalisierung und begrenzte Relationstabellen;
+- Section-Klassen werden korrekt gesetzt und beim Ansichtswechsel sauber ersetzt;
+- nur tatsächlich vorhandene Module erscheinen als Verknüpfungen;
+- Klicks werden an bestehende Navigation delegiert;
+- Karten/KPIs/Quick-Tiles/Hauptaktionen werden nur visuell dekoriert;
+- Tabellen erhalten nur Zugänglichkeitsattribute, keine Datenänderungen;
 - bestehender View-Inhalt bleibt erhalten;
-- kein Legacy-State `S` und keine `TaskRuntimeBootstrap`-Kopplung wird erzeugt;
-- die bestehende Phase-3C-Readiness-Suite bleibt ein separates CI-Gate.
+- kein Legacy-State `S` und keine `TaskRuntimeBootstrap`-Kopplung wird erzeugt.
 
-## Vorgehen
+Zusätzlich bleiben Legacy-Smoke-Tests und die vollständige Phase-3C-Readiness-Suite zwingende CI-Gates.
 
-Jede Etappe bleibt klein und reviewbar. Funktionale Änderungen an Persistenz/Auth werden getrennt behandelt. Vor und nach UI-Codeänderungen werden mindestens Legacy-Smoke-Tests und die Phase-3C-Readiness-Suite ausgeführt. Browser-/iPad-Prüfung folgt erst nach grüner CI.
+## Abnahmegrenze
 
-## Nächster sicherer UI/UX-Schritt
-
-Nach grüner CI und erfolgreichem Deploy-Preview wird die Informationshierarchie der Hauptansichten weiter vereinheitlicht: Seitenkopf, primäre Aktionen, Dashboard-KPIs und Aufgaben-Karten. Dabei bleiben Repository-, Auth-, Passwort- und Supabase-Verträge unverändert.
+Technisch ist die Foundation abgeschlossen, sobald CI und Netlify Deploy Preview auf demselben Head grün sind. Eine spätere rein visuelle Feinabstimmung anhand realer iPad-/Desktop-Screenshots kann weiter auf diesem Branch erfolgen. Funktionale Änderungen an Datenflüssen oder Live-Supabase bleiben davon getrennt und benötigen weiterhin ihre eigene Freigabe.
