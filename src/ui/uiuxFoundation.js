@@ -130,10 +130,12 @@
     const start=()=>{
       enhance();
       global.addEventListener&&global.addEventListener('hashchange',scheduleEnhance);
-      const view=global.document.getElementById('view');
-      if(view&&typeof global.MutationObserver==='function'){
-        const observer=new global.MutationObserver(scheduleEnhance);
-        observer.observe(view,{childList:true,subtree:false});
+      const navRoot=global.document.getElementById('sidebar')||global.document.body;
+      if(navRoot&&typeof global.MutationObserver==='function'){
+        const observer=new global.MutationObserver(records=>{
+          if(records.some(record=>record.type==='attributes'&&record.attributeName==='class')) scheduleEnhance();
+        });
+        observer.observe(navRoot,{attributes:true,subtree:true,attributeFilter:['class']});
         global.__uiuxFoundationObserver=observer;
       }
     };
