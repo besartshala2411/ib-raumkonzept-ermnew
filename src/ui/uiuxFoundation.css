@@ -21,6 +21,10 @@ body.uiux-foundation .pageHead{
   margin-bottom:24px;
 }
 
+body.uiux-foundation .uiuxPrimaryHead{
+  padding-bottom:4px;
+}
+
 body.uiux-foundation .pageTitle{
   font-size:clamp(22px,2vw,28px);
   letter-spacing:-.02em;
@@ -39,6 +43,17 @@ body.uiux-foundation .quickTile{
 
 body.uiux-foundation .card{
   line-height:1.45;
+}
+
+body.uiux-foundation .uiuxCard,
+body.uiux-foundation .uiuxKpi{
+  transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease;
+}
+
+body.uiux-foundation .uiuxCard:hover,
+body.uiux-foundation .uiuxKpi:hover{
+  transform:translateY(-1px);
+  border-color:color-mix(in srgb,var(--primary) 30%,var(--border));
 }
 
 body.uiux-foundation .btn,
@@ -63,6 +78,10 @@ body.uiux-foundation .navItem{
   padding-bottom:11px;
 }
 
+body.uiux-foundation .uiuxPrimaryAction{
+  font-weight:750;
+}
+
 body.uiux-foundation :is(button,a,input,select,textarea,[tabindex]):focus-visible{
   outline:3px solid color-mix(in srgb,var(--primary) 72%,transparent);
   outline-offset:2px;
@@ -77,6 +96,34 @@ body.uiux-foundation .tabs{
   scrollbar-width:none;
 }
 body.uiux-foundation .tabs::-webkit-scrollbar{display:none;}
+
+/* Section-aware hierarchy stays visual-only and is derived from the active existing nav item. */
+body.uiux-section-dashboard .uiuxKpi{
+  min-height:118px;
+}
+
+body.uiux-section-dashboard .grid.cols-4,
+body.uiux-section-dashboard .grid.cols-3{
+  gap:var(--uiux-gap);
+}
+
+body.uiux-section-aufgaben .uiuxCard,
+body.uiux-section-projekte .uiuxCard,
+body.uiux-section-kunden .uiuxCard{
+  padding-top:calc(var(--uiux-gap) + 1px);
+  padding-bottom:calc(var(--uiux-gap) + 1px);
+}
+
+body.uiux-section-aufgaben .tabs,
+body.uiux-section-projekte .tabs,
+body.uiux-section-kunden .tabs{
+  margin-bottom:18px;
+}
+
+body.uiux-section-projekte .tableWrap,
+body.uiux-section-kunden .tableWrap{
+  border-radius:16px;
+}
 
 /* Contextual, DOM-driven module links. They only navigate via existing nav controls. */
 #uiuxContextLinks{
@@ -122,6 +169,7 @@ body.uiux-foundation .tabs::-webkit-scrollbar{display:none;}
   body.uiux-foundation #view{padding:20px 20px 56px;}
   body.uiux-foundation #sidebar{padding-left:8px;padding-right:8px;}
   body.uiux-foundation .grid.cols-4{grid-template-columns:repeat(2,minmax(0,1fr));}
+  body.uiux-foundation .uiuxCard{min-width:0;}
 }
 
 @media (max-width:760px){
@@ -178,6 +226,10 @@ body.uiux-foundation .tabs::-webkit-scrollbar{display:none;}
   }
   body.uiux-foundation .tabBtn{
     flex:0 0 auto;
+  }
+  body.uiux-foundation .uiuxCard:hover,
+  body.uiux-foundation .uiuxKpi:hover{
+    transform:none;
   }
   #uiuxContextLinks{
     flex-wrap:nowrap;
