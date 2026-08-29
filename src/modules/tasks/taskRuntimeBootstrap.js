@@ -29,6 +29,11 @@
     return storageFlagEnabled(storage, TASK_WRITE_FLAG);
   }
 
+  function getTaskReadStorage() {
+    try { return global && global.localStorage ? global.localStorage : null; }
+    catch (_) { return null; }
+  }
+
   function getTaskWriteStorage() {
     try { return global && global.sessionStorage ? global.sessionStorage : null; }
     catch (_) { return null; }
@@ -54,7 +59,7 @@
     const gate = global.TaskRuntimeGate;
     const createRepository = global.createTaskSupabaseRepository;
     const generation = runtimeGeneration;
-    const readStorage = opts.storage || global.localStorage;
+    const readStorage = opts.storage || getTaskReadStorage();
 
     if (!gate || typeof gate.prepareTaskSupabaseRuntime !== 'function') {
       if (generation === runtimeGeneration) {
@@ -87,7 +92,7 @@
   function getTaskRuntime() { return runtime; }
 
   function isSupabaseReadActive() {
-    return runtime.mode === 'supabase' && isTaskReadPilotRequested(global.localStorage);
+    return runtime.mode === 'supabase' && isTaskReadPilotRequested(getTaskReadStorage());
   }
 
   function isMutationResultCurrent(generation) {
@@ -144,12 +149,13 @@
   }
 
   function mutationMode() {
+    const readStorage = getTaskReadStorage();
     if (runtime.mode === 'supabase') {
-      if (!isTaskReadPilotRequested(global.localStorage)) return 'pilot-unavailable';
+      if (!isTaskReadPilotRequested(readStorage)) return 'pilot-unavailable';
       const writeStorage = getTaskWriteStorage();
       return isTaskWritePilotEnabled(writeStorage) ? 'supabase-write' : 'supabase-readonly';
     }
-    if (isTaskReadPilotRequested(global.localStorage)) return 'pilot-unavailable';
+    if (isTaskReadPilotRequested(readStorage)) return 'pilot-unavailable';
     return 'legacy';
   }
 
