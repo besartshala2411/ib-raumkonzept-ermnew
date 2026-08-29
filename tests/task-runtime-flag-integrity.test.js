@@ -49,6 +49,15 @@ function tick(){ return new Promise(resolve=>setTimeout(resolve,0)); }
   await tick(); await tick();
   assert(updates===1 && legacyUpdates===0,'erst exaktes tab-lokales WRITE-Flag erlaubt die Supabase-Mutation');
 
+  const sessionStorageObject=global.sessionStorage;
+  Object.defineProperty(global,'sessionStorage',{configurable:true,get(){throw new Error('sessionStorage getter blocked');}});
+  let writeStorageGetterThrew=false;
+  try { global.setAufgabeStatus('db','offen'); } catch (_) { writeStorageGetterThrew=true; }
+  await tick();
+  assert(!writeStorageGetterThrew && updates===1 && legacyUpdates===0,'werfender sessionStorage-Property-Zugriff blockiert WRITE ohne Exception oder Legacy-Fallback');
+  assert(/nur lesend/i.test(lastToast),'gesperrter WRITE-Storage bleibt sichtbar READ-only');
+  Object.defineProperty(global,'sessionStorage',{configurable:true,writable:true,value:sessionStorageObject});
+
   local.IB_TASKS_SUPABASE_PILOT='true';
   const beforeListCalls=listCalls;
   assert(bootstrap.getVisibleTasks(global.S.aufgaben)[0].id==='legacy','malformiertes READ-Flag deaktiviert die Supabase-Sicht sofort');
