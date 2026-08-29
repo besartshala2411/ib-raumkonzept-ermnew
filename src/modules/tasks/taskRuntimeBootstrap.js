@@ -54,6 +54,7 @@
     const gate = global.TaskRuntimeGate;
     const createRepository = global.createTaskSupabaseRepository;
     const generation = runtimeGeneration;
+    const readStorage = opts.storage || global.localStorage;
 
     if (!gate || typeof gate.prepareTaskSupabaseRuntime !== 'function') {
       if (generation === runtimeGeneration) {
@@ -69,12 +70,16 @@
     if (generation !== runtimeGeneration) return runtime;
 
     const prepared = await gate.prepareTaskSupabaseRuntime({
-      storage: opts.storage || global.localStorage,
+      storage: readStorage,
       client,
       createRepository,
       legacyTasks,
     });
     if (generation !== runtimeGeneration) return runtime;
+    if (prepared && prepared.mode === 'supabase' && !isTaskReadPilotRequested(readStorage)) {
+      runtime = { mode: 'legacy', reason: 'feature-flag-off-during-init', tasks: legacyTasks, repository: null, mapper: null };
+      return runtime;
+    }
     runtime = prepared;
     return runtime;
   }
