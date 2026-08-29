@@ -225,3 +225,17 @@ function debounce(fn, ms){
   }
   global.__taskPilotModulesReady = chain.catch(() => null);
 })(typeof window !== 'undefined' ? window : null);
+
+/* UI/UX branch loader: presentation/navigation only; no persistence or pilot flags. */
+(function loadUIUXFoundation(global){
+  if (typeof document === 'undefined' || !global) return;
+  const src = './src/ui/uiuxFoundation.js';
+  if (document.readyState === 'loading' && typeof document.write === 'function') {
+    document.write('<script src="' + src + '"></scr' + 'ipt>');
+    return;
+  }
+  const el = document.createElement('script');
+  el.src = src;
+  el.async = false;
+  document.head.appendChild(el);
+})(typeof window !== 'undefined' ? window : null);

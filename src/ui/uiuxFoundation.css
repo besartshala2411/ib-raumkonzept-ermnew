@@ -1,0 +1,204 @@
+/* UI/UX foundation — visual-only overrides for the isolated Phase-3C UI/UX branch. */
+:root{
+  --uiux-touch:44px;
+  --uiux-content-max:1500px;
+  --uiux-gap:18px;
+}
+
+body.uiux-foundation #view{
+  scroll-behavior:smooth;
+}
+
+body.uiux-foundation #view > *{
+  max-width:var(--uiux-content-max);
+  margin-left:auto;
+  margin-right:auto;
+}
+
+body.uiux-foundation .pageHead{
+  position:relative;
+  gap:18px;
+  margin-bottom:24px;
+}
+
+body.uiux-foundation .pageTitle{
+  font-size:clamp(22px,2vw,28px);
+  letter-spacing:-.02em;
+}
+
+body.uiux-foundation .pageSub{
+  line-height:1.5;
+  max-width:72ch;
+}
+
+body.uiux-foundation .card,
+body.uiux-foundation .kpi,
+body.uiux-foundation .quickTile{
+  border-radius:18px;
+}
+
+body.uiux-foundation .card{
+  line-height:1.45;
+}
+
+body.uiux-foundation .btn,
+body.uiux-foundation .iconBtn,
+body.uiux-foundation .tickerBtn,
+body.uiux-foundation .navItem,
+body.uiux-foundation .tabBtn,
+body.uiux-foundation .quickTile,
+body.uiux-foundation input,
+body.uiux-foundation select,
+body.uiux-foundation textarea{
+  min-height:var(--uiux-touch);
+}
+
+body.uiux-foundation .iconBtn,
+body.uiux-foundation .tickerBtn{
+  min-width:var(--uiux-touch);
+}
+
+body.uiux-foundation .navItem{
+  padding-top:11px;
+  padding-bottom:11px;
+}
+
+body.uiux-foundation :is(button,a,input,select,textarea,[tabindex]):focus-visible{
+  outline:3px solid color-mix(in srgb,var(--primary) 72%,transparent);
+  outline-offset:2px;
+}
+
+body.uiux-foundation .tableWrap{
+  -webkit-overflow-scrolling:touch;
+  overscroll-behavior-x:contain;
+}
+
+body.uiux-foundation .tabs{
+  scrollbar-width:none;
+}
+body.uiux-foundation .tabs::-webkit-scrollbar{display:none;}
+
+/* Contextual, DOM-driven module links. They only navigate via existing nav controls. */
+#uiuxContextLinks{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  flex-wrap:wrap;
+  margin:0 auto 18px;
+  max-width:var(--uiux-content-max);
+  padding:10px 12px;
+  border:1px solid var(--border);
+  border-radius:14px;
+  background:color-mix(in srgb,var(--card) 86%,transparent);
+}
+#uiuxContextLinks .uiuxContextLabel{
+  color:var(--text-dim2);
+  font-size:11px;
+  font-weight:800;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+  margin-right:2px;
+}
+#uiuxContextLinks .uiuxContextChip{
+  min-height:36px;
+  border:1px solid var(--border);
+  border-radius:999px;
+  padding:7px 12px;
+  background:var(--card2);
+  color:var(--text-dim);
+  font:inherit;
+  font-size:12.5px;
+  font-weight:700;
+  cursor:pointer;
+}
+#uiuxContextLinks .uiuxContextChip:hover,
+#uiuxContextLinks .uiuxContextChip:focus-visible{
+  color:var(--text);
+  border-color:var(--primary);
+}
+
+@media (min-width:761px) and (max-width:1180px){
+  :root{--sidebar-w:220px;}
+  body.uiux-foundation #view{padding:20px 20px 56px;}
+  body.uiux-foundation #sidebar{padding-left:8px;padding-right:8px;}
+  body.uiux-foundation .grid.cols-4{grid-template-columns:repeat(2,minmax(0,1fr));}
+}
+
+@media (max-width:760px){
+  body.uiux-foundation #view{
+    padding:14px 14px calc(72px + env(safe-area-inset-bottom));
+  }
+  body.uiux-foundation .pageHead{
+    margin-bottom:18px;
+    gap:12px;
+  }
+  body.uiux-foundation .pageHead > :first-child{
+    flex:1 1 100%;
+  }
+  body.uiux-foundation .pageHead > .btn,
+  body.uiux-foundation .pageHead > div > .btn:only-child{
+    width:100%;
+    justify-content:center;
+  }
+  body.uiux-foundation .grid.cols-2,
+  body.uiux-foundation .grid.cols-3,
+  body.uiux-foundation .grid.cols-4,
+  body.uiux-foundation .grid.cols-6{
+    grid-template-columns:1fr;
+  }
+  body.uiux-foundation .modalOverlay{
+    align-items:flex-end;
+    padding:8px;
+  }
+  body.uiux-foundation .modal,
+  body.uiux-foundation .modal.wide{
+    width:100%;
+    max-height:92dvh;
+    border-radius:20px 20px 12px 12px;
+    padding:18px;
+  }
+  body.uiux-foundation .modalFoot{
+    position:sticky;
+    bottom:-18px;
+    margin-left:-18px;
+    margin-right:-18px;
+    margin-bottom:-18px;
+    padding:14px 18px calc(14px + env(safe-area-inset-bottom));
+    background:var(--card);
+    z-index:2;
+  }
+  body.uiux-foundation .modalFoot .btn{
+    flex:1 1 0;
+    justify-content:center;
+  }
+  body.uiux-foundation .tabs{
+    flex-wrap:nowrap;
+    overflow-x:auto;
+    overscroll-behavior-x:contain;
+  }
+  body.uiux-foundation .tabBtn{
+    flex:0 0 auto;
+  }
+  #uiuxContextLinks{
+    flex-wrap:nowrap;
+    overflow-x:auto;
+    -webkit-overflow-scrolling:touch;
+    padding:9px 10px;
+    margin-bottom:14px;
+    scrollbar-width:none;
+  }
+  #uiuxContextLinks::-webkit-scrollbar{display:none;}
+  #uiuxContextLinks .uiuxContextLabel,
+  #uiuxContextLinks .uiuxContextChip{flex:0 0 auto;}
+}
+
+@media (prefers-reduced-motion:reduce){
+  body.uiux-foundation *,
+  body.uiux-foundation *::before,
+  body.uiux-foundation *::after{
+    scroll-behavior:auto!important;
+    transition-duration:.01ms!important;
+    animation-duration:.01ms!important;
+    animation-iteration-count:1!important;
+  }
+}
