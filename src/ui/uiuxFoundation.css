@@ -1,8 +1,16 @@
-/* UI/UX foundation — visual-only overrides for the isolated Phase-3C UI/UX branch. */
+/* UI/UX foundation — presentation-only overrides for the isolated Phase-3C UI/UX branch. */
 :root{
   --uiux-touch:44px;
   --uiux-content-max:1500px;
   --uiux-gap:18px;
+  --uiux-radius:18px;
+  --uiux-radius-sm:12px;
+  --uiux-shadow:0 10px 30px rgba(15,23,42,.06);
+}
+
+body.uiux-foundation{
+  text-rendering:optimizeLegibility;
+  -webkit-font-smoothing:antialiased;
 }
 
 body.uiux-foundation #view{
@@ -15,10 +23,15 @@ body.uiux-foundation #view > *{
   margin-right:auto;
 }
 
+body.uiux-foundation #sidebar{
+  border-right:1px solid var(--border);
+}
+
 body.uiux-foundation .pageHead{
   position:relative;
   gap:18px;
   margin-bottom:24px;
+  align-items:center;
 }
 
 body.uiux-foundation .uiuxPrimaryHead{
@@ -26,19 +39,20 @@ body.uiux-foundation .uiuxPrimaryHead{
 }
 
 body.uiux-foundation .pageTitle{
-  font-size:clamp(22px,2vw,28px);
-  letter-spacing:-.02em;
+  font-size:clamp(22px,2vw,30px);
+  line-height:1.15;
+  letter-spacing:-.025em;
 }
 
 body.uiux-foundation .pageSub{
-  line-height:1.5;
+  line-height:1.55;
   max-width:72ch;
 }
 
 body.uiux-foundation .card,
 body.uiux-foundation .kpi,
 body.uiux-foundation .quickTile{
-  border-radius:18px;
+  border-radius:var(--uiux-radius);
 }
 
 body.uiux-foundation .card{
@@ -46,14 +60,17 @@ body.uiux-foundation .card{
 }
 
 body.uiux-foundation .uiuxCard,
-body.uiux-foundation .uiuxKpi{
-  transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease;
+body.uiux-foundation .uiuxKpi,
+body.uiux-foundation .uiuxQuickTile{
+  transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease,background-color .16s ease;
 }
 
 body.uiux-foundation .uiuxCard:hover,
-body.uiux-foundation .uiuxKpi:hover{
+body.uiux-foundation .uiuxKpi:hover,
+body.uiux-foundation .uiuxQuickTile:hover{
   transform:translateY(-1px);
   border-color:color-mix(in srgb,var(--primary) 30%,var(--border));
+  box-shadow:var(--uiux-shadow);
 }
 
 body.uiux-foundation .btn,
@@ -68,18 +85,30 @@ body.uiux-foundation textarea{
   min-height:var(--uiux-touch);
 }
 
+body.uiux-foundation .btn{
+  border-radius:11px;
+  font-weight:650;
+}
+
 body.uiux-foundation .iconBtn,
 body.uiux-foundation .tickerBtn{
   min-width:var(--uiux-touch);
+  border-radius:11px;
 }
 
 body.uiux-foundation .navItem{
   padding-top:11px;
   padding-bottom:11px;
+  border-radius:11px;
+}
+
+body.uiux-foundation .navItem.active{
+  font-weight:750;
 }
 
 body.uiux-foundation .uiuxPrimaryAction{
-  font-weight:750;
+  font-weight:800;
+  box-shadow:0 6px 18px color-mix(in srgb,var(--primary) 15%,transparent);
 }
 
 body.uiux-foundation :is(button,a,input,select,textarea,[tabindex]):focus-visible{
@@ -87,24 +116,80 @@ body.uiux-foundation :is(button,a,input,select,textarea,[tabindex]):focus-visibl
   outline-offset:2px;
 }
 
+body.uiux-foundation input,
+body.uiux-foundation select,
+body.uiux-foundation textarea{
+  border-radius:11px;
+}
+
+body.uiux-foundation textarea{
+  min-height:108px;
+  resize:vertical;
+}
+
 body.uiux-foundation .tableWrap{
   -webkit-overflow-scrolling:touch;
   overscroll-behavior-x:contain;
+  border-radius:16px;
+}
+
+body.uiux-foundation table{
+  border-collapse:separate;
+  border-spacing:0;
+}
+
+body.uiux-foundation th{
+  position:sticky;
+  top:0;
+  z-index:1;
+}
+
+body.uiux-foundation td,
+body.uiux-foundation th{
+  vertical-align:middle;
 }
 
 body.uiux-foundation .tabs{
   scrollbar-width:none;
+  gap:6px;
 }
 body.uiux-foundation .tabs::-webkit-scrollbar{display:none;}
+body.uiux-foundation .tabBtn{border-radius:999px;}
 
-/* Section-aware hierarchy stays visual-only and is derived from the active existing nav item. */
+body.uiux-foundation .badge,
+body.uiux-foundation .pill,
+body.uiux-foundation .statusBadge{
+  border-radius:999px;
+}
+
+body.uiux-foundation .modal{
+  border-radius:22px;
+  box-shadow:0 24px 80px rgba(15,23,42,.22);
+}
+
+body.uiux-foundation .modalHead{
+  gap:12px;
+}
+
+body.uiux-foundation .modalFoot{
+  gap:10px;
+}
+
+/* Section-aware hierarchy stays visual-only and derives from the active existing nav item. */
 body.uiux-section-dashboard .uiuxKpi{
   min-height:118px;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
 }
 
 body.uiux-section-dashboard .grid.cols-4,
 body.uiux-section-dashboard .grid.cols-3{
   gap:var(--uiux-gap);
+}
+
+body.uiux-section-dashboard .uiuxQuickTile{
+  min-height:96px;
 }
 
 body.uiux-section-aufgaben .uiuxCard,
@@ -120,12 +205,23 @@ body.uiux-section-kunden .tabs{
   margin-bottom:18px;
 }
 
-body.uiux-section-projekte .tableWrap,
-body.uiux-section-kunden .tableWrap{
-  border-radius:16px;
+body.uiux-section-aufgaben .uiuxCard{
+  border-left-width:3px;
 }
 
-/* Contextual, DOM-driven module links. They only navigate via existing nav controls. */
+body.uiux-section-projekte .tableWrap,
+body.uiux-section-kunden .tableWrap,
+body.uiux-section-mitarbeiter .tableWrap,
+body.uiux-section-rechnungen .tableWrap{
+  box-shadow:0 8px 24px rgba(15,23,42,.04);
+}
+
+body.uiux-section-kalender .card,
+body.uiux-section-zeiterfassung .card{
+  overflow:hidden;
+}
+
+/* Contextual links: navigation only, delegating to the existing nav controls. */
 #uiuxContextLinks{
   display:flex;
   align-items:center;
@@ -136,13 +232,14 @@ body.uiux-section-kunden .tableWrap{
   padding:10px 12px;
   border:1px solid var(--border);
   border-radius:14px;
-  background:color-mix(in srgb,var(--card) 86%,transparent);
+  background:color-mix(in srgb,var(--card) 90%,transparent);
+  box-shadow:0 4px 16px rgba(15,23,42,.035);
 }
 #uiuxContextLinks .uiuxContextLabel{
   color:var(--text-dim2);
   font-size:11px;
-  font-weight:800;
-  letter-spacing:.06em;
+  font-weight:850;
+  letter-spacing:.07em;
   text-transform:uppercase;
   margin-right:2px;
 }
@@ -155,13 +252,20 @@ body.uiux-section-kunden .tableWrap{
   color:var(--text-dim);
   font:inherit;
   font-size:12.5px;
-  font-weight:700;
+  font-weight:750;
   cursor:pointer;
+  white-space:nowrap;
 }
 #uiuxContextLinks .uiuxContextChip:hover,
 #uiuxContextLinks .uiuxContextChip:focus-visible{
   color:var(--text);
   border-color:var(--primary);
+  background:color-mix(in srgb,var(--primary) 8%,var(--card2));
+}
+
+@media (min-width:1181px){
+  body.uiux-foundation #view{padding-bottom:64px;}
+  body.uiux-foundation .grid.cols-4{gap:20px;}
 }
 
 @media (min-width:761px) and (max-width:1180px){
@@ -170,15 +274,18 @@ body.uiux-section-kunden .tableWrap{
   body.uiux-foundation #sidebar{padding-left:8px;padding-right:8px;}
   body.uiux-foundation .grid.cols-4{grid-template-columns:repeat(2,minmax(0,1fr));}
   body.uiux-foundation .uiuxCard{min-width:0;}
+  body.uiux-foundation .pageHead{align-items:flex-start;}
 }
 
 @media (max-width:760px){
+  :root{--uiux-gap:14px;}
   body.uiux-foundation #view{
-    padding:14px 14px calc(72px + env(safe-area-inset-bottom));
+    padding:14px 14px calc(78px + env(safe-area-inset-bottom));
   }
   body.uiux-foundation .pageHead{
     margin-bottom:18px;
     gap:12px;
+    align-items:stretch;
   }
   body.uiux-foundation .pageHead > :first-child{
     flex:1 1 100%;
@@ -194,6 +301,8 @@ body.uiux-section-kunden .tableWrap{
   body.uiux-foundation .grid.cols-6{
     grid-template-columns:1fr;
   }
+  body.uiux-foundation .uiuxKpi{min-height:94px;}
+  body.uiux-foundation .uiuxCard{border-radius:16px;}
   body.uiux-foundation .modalOverlay{
     align-items:flex-end;
     padding:8px;
@@ -223,13 +332,20 @@ body.uiux-section-kunden .tableWrap{
     flex-wrap:nowrap;
     overflow-x:auto;
     overscroll-behavior-x:contain;
+    padding-bottom:2px;
   }
   body.uiux-foundation .tabBtn{
     flex:0 0 auto;
   }
+  body.uiux-foundation .tableWrap{
+    margin-left:-2px;
+    margin-right:-2px;
+  }
   body.uiux-foundation .uiuxCard:hover,
-  body.uiux-foundation .uiuxKpi:hover{
+  body.uiux-foundation .uiuxKpi:hover,
+  body.uiux-foundation .uiuxQuickTile:hover{
     transform:none;
+    box-shadow:none;
   }
   #uiuxContextLinks{
     flex-wrap:nowrap;
@@ -242,6 +358,13 @@ body.uiux-section-kunden .tableWrap{
   #uiuxContextLinks::-webkit-scrollbar{display:none;}
   #uiuxContextLinks .uiuxContextLabel,
   #uiuxContextLinks .uiuxContextChip{flex:0 0 auto;}
+}
+
+@media (max-width:430px){
+  body.uiux-foundation #view{padding-left:10px;padding-right:10px;}
+  body.uiux-foundation .pageTitle{font-size:23px;}
+  body.uiux-foundation .btn{min-height:46px;}
+  #uiuxContextLinks{margin-left:0;margin-right:0;}
 }
 
 @media (prefers-reduced-motion:reduce){
