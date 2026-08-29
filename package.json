@@ -19,7 +19,8 @@
     "test:task-runtime-create-readback": "node tests/task-runtime-create-readback.test.js",
     "test:task-write-pilot-lifecycle": "node tests/task-write-pilot-lifecycle.test.js",
     "test:task-pilot-mobile-control": "node tests/task-pilot-mobile-control.test.js",
-    "test:phase3c-readiness": "npm run test:task-runtime-gate && npm run test:task-runtime-bootstrap && npm run test:task-runtime-route-bridge && npm run test:task-runtime-auth-race && npm run test:task-runtime-write-tab-scope && npm run test:task-runtime-write-flag-race && npm run test:task-runtime-flag-integrity && npm run test:task-runtime-logout-write-failure && npm run test:task-runtime-create-readback && npm run test:task-write-pilot-lifecycle && npm run test:task-pilot-mobile-control"
+    "test:task-cutover-readiness": "node tests/task-cutover-readiness.test.js",
+    "test:phase3c-readiness": "npm run test:task-runtime-gate && npm run test:task-runtime-bootstrap && npm run test:task-runtime-route-bridge && npm run test:task-runtime-auth-race && npm run test:task-runtime-write-tab-scope && npm run test:task-runtime-write-flag-race && npm run test:task-runtime-flag-integrity && npm run test:task-runtime-logout-write-failure && npm run test:task-runtime-create-readback && npm run test:task-write-pilot-lifecycle && npm run test:task-pilot-mobile-control && npm run test:task-cutover-readiness"
   },
   "dependencies": {
     "web-push": "^3.6.7"
