@@ -27,6 +27,50 @@ body.uiux-foundation #sidebar{
   border-right:1px solid var(--border);
 }
 
+body.uiux-foundation #sidebar .uiuxNavSecondary{
+  display:none;
+}
+
+body.uiux-foundation #sidebar.uiuxNavExpanded .uiuxNavSecondary,
+body.uiux-foundation #sidebar .uiuxNavSecondary.active{
+  display:flex;
+}
+
+body.uiux-foundation #sidebar .uiuxNavPrimary{
+  font-weight:650;
+}
+
+body.uiux-foundation #sidebar .uiuxNavSecondary{
+  opacity:.78;
+}
+
+body.uiux-foundation #sidebar .uiuxNavSecondary.active,
+body.uiux-foundation #sidebar .uiuxNavSecondary:hover,
+body.uiux-foundation #sidebar .uiuxNavSecondary:focus-visible{
+  opacity:1;
+}
+
+body.uiux-foundation .uiuxMoreNavToggle{
+  width:calc(100% - 20px);
+  min-height:42px;
+  margin:10px 10px max(10px,env(safe-area-inset-bottom));
+  border:1px solid var(--border);
+  border-radius:11px;
+  padding:8px 10px;
+  background:var(--card2);
+  color:var(--text-dim);
+  font:inherit;
+  font-size:12px;
+  font-weight:750;
+  cursor:pointer;
+}
+
+body.uiux-foundation .uiuxMoreNavToggle:hover,
+body.uiux-foundation .uiuxMoreNavToggle:focus-visible{
+  color:var(--text);
+  border-color:color-mix(in srgb,var(--primary) 45%,var(--border));
+}
+
 body.uiux-foundation .pageHead{
   position:relative;
   gap:18px;
@@ -175,7 +219,6 @@ body.uiux-foundation .modalFoot{
   gap:10px;
 }
 
-/* Section-aware hierarchy stays visual-only and derives from the active existing nav item. */
 body.uiux-section-dashboard .uiuxKpi{
   min-height:118px;
   display:flex;
@@ -217,11 +260,11 @@ body.uiux-section-rechnungen .tableWrap{
 }
 
 body.uiux-section-kalender .card,
-body.uiux-section-zeiterfassung .card{
+body.uiux-section-zeiterfassung .card,
+body.uiux-section-stundenzettel .card{
   overflow:hidden;
 }
 
-/* Contextual links: navigation only, delegating to the existing nav controls. */
 #uiuxContextLinks{
   display:flex;
   align-items:center;
