@@ -31,7 +31,7 @@ assert.strictEqual(values.revenue,25000,'explicit contract price should win over
 assert.strictEqual(values.subcontractorCost,7000);
 assert.strictEqual(values.grossProfit,13000);
 
-const dom=new JSDOM('<!doctype html><html><head></head><body><div id="view"><div id="projektTabBody"><div class="card"><div class="tableWrap"><table><tbody><tr><td>Gewerk</td><td>Fliesen</td><td>10</td><td>m²</td><td>1000</td><td>heute</td><td></td></tr></tbody></table></div></div></div></div></body></html>',{url:'https://example.test/#projekte/p1/material'});
+const dom=new JSDOM('<!doctype html><html><head></head><body><div id="view"><div id="projektTabBody"><div class="card"><div class="tableWrap"><table><tbody><tr><td>Gewerk</td><td>Fliesen</td><td>10</td><td>m²</td><td>1000</td><td>heute</td><td></td></tr></tbody></table></div></div></div></div></body></html>',{url:'https://example.test/#projekte/p1/material',runScripts:'outside-only'});
 const win=dom.window;
 win.S={projekte:[{id:'p1',name:'Bad',budget:10000,material:[{id:'m1',bezeichnung:'Fliesen',preis:5000,einkaufspreis:2000,subunternehmerPreis:1000,lieferant:'Händler'}],ausschreibung:[]} ]};
 win.fmtCurrency=value=>Number(value).toFixed(2)+' €';
