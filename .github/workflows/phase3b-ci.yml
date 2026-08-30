@@ -19,73 +19,53 @@ jobs:
   tests:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Use Node.js 20
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
-
       - name: Install dependencies
         run: npm ci
-
       - name: Legacy smoke tests
         run: npm test
-
       - name: Task migration tests
         run: npm run test:tasks-migration
-
       - name: Phase 3B preflight tests
         run: npm run test:phase3b-preflight
-
       - name: Task Supabase repository tests
         run: npm run test:task-supabase-repository
-
       - name: Task runtime gate tests
         run: npm run test:task-runtime-gate
-
       - name: Task runtime browser bridge tests
         run: npm run test:task-runtime-bootstrap
-
       - name: Task runtime auth race tests
         run: npm run test:task-runtime-auth-race
-
       - name: Task runtime write tab-scope tests
         run: npm run test:task-runtime-write-tab-scope
-
       - name: Task runtime flag integrity tests
         run: npm run test:task-runtime-flag-integrity
-
       - name: Task WRITE pilot lifecycle dry-run
         run: npm run test:task-write-pilot-lifecycle
-
       - name: Phase 3C readiness aggregate
         run: npm run test:phase3c-readiness
-
       - name: UI/UX foundation tests
         run: npm run test:uiux-foundation
-
       - name: Project workspace contract tests
         run: npm run test:project-workspace
-
       - name: Project acceptance workflow tests
         run: npm run test:project-acceptance
-
       - name: Project economics tests
         run: npm run test:project-economics
-
       - name: Project document archive tests
         run: npm run test:project-documents
-
       - name: Project expense and receipt tests
         run: npm run test:project-expenses
-
       - name: Project commercial workflow tests
         run: npm run test:project-commercial
-
+      - name: Project measurement and actual-cost tests
+        run: npm run test:project-measurement
       - name: Full sidebar functional navigation audit
         run: npm run test:functional-navigation
