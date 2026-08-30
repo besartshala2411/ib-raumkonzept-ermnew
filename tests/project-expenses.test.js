@@ -16,7 +16,7 @@ assert(expenseSource.includes('tesseract.js@5.1.1'),'receipt photo recognition s
 const expenses=require('../src/modules/projects/projectExpenses.js');
 const economics=require('../src/modules/projects/projectEconomics.js');
 
-const parsed=expenses.parseReceiptText(`BAUHAUS GmbH & Co. KG\nKassenbon\nDatum 30.08.2026 14:23\nBeleg-Nr 4711-AB\nZwischensumme 98,20 EUR\nMwSt 18,66 EUR\nGESAMT 116,86 EUR\nVielen Dank`);
+const parsed=expenses.parseReceiptText(`BAUHAUS GmbH & Co. KG\nKassenbon\nDatum 30.08.2026 14:23\nBelegNr 4711-AB\nZwischensumme 98,20 EUR\nMwSt 18,66 EUR\nGESAMT 116,86 EUR\nVielen Dank`);
 assert.strictEqual(parsed.supplier,'BAUHAUS GmbH & Co. KG','OCR parser should identify a supplier from the receipt header');
 assert.strictEqual(parsed.date,'2026-08-30','OCR parser should normalize German dates');
 assert.strictEqual(parsed.amount,116.86,'OCR parser should prefer the labelled total over VAT/intermediate values');
