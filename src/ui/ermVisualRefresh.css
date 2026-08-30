@@ -1,0 +1,25 @@
+/* ERM visual refresh: calmer hierarchy, flatter surfaces, fewer decorative effects. */
+body.uiux-foundation{--uiux-radius:10px;--uiux-radius-sm:8px;--uiux-shadow:0 8px 24px rgba(15,23,42,.045);letter-spacing:-.005em}
+body.uiux-foundation #sidebar{background:color-mix(in srgb,var(--card) 97%,var(--card2));}
+body.uiux-foundation .navItem{border-radius:7px;font-size:13px;min-height:40px;padding-top:9px;padding-bottom:9px}
+body.uiux-foundation .navItem.active{background:color-mix(in srgb,var(--primary) 8%,var(--card));box-shadow:inset 3px 0 0 var(--primary)}
+body.uiux-foundation .card,body.uiux-foundation .kpi,body.uiux-foundation .quickTile{border-radius:10px;box-shadow:none}
+body.uiux-foundation .uiuxCard:hover,body.uiux-foundation .uiuxKpi:hover,body.uiux-foundation .uiuxQuickTile:hover{transform:none;box-shadow:none;border-color:color-mix(in srgb,var(--text-dim2) 32%,var(--border))}
+body.uiux-foundation .pageHead{margin-bottom:18px}
+body.uiux-foundation .uiuxPrimaryHead{border-bottom:0;padding-bottom:8px}
+body.uiux-foundation .pageTitle{font-size:clamp(24px,2.2vw,34px);font-weight:760;letter-spacing:-.035em}
+body.uiux-foundation .pageSub{font-size:13px;color:var(--text-dim)}
+body.uiux-foundation .btn,body.uiux-foundation .iconBtn,body.uiux-foundation input,body.uiux-foundation select,body.uiux-foundation textarea{border-radius:7px}
+body.uiux-foundation .uiuxPrimaryAction{box-shadow:none}
+body.uiux-foundation .tabs{gap:18px;border-bottom:1px solid var(--border);padding:0}
+body.uiux-foundation .tabBtn{border-radius:0!important;border:0!important;border-bottom:2px solid transparent!important;background:transparent!important;padding-left:2px;padding-right:2px;font-size:12.5px;font-weight:650}
+body.uiux-foundation .tabBtn.active{border-bottom-color:var(--primary)!important;color:var(--text)!important}
+body.uiux-foundation .tableWrap{border-radius:9px;box-shadow:none!important;border:1px solid var(--border)}
+body.uiux-foundation th{background:color-mix(in srgb,var(--card2) 78%,var(--card));font-size:11px!important;text-transform:uppercase;letter-spacing:.04em;color:var(--text-dim)}
+body.uiux-foundation td{font-size:13px}
+#uiuxContextLinks{border:0;border-bottom:1px solid var(--border);border-radius:0;background:transparent;box-shadow:none;padding:7px 0 12px;margin-bottom:18px}
+#uiuxContextLinks .uiuxContextChip{border:0;border-radius:6px;background:transparent;min-height:34px;padding:6px 9px}
+#uiuxContextLinks .uiuxContextChip.active{background:color-mix(in srgb,var(--primary) 8%,var(--card))}
+body.uiux-section-dashboard .uiuxKpi{min-height:96px;border-top:2px solid color-mix(in srgb,var(--primary) 35%,var(--border))}
+body.uiux-section-dashboard .uiuxQuickTile{min-height:76px}
+@media(max-width:760px){body.uiux-foundation .tabs{gap:16px}.uiuxContextLabel{display:none}}
