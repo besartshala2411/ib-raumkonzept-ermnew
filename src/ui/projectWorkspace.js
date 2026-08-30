@@ -158,10 +158,21 @@
     return true;
   }
 
+  function loadDocuments(){
+    if(!global.document||global.document.getElementById('projectDocumentsScript')) return false;
+    const script=global.document.createElement('script');
+    script.id='projectDocumentsScript';
+    script.src='./src/modules/projects/projectDocuments.js';
+    script.async=false;
+    global.document.head.appendChild(script);
+    return true;
+  }
+
   let observer=null;
   function install(){
     if(!global.document) return false;
     enhance();
+    loadDocuments();
     loadAcceptance();
     loadEconomics();
     if(typeof global.MutationObserver==='function'){
@@ -179,5 +190,5 @@
     return true;
   }
 
-  return {projectIdFromCard,customerName,projectPeriod,formatDate,warningFor,latestPhoto,enhanceCard,enhance,loadAcceptance,loadEconomics,install};
+  return {projectIdFromCard,customerName,projectPeriod,formatDate,warningFor,latestPhoto,enhanceCard,enhance,loadDocuments,loadAcceptance,loadEconomics,install};
 });
