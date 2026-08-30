@@ -72,17 +72,44 @@
     const active=activeProject();if(!active||active.state.tab!=='dokumente'||!global.document)return false;
     const body=global.document.getElementById('projektTabBody');if(!body)return false;
     const generated=(active.project.dokumente||[]).filter(doc=>doc&&doc.automatisch===true).length;
+    const signature=String(generated);
     let info=body.querySelector('[data-project-documents-info="1"]');
-    if(!info){info=global.document.createElement('div');info.className='card projectDocumentsInfo';info.setAttribute('data-project-documents-info','1');body.insertBefore(info,body.firstChild);}
+    if(!info){
+      info=global.document.createElement('div');
+      info.className='card projectDocumentsInfo';
+      info.setAttribute('data-project-documents-info','1');
+      body.insertBefore(info,body.firstChild);
+    }
+    if(info.getAttribute('data-project-documents-signature')===signature)return true;
+    info.setAttribute('data-project-documents-signature',signature);
     info.innerHTML='<strong>Projektakte</strong><div class="pageSub">Projektbezogene PDFs und erzeugte Dokumente werden automatisch hier abgelegt. Automatisch archiviert: '+generated+'</div>';
     return true;
+  }
+  function shouldRefresh(records){
+    return Array.from(records||[]).some(record=>{
+      if(record.type!=='childList')return false;
+      const nodes=[...Array.from(record.addedNodes||[]),...Array.from(record.removedNodes||[])];
+      return nodes.some(node=>{
+        if(!node||node.nodeType!==1)return false;
+        if(node.matches&&node.matches('[data-project-documents-info="1"]'))return false;
+        if(node.closest&&node.closest('[data-project-documents-info="1"]'))return false;
+        return true;
+      });
+    });
   }
   function enhance(){wrapExports();enhanceDocumentsTab();return true;}
   function install(){
     enhance();
     global.addEventListener?.('hashchange',()=>Promise.resolve().then(enhance));
-    if(typeof global.MutationObserver==='function'&&global.document){const view=global.document.getElementById('view');if(view){const observer=new global.MutationObserver(()=>Promise.resolve().then(enhance));observer.observe(view,{childList:true,subtree:true});global.__projectDocumentsObserver=observer;}}
+    if(typeof global.MutationObserver==='function'&&global.document){
+      const view=global.document.getElementById('view');
+      if(view){
+        const observer=new global.MutationObserver(records=>{if(shouldRefresh(records))Promise.resolve().then(enhance);});
+        observer.observe(view,{childList:true,subtree:true});
+        global.__projectDocumentsObserver=observer;
+      }
+    }
     return true;
   }
-  return {parseProjectHash,projectById,archiveDataUrl,jsPdfDataUrl,blobToDataUrl,archivePdfIfProject,archiveBlobIfProject,wrapExports,enhanceDocumentsTab,enhance,install};
+  return {parseProjectHash,projectById,archiveDataUrl,jsPdfDataUrl,blobToDataUrl,archivePdfIfProject,archiveBlobIfProject,wrapExports,enhanceDocumentsTab,shouldRefresh,enhance,install};
 });
