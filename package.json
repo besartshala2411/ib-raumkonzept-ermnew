@@ -26,14 +26,10 @@
     "test:project-documents": "node tests/project-documents.test.js",
     "test:project-expenses": "node tests/project-expenses.test.js",
     "test:project-commercial": "node tests/project-commercial.test.js",
+    "test:project-measurement": "node tests/project-measurement.test.js",
     "test:functional-navigation": "node tests/functional-navigation.test.js",
     "test:phase3c-readiness": "npm run test:task-runtime-gate && npm run test:task-runtime-bootstrap && npm run test:task-runtime-route-bridge && npm run test:task-runtime-auth-race && npm run test:task-runtime-write-tab-scope && npm run test:task-runtime-write-flag-race && npm run test:task-runtime-flag-integrity && npm run test:task-runtime-logout-write-failure && npm run test:task-runtime-create-readback && npm run test:task-write-pilot-lifecycle && npm run test:task-pilot-mobile-control"
   },
-  "dependencies": {
-    "web-push": "^3.6.7"
-  },
-  "devDependencies": {
-    "jsdom": "^24.0.0",
-    "fake-indexeddb": "^5.0.2"
-  }
+  "dependencies": {"web-push": "^3.6.7"},
+  "devDependencies": {"jsdom": "^24.0.0","fake-indexeddb": "^5.0.2"}
 }
