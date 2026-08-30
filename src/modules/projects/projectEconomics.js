@@ -18,6 +18,9 @@
   function materialSales(material){return n(material&&material.verkaufspreis!=null?material.verkaufspreis:material&&material.preis);}
   function materialPurchase(material){return n(material&&material.einkaufspreis);}
   function materialSubcontractor(material){return n(material&&material.subunternehmerPreis);}
+  function includedExpenses(project){return (Array.isArray(project&&project.ausgaben)?project.ausgaben:[]).filter(item=>item&&item.inKalkulation!==false);}
+  function expenseCategoryTotal(project,category){return includedExpenses(project).filter(item=>String(item.kategorie||'')===category).reduce((sum,item)=>sum+n(item.betrag),0);}
+  function linkedMaterialIds(project,category){return new Set(includedExpenses(project).filter(item=>String(item.kategorie||'')===category&&item.materialId).map(item=>String(item.materialId)));}
   function commissionedSubcontractorCosts(project){
     return (Array.isArray(project&&project.ausschreibung)?project.ausschreibung:[]).reduce((sum,item)=>{
       const status=String(item&&item.status||'').toLocaleLowerCase('de-DE');
@@ -27,15 +30,22 @@
   function projectEconomics(project){
     const material=Array.isArray(project&&project.material)?project.material:[];
     const sales=material.reduce((sum,item)=>sum+materialSales(item),0);
-    const materialCost=material.reduce((sum,item)=>sum+materialPurchase(item),0);
-    const positionSubCost=material.reduce((sum,item)=>sum+materialSubcontractor(item),0);
+    const materialLinked=linkedMaterialIds(project,'Material');
+    const subLinked=linkedMaterialIds(project,'Nachunternehmer');
+    const manualMaterialCost=material.reduce((sum,item)=>materialLinked.has(String(item&&item.id))?sum:sum+materialPurchase(item),0);
+    const expenseMaterialCost=expenseCategoryTotal(project,'Material');
+    const materialCost=manualMaterialCost+expenseMaterialCost;
+    const manualPositionSubCost=material.reduce((sum,item)=>subLinked.has(String(item&&item.id))?sum:sum+materialSubcontractor(item),0);
+    const expenseSubCost=expenseCategoryTotal(project,'Nachunternehmer');
+    const positionSubCost=manualPositionSubCost+expenseSubCost;
     const commissioned=commissionedSubcontractorCosts(project);
     const subcontractorCost=positionSubCost>0?positionSubCost:commissioned;
+    const otherExpenseCost=includedExpenses(project).filter(item=>!['Material','Nachunternehmer'].includes(String(item.kategorie||''))).reduce((sum,item)=>sum+n(item.betrag),0);
     const revenue=n(project&&project.auftragspreis)||n(project&&project.budget)||sales;
-    const costs=materialCost+subcontractorCost;
+    const costs=materialCost+subcontractorCost+otherExpenseCost;
     const grossProfit=revenue-costs;
     const margin=revenue>0?(grossProfit/revenue)*100:0;
-    return {revenue,sales,materialCost,positionSubCost,commissionedSubcontractorCost:commissioned,subcontractorCost,costs,grossProfit,margin};
+    return {revenue,sales,materialCost,manualMaterialCost,expenseMaterialCost,positionSubCost,manualPositionSubCost,expenseSubCost,commissionedSubcontractorCost:commissioned,subcontractorCost,otherExpenseCost,costs,grossProfit,margin};
   }
   function money(value){
     try{return typeof global.fmtCurrency==='function'?global.fmtCurrency(n(value)):new Intl.NumberFormat('de-DE',{style:'currency',currency:'EUR'}).format(n(value));}
@@ -52,7 +62,7 @@
   function openProjectPrice(project){
     if(typeof global.openModal!=='function') return false;
     global.openModal('<div class="modalHead"><div class="modalTitle">Projektkalkulation</div><button class="iconBtn" onclick="closeModal()">✖</button></div>'+
-      '<div class="pageSub" style="margin-bottom:14px;">Hier steht dein vereinbarter Verkaufspreis/Auftragspreis für die Baustelle. Material- und Nachunternehmerkosten werden darunter getrennt geführt.</div>'+
+      '<div class="pageSub" style="margin-bottom:14px;">Hier steht dein vereinbarter Verkaufspreis/Auftragspreis für die Baustelle. Material-, Beleg- und Nachunternehmerkosten werden getrennt geführt.</div>'+
       '<div class="formRow"><label>Auftragspreis / dein Preis (€)</label><input id="peProjectPrice" type="number" min="0" step="0.01" value="'+(project.auftragspreis!=null?n(project.auftragspreis):'')+'" placeholder="z. B. 24500"></div>'+
       '<div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" id="peProjectPriceSave">Speichern</button></div>');
     global.document.getElementById('peProjectPriceSave')?.addEventListener('click',()=>{
@@ -115,13 +125,15 @@
     const card=make('section','card projectEconomicsSummary');
     card.setAttribute('data-project-economics','1');
     const head=make('div','projectEconomicsHead');
-    const title=make('div');title.appendChild(make('strong','','Baustellen-Kalkulation'));title.appendChild(make('div','pageSub','Verkauf, Material-Einkauf und Nachunternehmer auf einen Blick.'));
+    const title=make('div');title.appendChild(make('strong','','Baustellen-Kalkulation'));title.appendChild(make('div','pageSub','Verkauf, Material-Einkauf, Belege und Nachunternehmer auf einen Blick.'));
     const edit=make('button','btn sm','Projektpreis bearbeiten');edit.type='button';edit.addEventListener('click',()=>openProjectPrice(project));
     head.appendChild(title);head.appendChild(edit);card.appendChild(head);
     const metrics=make('div','projectEconomicsMetrics');
     metrics.appendChild(metric('Dein Auftragspreis',money(values.revenue),values.sales&&values.sales!==values.revenue?'LV-Verkauf '+money(values.sales):''));
-    metrics.appendChild(metric('Material ausgegeben',money(values.materialCost),'Einkauf / Ist-Kosten'));
-    metrics.appendChild(metric('Nachunternehmer',money(values.subcontractorCost),values.positionSubCost>0?'positionsbezogen':'beauftragte Angebote'));
+    metrics.appendChild(metric('Material ausgegeben',money(values.materialCost),values.expenseMaterialCost>0?'davon Belege '+money(values.expenseMaterialCost):'Einkauf / Ist-Kosten'));
+    metrics.appendChild(metric('Nachunternehmer',money(values.subcontractorCost),values.expenseSubCost>0?'davon Belege '+money(values.expenseSubCost):(values.positionSubCost>0?'positionsbezogen':'beauftragte Angebote')));
+    metrics.appendChild(metric('Weitere Ausgaben',money(values.otherExpenseCost),'Miete, Fahrt, Entsorgung, Sonstiges'));
+    metrics.appendChild(metric('Gesamtkosten',money(values.costs),'alle berücksichtigten Ist-Kosten'));
     metrics.appendChild(metric('Deckungsbeitrag',money(values.grossProfit),values.margin.toFixed(1).replace('.',',')+' %'));
     card.appendChild(metrics);
     if(values.grossProfit<0){const warning=make('div','projectEconomicsWarning','⚠ Die erfassten Kosten liegen über dem Auftragspreis.');warning.setAttribute('role','status');card.appendChild(warning);}
@@ -146,5 +158,5 @@
     global.addEventListener?.('hashchange',()=>Promise.resolve().then(enhance));
     return true;
   }
-  return {n,parseProjectHash,materialSales,materialPurchase,materialSubcontractor,commissionedSubcontractorCosts,projectEconomics,enhance,install};
+  return {n,parseProjectHash,materialSales,materialPurchase,materialSubcontractor,includedExpenses,expenseCategoryTotal,linkedMaterialIds,commissionedSubcontractorCosts,projectEconomics,enhance,install};
 });
