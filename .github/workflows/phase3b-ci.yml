@@ -81,5 +81,8 @@ jobs:
       - name: Project document archive tests
         run: npm run test:project-documents
 
+      - name: Project expense and receipt tests
+        run: npm run test:project-expenses
+
       - name: Full sidebar functional navigation audit
         run: npm run test:functional-navigation
