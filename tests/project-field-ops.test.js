@@ -1,0 +1,16 @@
+const assert=require('assert');
+const fs=require('fs');const path=require('path');const {JSDOM}=require('jsdom');
+const source=fs.readFileSync(path.join(__dirname,'../src/modules/projects/projectFieldOps.js'),'utf8');
+const workspace=fs.readFileSync(path.join(__dirname,'../src/ui/projectWorkspace.js'),'utf8');
+const quick=fs.readFileSync(path.join(__dirname,'../src/modules/projects/projectQuickActions.js'),'utf8');
+assert(!/supabase|TaskRuntime|password|Realtime/i.test(source),'field operations must stay isolated from protected runtime areas');
+assert(workspace.includes('projectFieldOps.js'),'project workspace should load field operations');
+assert(quick.includes("'Baustellenfoto'")&&quick.includes("'Mangel'")&&quick.includes("'Tagesbericht'"),'central project action menu should expose field actions');
+const api=require('../src/modules/projects/projectFieldOps.js');
+const p={id:'p1',fotos:[{datum:'2026-08-30',kategorie:'Ausführung'}],maengel:[{id:'m1',titel:'Fuge',status:'offen',faellig:'2026-08-01'}],tagesberichte:[{id:'r1',datum:'2026-08-29',arbeiten:'Trockenbau'}],ausgaben:[{datum:'2026-08-28',lieferant:'Bauhaus',betrag:100}],nachtraege:[{datum:'2026-08-27',titel:'Zusatz',status:'Freigegeben'}]};
+global.S={aufgaben:[{id:'a1',projektId:'p1',status:'offen',faellig:'2026-08-01'},{id:'a2',projektId:'p1',status:'erledigt',faellig:'2026-08-01'}]};
+const o=api.overview(p);assert.strictEqual(o.openTasks,1);assert.strictEqual(o.openDefects,1);assert.strictEqual(o.photos,1);assert(o.needsAttention>=1);
+const tl=api.timeline(p);assert(tl.some(x=>x.type==='Foto'));assert(tl.some(x=>x.type==='Mangel'));assert(tl.some(x=>x.type==='Tagesbericht'));assert(tl.some(x=>x.type==='Ausgabe'));assert(tl.some(x=>x.type==='Nachtrag'));
+delete global.S;
+const dom=new JSDOM('<!doctype html><html><head></head><body><div id="view"><div class="pageHead"></div><div id="projektTabBody"><div class="card">Legacy overview</div></div></div></body></html>',{url:'https://example.test/#projekte/p1/uebersicht',runScripts:'outside-only'});const w=dom.window;w.S={projekte:[p],aufgaben:[{id:'a1',projektId:'p1',status:'offen',faellig:'2026-08-01'}]};w.saveState=()=>{};w.route=()=>{};w.eval(source);assert(w.document.querySelector('[data-project-fieldops="1"]'),'overview should receive field operations block');assert(w.document.body.textContent.includes('Heute wichtig'));assert(w.document.body.textContent.includes('Offene Mängel'));assert(w.document.body.textContent.includes('Letzte Vorgänge'));assert(w.document.body.textContent.includes('Tagesberichte'));
+console.log('project field operations tests passed');
