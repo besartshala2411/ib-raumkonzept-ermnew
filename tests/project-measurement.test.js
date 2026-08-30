@@ -1,0 +1,11 @@
+const assert=require('assert');
+const fs=require('fs');const path=require('path');const {JSDOM}=require('jsdom');
+const source=fs.readFileSync(path.join(__dirname,'../src/modules/projects/projectMeasurement.js'),'utf8');
+assert(!/supabase|TaskRuntime|password|Realtime/i.test(source),'measurement must stay isolated from protected runtime areas');
+assert(!/Abschlagsrechnung|Schlussrechnung|Rechnung erstellen/i.test(source),'measurement workflow must not create invoices');
+const api=require('../src/modules/projects/projectMeasurement.js');
+const p={id:'p1',material:[{id:'m1',bezeichnung:'Fliesen',menge:100,einheit:'m²',preis:50,einkaufspreis:15,subunternehmerPreis:10}],aufmasse:[{id:'a1',materialId:'m1',menge:30,datum:'2026-08-30'}]};
+assert.strictEqual(api.measuredQuantity(p,'m1'),30);const x=api.positionActual(p,p.material[0]);assert.strictEqual(x.soll,100);assert.strictEqual(x.ist,30);assert.strictEqual(x.rest,70);assert.strictEqual(x.value,1500);assert.strictEqual(x.actualCost,750);assert.strictEqual(x.db,750);assert.strictEqual(x.margin,50);
+const total=api.projectActual(p);assert.strictEqual(total.sollValue,5000);assert.strictEqual(total.istValue,1500);
+const dom=new JSDOM('<!doctype html><html><head></head><body><div id="view"><div id="projektTabBody"></div></div></body></html>',{url:'https://example.test/#projekte/p1/aufmass',runScripts:'outside-only'});const w=dom.window;w.S={projekte:[p]};w.uid=()=> 'a2';let saves=0;w.saveState=()=>saves++;w.route=()=>{};w.fmtCurrency=v=>Number(v).toFixed(2)+' €';w.eval(source);assert(w.document.body.textContent.includes('Aufmaß & Soll/Ist'));assert(w.document.body.textContent.includes('Keine Rechnungserstellung'));w.document.getElementById('pmMaterial').value='m1';w.document.getElementById('pmQty').value='20';assert.strictEqual(w.ProjectMeasurement.addMeasurement(p),true);assert.strictEqual(api.measuredQuantity(p,'m1'),50);assert(saves>0);
+console.log('project measurement tests passed');
