@@ -148,11 +148,22 @@
     return true;
   }
 
+  function loadEconomics(){
+    if(!global.document||global.document.getElementById('projectEconomicsScript')) return false;
+    const script=global.document.createElement('script');
+    script.id='projectEconomicsScript';
+    script.src='./src/modules/projects/projectEconomics.js';
+    script.async=false;
+    global.document.head.appendChild(script);
+    return true;
+  }
+
   let observer=null;
   function install(){
     if(!global.document) return false;
     enhance();
     loadAcceptance();
+    loadEconomics();
     if(typeof global.MutationObserver==='function'){
       const view=global.document.getElementById('view');
       if(view){
@@ -168,5 +179,5 @@
     return true;
   }
 
-  return {projectIdFromCard,customerName,projectPeriod,formatDate,warningFor,latestPhoto,enhanceCard,enhance,loadAcceptance,install};
+  return {projectIdFromCard,customerName,projectPeriod,formatDate,warningFor,latestPhoto,enhanceCard,enhance,loadAcceptance,loadEconomics,install};
 });
