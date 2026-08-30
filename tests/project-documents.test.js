@@ -6,7 +6,7 @@ const {JSDOM}=require('jsdom');
 const source=fs.readFileSync(path.join(__dirname,'../src/modules/projects/projectDocuments.js'),'utf8');
 assert(!/TaskRuntime|supabase|password/i.test(source),'project document archive must stay independent from task runtime, Supabase and password code');
 
-const dom=new JSDOM('<!doctype html><html><head></head><body><div id="view"><div id="projektTabBody"></div></div></body></html>',{url:'https://example.test/#projekte/p1/material'});
+const dom=new JSDOM('<!doctype html><html><head></head><body><div id="view"><div id="projektTabBody"></div></div></body></html>',{url:'https://example.test/#projekte/p1/material',runScripts:'outside-only'});
 const win=dom.window;
 let saved=0,shared=0;
 win.S={projekte:[{id:'p1',name:'Projekt 1',dokumente:[]}]};
