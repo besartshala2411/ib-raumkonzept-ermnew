@@ -7,7 +7,7 @@ assert(!/supabase|TaskRuntime|password|Realtime/i.test(source),'field operations
 assert(workspace.includes('projectFieldOps.js'),'project workspace should load field operations');
 assert(quick.includes("'Baustellenfoto'")&&quick.includes("'Mangel'")&&quick.includes("'Tagesbericht'"),'central project action menu should expose field actions');
 const api=require('../src/modules/projects/projectFieldOps.js');
-const p={id:'p1',fotos:[{datum:'2026-08-30',kategorie:'Ausführung'}],maengel:[{id:'m1',titel:'Fuge',status:'offen',faellig:'2026-08-01'}],tagesberichte:[{id:'r1',datum:'2026-08-29',arbeiten:'Trockenbau'}],ausgaben:[{datum:'2026-08-28',lieferant:'Bauhaus',betrag:100}],nachtraege:[{datum:'2026-08-27',titel:'Zusatz',status:'Freigegeben'}]};
+const p={id:'p1',fotos:[{datum:'2026-08-30',kategorie:'Ausführung'}],maengel:[{id:'m1',titel:'Fuge',status:'offen',datum:'2026-08-30',faellig:'2026-08-01'}],tagesberichte:[{id:'r1',datum:'2026-08-29',arbeiten:'Trockenbau'}],ausgaben:[{datum:'2026-08-28',lieferant:'Bauhaus',betrag:100}],nachtraege:[{datum:'2026-08-27',titel:'Zusatz',status:'Freigegeben'}]};
 global.S={aufgaben:[{id:'a1',projektId:'p1',status:'offen',faellig:'2026-08-01'},{id:'a2',projektId:'p1',status:'erledigt',faellig:'2026-08-01'}]};
 const o=api.overview(p);assert.strictEqual(o.openTasks,1);assert.strictEqual(o.openDefects,1);assert.strictEqual(o.photos,1);assert(o.needsAttention>=1);
 const tl=api.timeline(p);assert(tl.some(x=>x.type==='Foto'));assert(tl.some(x=>x.type==='Mangel'));assert(tl.some(x=>x.type==='Tagesbericht'));assert(tl.some(x=>x.type==='Ausgabe'));assert(tl.some(x=>x.type==='Nachtrag'));
