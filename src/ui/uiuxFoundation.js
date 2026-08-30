@@ -5,183 +5,19 @@
   if(root&&root.document) api.install();
 })(typeof window!=='undefined'?window:globalThis,function(global){
   'use strict';
-
-  const RELATIONS={
-    aufgaben:['Projekte','Mitarbeiter','Kalender'],
-    projekte:['Aufgaben','Kunden','Stundenzettel'],
-    kunden:['Projekte','Rechnungen','Aufgaben'],
-    mitarbeiter:['Aufgaben','Stundenzettel','Urlaub'],
-    kalender:['Aufgaben','Projekte','Mitarbeiter'],
-    zeiterfassung:['Projekte','Mitarbeiter','Aufgaben'],
-    stundenzettel:['Projekte','Mitarbeiter','Aufgaben'],
-    rechnungen:['Kunden','Projekte'],
-    urlaub:['Mitarbeiter','Kalender'],
-    dashboard:['Projekte','Aufgaben','Kalender']
-  };
-  const PRIMARY_NAV_KEYS=new Set(['dashboard','kunden','projekte','aufgaben','kalender','mitarbeiter','stundenzettel','rechnungen']);
-  const WORKFLOW_KEYS=['kunden','projekte','aufgaben','stundenzettel','rechnungen'];
-  const MOBILE_NAV_KEYS=['dashboard','projekte','aufgaben','kalender'];
-  const SECTION_CLASSES=[
-    'uiux-section-dashboard','uiux-section-aufgaben','uiux-section-projekte','uiux-section-kunden',
-    'uiux-section-mitarbeiter','uiux-section-kalender','uiux-section-zeiterfassung','uiux-section-stundenzettel',
-    'uiux-section-rechnungen','uiux-section-urlaub'
-  ];
-
-  function normalizeLabel(value){
-    return String(value||'').toLocaleLowerCase('de-DE').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'').trim();
-  }
-  function relationsFor(label){ return (RELATIONS[normalizeLabel(label)]||[]).slice(); }
-  function navLabel(el){
-    if(!el) return '';
-    const clone=el.cloneNode(true);
-    clone.querySelectorAll('.navIcon,.navBadge').forEach(node=>node.remove());
-    return String(clone.textContent||'').replace(/\s+/g,' ').trim();
-  }
-  function findNavigation(){
-    if(!global.document) return [];
-    return Array.from(global.document.querySelectorAll('.navItem')).map(el=>({el,label:navLabel(el),key:normalizeLabel(navLabel(el))})).filter(item=>item.key);
-  }
-  function activeNavigation(items){ return items.find(item=>item.el.classList.contains('active')||item.el.getAttribute('aria-current')==='page')||null; }
-  function syncAria(items){
-    items.forEach(item=>{ if(item.el.classList.contains('active')) item.el.setAttribute('aria-current','page'); else item.el.removeAttribute('aria-current'); });
-  }
-  function applySection(body,active){
-    if(!body) return '';
-    SECTION_CLASSES.forEach(name=>body.classList.remove(name));
-    const key=active?normalizeLabel(active.label):'';
-    if(key&&RELATIONS[key]) body.classList.add('uiux-section-'+key);
-    if(key) body.setAttribute('data-uiux-section',key); else body.removeAttribute('data-uiux-section');
-    return key;
-  }
-  function isBackAction(button){
-    const text=String(button&&button.textContent||'').toLocaleLowerCase('de-DE');
-    return text.includes('zurück')||text.includes('alle ');
-  }
-  function classifyPageActions(head){
-    if(!head) return null;
-    const buttons=Array.from(head.querySelectorAll('.btn'));
-    buttons.forEach(button=>button.classList.remove('uiuxPrimaryAction','uiuxSecondaryAction','uiuxDangerAction'));
-    buttons.filter(button=>button.classList.contains('danger')).forEach(button=>button.classList.add('uiuxDangerAction'));
-    let primary=buttons.find(button=>button.classList.contains('primary')&&!button.classList.contains('danger'))||null;
-    if(!primary){
-      const candidates=buttons.filter(button=>!button.classList.contains('danger')&&!isBackAction(button));
-      primary=candidates.length?candidates[candidates.length-1]:null;
-    }
-    if(primary) primary.classList.add('uiuxPrimaryAction');
-    buttons.filter(button=>button!==primary&&!button.classList.contains('danger')).forEach(button=>button.classList.add('uiuxSecondaryAction'));
-    return primary;
-  }
-  function decorateView(view){
-    if(!view) return;
-    Array.from(view.querySelectorAll('.card')).forEach(card=>card.classList.add('uiuxCard'));
-    Array.from(view.querySelectorAll('.kpi')).forEach(kpi=>kpi.classList.add('uiuxKpi'));
-    Array.from(view.querySelectorAll('.quickTile')).forEach(tile=>tile.classList.add('uiuxQuickTile'));
-    Array.from(view.querySelectorAll('.formRow')).forEach(row=>row.classList.add('uiuxFormRow'));
-    Array.from(view.querySelectorAll('table')).forEach(table=>table.classList.add('uiuxDataTable'));
-    Array.from(view.querySelectorAll('.pageHead')).forEach(head=>{head.classList.add('uiuxPrimaryHead');classifyPageActions(head);});
-    Array.from(view.querySelectorAll('.tableWrap')).forEach(table=>{table.setAttribute('tabindex','0');if(!table.getAttribute('aria-label')) table.setAttribute('aria-label','Tabelle horizontal scrollen');});
-  }
-  function isPrimaryNavigation(item){ return !!(item&&PRIMARY_NAV_KEYS.has(item.key)); }
-  function syncNavigationToggle(sidebar,toggle,count){
-    if(!sidebar||!toggle) return;
-    const expanded=sidebar.classList.contains('uiuxNavExpanded');
-    toggle.setAttribute('aria-expanded',expanded?'true':'false');
-    toggle.setAttribute('aria-controls','sidebar');
-    toggle.textContent=expanded?'Weniger anzeigen':'Weitere Bereiche ('+count+')';
-  }
-  function ensureNavigationToggle(sidebar,items,active){
-    if(!sidebar||!global.document) return null;
-    const secondary=items.filter(item=>!isPrimaryNavigation(item));
-    items.forEach(item=>{item.el.classList.toggle('uiuxNavPrimary',isPrimaryNavigation(item));item.el.classList.toggle('uiuxNavSecondary',!isPrimaryNavigation(item));});
-    let toggle=global.document.getElementById('uiuxMoreNavToggle');
-    if(!secondary.length){if(toggle) toggle.remove();sidebar.classList.remove('uiuxNavExpanded');return null;}
-    if(!toggle){
-      toggle=global.document.createElement('button');
-      toggle.id='uiuxMoreNavToggle';toggle.type='button';toggle.className='uiuxMoreNavToggle';
-      toggle.addEventListener('click',()=>{sidebar.classList.toggle('uiuxNavExpanded');syncNavigationToggle(sidebar,toggle,secondary.length);});
-      sidebar.appendChild(toggle);
-    }
-    if(active&&!isPrimaryNavigation(active)) sidebar.classList.add('uiuxNavExpanded');
-    syncNavigationToggle(sidebar,toggle,secondary.length);
-    return toggle;
-  }
-  function workflowTargets(items,active){
-    if(!active||!WORKFLOW_KEYS.includes(active.key)) return [];
-    return WORKFLOW_KEYS.map(key=>items.find(item=>item.key===key)||null).filter(Boolean);
-  }
-  function contextTargets(items,active){
-    if(!active) return [];
-    const workflow=workflowTargets(items,active);
-    if(workflow.length) return workflow;
-    return relationsFor(active.label).map(label=>items.find(item=>item.key===normalizeLabel(label))||null).filter(Boolean);
-  }
-  function contextSignature(items,active){ return (active?normalizeLabel(active.label):'')+'>'+contextTargets(items,active).map(item=>item.key).join('|'); }
-  function makeContextLinks(items,active){
-    const doc=global.document;
-    if(!doc||!active) return null;
-    const targets=contextTargets(items,active);if(!targets.length) return null;
-    const workflowMode=WORKFLOW_KEYS.includes(active.key)&&workflowTargets(items,active).length>0;
-    const wrap=doc.createElement('nav');
-    wrap.id='uiuxContextLinks';wrap.setAttribute('aria-label',workflowMode?'Arbeitsfluss':'Verknüpfte Bereiche');wrap.setAttribute('data-uiux-signature',contextSignature(items,active));
-    if(workflowMode) wrap.classList.add('uiuxWorkflowLinks');
-    const caption=doc.createElement('span');caption.className='uiuxContextLabel';caption.textContent=workflowMode?'Arbeitsfluss':'Schnell wechseln';wrap.appendChild(caption);
-    targets.forEach((target,index)=>{
-      const button=doc.createElement('button');button.type='button';button.className='uiuxContextChip';
-      if(workflowMode) button.classList.add('uiuxWorkflowStep');
-      if(target===active||target.el.classList.contains('active')){button.classList.add('active');button.setAttribute('aria-current','step');}
-      button.textContent=workflowMode?(index+1)+'. '+target.label:target.label;button.setAttribute('aria-label','Zu '+target.label+' wechseln');
-      button.addEventListener('click',()=>{if(target.el&&typeof target.el.click==='function') target.el.click();});wrap.appendChild(button);
-    });
-    return wrap;
-  }
-  function mobileNavSignature(items,active){ return MOBILE_NAV_KEYS.map(key=>items.find(item=>item.key===key)?key:'').filter(Boolean).join('|')+'@'+(active?active.key:''); }
-  function ensureMobileNavigation(items,active){
-    const doc=global.document;if(!doc||!doc.body) return null;
-    const targets=MOBILE_NAV_KEYS.map(key=>items.find(item=>item.key===key)||null).filter(Boolean);
-    let nav=doc.getElementById('uiuxMobileNav');if(!targets.length){if(nav) nav.remove();return null;}
-    const signature=mobileNavSignature(items,active);if(nav&&nav.getAttribute('data-uiux-signature')===signature) return nav;if(nav) nav.remove();
-    nav=doc.createElement('nav');nav.id='uiuxMobileNav';nav.setAttribute('aria-label','Schnellnavigation');nav.setAttribute('data-uiux-signature',signature);
-    targets.forEach(target=>{const button=doc.createElement('button');button.type='button';button.className='uiuxMobileNavItem';button.textContent=target.label;if(target===active||target.el.classList.contains('active')){button.classList.add('active');button.setAttribute('aria-current','page');}button.addEventListener('click',()=>{if(target.el&&typeof target.el.click==='function') target.el.click();});nav.appendChild(button);});
-    doc.body.appendChild(nav);return nav;
-  }
-  function shouldRefreshForViewMutations(records){
-    return Array.from(records||[]).some(record=>{if(record.type!=='childList') return false;const changed=[...Array.from(record.addedNodes||[]),...Array.from(record.removedNodes||[])];if(!changed.length) return false;return changed.some(node=>!(node&&node.nodeType===1&&node.id==='uiuxContextLinks'));});
-  }
-
-  let scheduled=false;
-  function enhance(){
-    if(!global.document) return false;
-    const body=global.document.body,view=global.document.getElementById('view'),sidebar=global.document.getElementById('sidebar');if(!body||!view) return false;
-    body.classList.add('uiux-foundation');
-    const items=findNavigation();syncAria(items);const active=activeNavigation(items);applySection(body,active);decorateView(view);ensureNavigationToggle(sidebar,items,active);ensureMobileNavigation(items,active);
-    if(global.ProjectWorkspace&&typeof global.ProjectWorkspace.enhance==='function') global.ProjectWorkspace.enhance();
-    const old=global.document.getElementById('uiuxContextLinks'),signature=contextSignature(items,active);if(old&&old.getAttribute('data-uiux-signature')===signature) return true;if(old) old.remove();
-    const links=makeContextLinks(items,active);if(links) view.insertBefore(links,view.firstChild);return true;
-  }
-  function scheduleEnhance(){if(scheduled) return;scheduled=true;const run=()=>{scheduled=false;enhance();};if(typeof global.requestAnimationFrame==='function') global.requestAnimationFrame(run);else setTimeout(run,0);}
-  function loadStyles(){
-    if(!global.document) return;
-    [['uiuxFoundationStyles','./src/ui/uiuxFoundation.css'],['uiuxProjectWorkspaceStyles','./src/ui/projectWorkspace.css']].forEach(([id,href])=>{if(global.document.getElementById(id)) return;const link=global.document.createElement('link');link.id=id;link.rel='stylesheet';link.href=href;global.document.head.appendChild(link);});
-  }
-  function loadProjectWorkspace(){
-    if(!global.document||global.document.getElementById('uiuxProjectWorkspaceScript')) return;
-    const script=global.document.createElement('script');script.id='uiuxProjectWorkspaceScript';script.src='./src/ui/projectWorkspace.js';script.async=false;script.addEventListener('load',scheduleEnhance);global.document.head.appendChild(script);
-  }
-  let started=false;
-  function install(){
-    if(!global.document) return false;loadStyles();
-    const start=()=>{
-      if(started) return;started=true;enhance();loadProjectWorkspace();if(global.addEventListener) global.addEventListener('hashchange',scheduleEnhance);
-      const sidebar=global.document.getElementById('sidebar');if(sidebar&&typeof sidebar.addEventListener==='function') sidebar.addEventListener('click',event=>{const target=event&&event.target&&typeof event.target.closest==='function'?event.target.closest('.navItem'):null;if(target) scheduleEnhance();});
-      const observers=[];
-      if(typeof global.MutationObserver==='function'){
-        if(sidebar){const navObserver=new global.MutationObserver(records=>{if(records.some(record=>record.type==='attributes'&&record.attributeName==='class')) scheduleEnhance();});navObserver.observe(sidebar,{attributes:true,subtree:true,attributeFilter:['class']});observers.push(navObserver);}
-        const view=global.document.getElementById('view');if(view){const viewObserver=new global.MutationObserver(records=>{if(shouldRefreshForViewMutations(records)) scheduleEnhance();});viewObserver.observe(view,{childList:true,subtree:true});observers.push(viewObserver);}
-      }
-      global.__uiuxFoundationObserver={disconnect(){observers.forEach(observer=>observer.disconnect());}};
-    };
-    if(global.document.readyState==='loading') global.document.addEventListener('DOMContentLoaded',start,{once:true});else start();return true;
-  }
-
-  return {RELATIONS,PRIMARY_NAV_KEYS,WORKFLOW_KEYS,MOBILE_NAV_KEYS,SECTION_CLASSES,normalizeLabel,relationsFor,navLabel,findNavigation,activeNavigation,syncAria,applySection,isBackAction,classifyPageActions,decorateView,isPrimaryNavigation,ensureNavigationToggle,syncNavigationToggle,workflowTargets,contextTargets,contextSignature,makeContextLinks,mobileNavSignature,ensureMobileNavigation,shouldRefreshForViewMutations,enhance,loadProjectWorkspace,install};
+  const RELATIONS={aufgaben:['Projekte','Mitarbeiter','Kalender'],projekte:['Aufgaben','Kunden','Stundenzettel'],kunden:['Projekte','Rechnungen','Aufgaben'],mitarbeiter:['Aufgaben','Stundenzettel','Urlaub'],kalender:['Aufgaben','Projekte','Mitarbeiter'],zeiterfassung:['Projekte','Mitarbeiter','Aufgaben'],stundenzettel:['Projekte','Mitarbeiter','Aufgaben'],rechnungen:['Kunden','Projekte'],urlaub:['Mitarbeiter','Kalender'],dashboard:['Projekte','Aufgaben','Kalender']};
+  const PRIMARY_NAV_KEYS=new Set(['dashboard','kunden','projekte','aufgaben','kalender','mitarbeiter','stundenzettel','rechnungen']);const WORKFLOW_KEYS=['kunden','projekte','aufgaben','stundenzettel','rechnungen'];const MOBILE_NAV_KEYS=['dashboard','projekte','aufgaben','kalender'];const SECTION_CLASSES=['uiux-section-dashboard','uiux-section-aufgaben','uiux-section-projekte','uiux-section-kunden','uiux-section-mitarbeiter','uiux-section-kalender','uiux-section-zeiterfassung','uiux-section-stundenzettel','uiux-section-rechnungen','uiux-section-urlaub'];
+  function normalizeLabel(value){return String(value||'').toLocaleLowerCase('de-DE').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'').trim();}function relationsFor(label){return(RELATIONS[normalizeLabel(label)]||[]).slice();}function navLabel(el){if(!el)return'';const clone=el.cloneNode(true);clone.querySelectorAll('.navIcon,.navBadge').forEach(node=>node.remove());return String(clone.textContent||'').replace(/\s+/g,' ').trim();}function findNavigation(){if(!global.document)return[];return Array.from(global.document.querySelectorAll('.navItem')).map(el=>({el,label:navLabel(el),key:normalizeLabel(navLabel(el))})).filter(item=>item.key);}function activeNavigation(items){return items.find(item=>item.el.classList.contains('active')||item.el.getAttribute('aria-current')==='page')||null;}function syncAria(items){items.forEach(item=>{if(item.el.classList.contains('active'))item.el.setAttribute('aria-current','page');else item.el.removeAttribute('aria-current');});}
+  function applySection(body,active){if(!body)return'';SECTION_CLASSES.forEach(name=>body.classList.remove(name));const key=active?normalizeLabel(active.label):'';if(key&&RELATIONS[key])body.classList.add('uiux-section-'+key);if(key)body.setAttribute('data-uiux-section',key);else body.removeAttribute('data-uiux-section');return key;}function isBackAction(button){const text=String(button&&button.textContent||'').toLocaleLowerCase('de-DE');return text.includes('zurück')||text.includes('alle ');}function classifyPageActions(head){if(!head)return null;const buttons=Array.from(head.querySelectorAll('.btn'));buttons.forEach(button=>button.classList.remove('uiuxPrimaryAction','uiuxSecondaryAction','uiuxDangerAction'));buttons.filter(button=>button.classList.contains('danger')).forEach(button=>button.classList.add('uiuxDangerAction'));let primary=buttons.find(button=>button.classList.contains('primary')&&!button.classList.contains('danger'))||null;if(!primary){const candidates=buttons.filter(button=>!button.classList.contains('danger')&&!isBackAction(button));primary=candidates.length?candidates[candidates.length-1]:null;}if(primary)primary.classList.add('uiuxPrimaryAction');buttons.filter(button=>button!==primary&&!button.classList.contains('danger')).forEach(button=>button.classList.add('uiuxSecondaryAction'));return primary;}
+  function decorateView(view){if(!view)return;Array.from(view.querySelectorAll('.card')).forEach(card=>card.classList.add('uiuxCard'));Array.from(view.querySelectorAll('.kpi')).forEach(kpi=>kpi.classList.add('uiuxKpi'));Array.from(view.querySelectorAll('.quickTile')).forEach(tile=>tile.classList.add('uiuxQuickTile'));Array.from(view.querySelectorAll('.formRow')).forEach(row=>row.classList.add('uiuxFormRow'));Array.from(view.querySelectorAll('table')).forEach(table=>table.classList.add('uiuxDataTable'));Array.from(view.querySelectorAll('.pageHead')).forEach(head=>{head.classList.add('uiuxPrimaryHead');classifyPageActions(head);});Array.from(view.querySelectorAll('.tableWrap')).forEach(table=>{table.setAttribute('tabindex','0');if(!table.getAttribute('aria-label'))table.setAttribute('aria-label','Tabelle horizontal scrollen');});}
+  function isPrimaryNavigation(item){return!!(item&&PRIMARY_NAV_KEYS.has(item.key));}function syncNavigationToggle(sidebar,toggle,count){if(!sidebar||!toggle)return;const expanded=sidebar.classList.contains('uiuxNavExpanded');toggle.setAttribute('aria-expanded',expanded?'true':'false');toggle.setAttribute('aria-controls','sidebar');toggle.textContent=expanded?'Weniger anzeigen':'Weitere Bereiche ('+count+')';}function ensureNavigationToggle(sidebar,items,active){if(!sidebar||!global.document)return null;const secondary=items.filter(item=>!isPrimaryNavigation(item));items.forEach(item=>{item.el.classList.toggle('uiuxNavPrimary',isPrimaryNavigation(item));item.el.classList.toggle('uiuxNavSecondary',!isPrimaryNavigation(item));});let toggle=global.document.getElementById('uiuxMoreNavToggle');if(!secondary.length){if(toggle)toggle.remove();sidebar.classList.remove('uiuxNavExpanded');return null;}if(!toggle){toggle=global.document.createElement('button');toggle.id='uiuxMoreNavToggle';toggle.type='button';toggle.className='uiuxMoreNavToggle';toggle.addEventListener('click',()=>{sidebar.classList.toggle('uiuxNavExpanded');syncNavigationToggle(sidebar,toggle,secondary.length);});sidebar.appendChild(toggle);}if(active&&!isPrimaryNavigation(active))sidebar.classList.add('uiuxNavExpanded');syncNavigationToggle(sidebar,toggle,secondary.length);return toggle;}
+  function workflowTargets(items,active){if(!active||!WORKFLOW_KEYS.includes(active.key))return[];return WORKFLOW_KEYS.map(key=>items.find(item=>item.key===key)||null).filter(Boolean);}function contextTargets(items,active){if(!active)return[];const workflow=workflowTargets(items,active);if(workflow.length)return workflow;return relationsFor(active.label).map(label=>items.find(item=>item.key===normalizeLabel(label))||null).filter(Boolean);}function contextSignature(items,active){return(active?normalizeLabel(active.label):'')+'>'+contextTargets(items,active).map(item=>item.key).join('|');}
+  function makeContextLinks(items,active){const doc=global.document;if(!doc||!active)return null;const targets=contextTargets(items,active);if(!targets.length)return null;const workflowMode=WORKFLOW_KEYS.includes(active.key)&&workflowTargets(items,active).length>0;const wrap=doc.createElement('nav');wrap.id='uiuxContextLinks';wrap.setAttribute('aria-label',workflowMode?'Arbeitsfluss':'Verknüpfte Bereiche');wrap.setAttribute('data-uiux-signature',contextSignature(items,active));if(workflowMode)wrap.classList.add('uiuxWorkflowLinks');const caption=doc.createElement('span');caption.className='uiuxContextLabel';caption.textContent=workflowMode?'Arbeitsfluss':'Schnell wechseln';wrap.appendChild(caption);targets.forEach((target,index)=>{const button=doc.createElement('button');button.type='button';button.className='uiuxContextChip';if(workflowMode)button.classList.add('uiuxWorkflowStep');if(target===active||target.el.classList.contains('active')){button.classList.add('active');button.setAttribute('aria-current','step');}button.textContent=workflowMode?(index+1)+'. '+target.label:target.label;button.setAttribute('aria-label','Zu '+target.label+' wechseln');button.addEventListener('click',()=>target.el?.click?.());wrap.appendChild(button);});return wrap;}
+  function mobileNavSignature(items,active){return MOBILE_NAV_KEYS.map(key=>items.find(item=>item.key===key)?key:'').filter(Boolean).join('|')+'@'+(active?active.key:'');}function ensureMobileNavigation(items,active){const doc=global.document;if(!doc||!doc.body)return null;const targets=MOBILE_NAV_KEYS.map(key=>items.find(item=>item.key===key)||null).filter(Boolean);let nav=doc.getElementById('uiuxMobileNav');if(!targets.length){if(nav)nav.remove();return null;}const signature=mobileNavSignature(items,active);if(nav&&nav.getAttribute('data-uiux-signature')===signature)return nav;if(nav)nav.remove();nav=doc.createElement('nav');nav.id='uiuxMobileNav';nav.setAttribute('aria-label','Schnellnavigation');nav.setAttribute('data-uiux-signature',signature);targets.forEach(target=>{const button=doc.createElement('button');button.type='button';button.className='uiuxMobileNavItem';button.textContent=target.label;if(target===active||target.el.classList.contains('active')){button.classList.add('active');button.setAttribute('aria-current','page');}button.addEventListener('click',()=>target.el?.click?.());nav.appendChild(button);});doc.body.appendChild(nav);return nav;}
+  function shouldRefreshForViewMutations(records){return Array.from(records||[]).some(record=>{if(record.type!=='childList')return false;const changed=[...Array.from(record.addedNodes||[]),...Array.from(record.removedNodes||[])];if(!changed.length)return false;return changed.some(node=>!(node&&node.nodeType===1&&node.id==='uiuxContextLinks'));});}
+  let scheduled=false;function enhance(){if(!global.document)return false;const body=global.document.body,view=global.document.getElementById('view'),sidebar=global.document.getElementById('sidebar');if(!body||!view)return false;body.classList.add('uiux-foundation');const items=findNavigation();syncAria(items);const active=activeNavigation(items);applySection(body,active);decorateView(view);ensureNavigationToggle(sidebar,items,active);ensureMobileNavigation(items,active);if(global.ProjectWorkspace&&typeof global.ProjectWorkspace.enhance==='function')global.ProjectWorkspace.enhance();const old=global.document.getElementById('uiuxContextLinks'),signature=contextSignature(items,active);if(old&&old.getAttribute('data-uiux-signature')===signature)return true;if(old)old.remove();const links=makeContextLinks(items,active);if(links)view.insertBefore(links,view.firstChild);return true;}function scheduleEnhance(){if(scheduled)return;scheduled=true;const run=()=>{scheduled=false;enhance();};if(typeof global.requestAnimationFrame==='function')global.requestAnimationFrame(run);else setTimeout(run,0);}
+  function loadStyles(){if(!global.document)return;[['uiuxFoundationStyles','./src/ui/uiuxFoundation.css'],['uiuxProjectWorkspaceStyles','./src/ui/projectWorkspace.css'],['uiuxErmVisualRefreshStyles','./src/ui/ermVisualRefresh.css']].forEach(([id,href])=>{if(global.document.getElementById(id))return;const link=global.document.createElement('link');link.id=id;link.rel='stylesheet';link.href=href;global.document.head.appendChild(link);});}
+  function loadProjectWorkspace(){if(!global.document||global.document.getElementById('uiuxProjectWorkspaceScript'))return;const script=global.document.createElement('script');script.id='uiuxProjectWorkspaceScript';script.src='./src/ui/projectWorkspace.js';script.async=false;script.addEventListener('load',scheduleEnhance);global.document.head.appendChild(script);}
+  let started=false;function install(){if(!global.document)return false;loadStyles();const start=()=>{if(started)return;started=true;enhance();loadProjectWorkspace();global.addEventListener?.('hashchange',scheduleEnhance);const sidebar=global.document.getElementById('sidebar');if(sidebar&&typeof sidebar.addEventListener==='function')sidebar.addEventListener('click',event=>{const target=event&&event.target&&typeof event.target.closest==='function'?event.target.closest('.navItem'):null;if(target)scheduleEnhance();});if(typeof global.MutationObserver==='function'){if(sidebar){const navObserver=new global.MutationObserver(records=>{if(records.some(record=>record.type==='attributes'&&record.attributeName==='class'))scheduleEnhance();});navObserver.observe(sidebar,{attributes:true,subtree:true,attributeFilter:['class']});}const view=global.document.getElementById('view');if(view){const viewObserver=new global.MutationObserver(records=>{if(shouldRefreshForViewMutations(records))scheduleEnhance();});viewObserver.observe(view,{childList:true,subtree:true});}}};if(global.document.readyState==='loading')global.document.addEventListener('DOMContentLoaded',start,{once:true});else start();return true;}
+  return {RELATIONS,PRIMARY_NAV_KEYS,WORKFLOW_KEYS,MOBILE_NAV_KEYS,normalizeLabel,relationsFor,navLabel,findNavigation,activeNavigation,syncAria,applySection,isBackAction,classifyPageActions,decorateView,isPrimaryNavigation,workflowTargets,contextTargets,contextSignature,makeContextLinks,mobileNavSignature,ensureMobileNavigation,shouldRefreshForViewMutations,enhance,scheduleEnhance,loadStyles,loadProjectWorkspace,install};
 });
