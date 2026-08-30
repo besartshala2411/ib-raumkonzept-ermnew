@@ -84,5 +84,8 @@ jobs:
       - name: Project expense and receipt tests
         run: npm run test:project-expenses
 
+      - name: Project commercial workflow tests
+        run: npm run test:project-commercial
+
       - name: Full sidebar functional navigation audit
         run: npm run test:functional-navigation
