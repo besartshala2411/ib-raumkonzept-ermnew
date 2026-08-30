@@ -36,10 +36,11 @@ const win=dom.window;
 win.S={projekte:[{id:'p1',name:'Bad',budget:10000,material:[{id:'m1',bezeichnung:'Fliesen',preis:5000,einkaufspreis:2000,subunternehmerPreis:1000,lieferant:'Händler'}],ausschreibung:[]} ]};
 win.fmtCurrency=value=>Number(value).toFixed(2)+' €';
 win.eval(source);
-assert(win.document.querySelector('[data-project-economics="1"]'),'material tab should get economics summary');
+assert(win.document.querySelector('.projectEconomicsSummary[data-project-economics="1"]'),'material tab should get economics summary');
 assert(win.document.querySelector('.projectEconomicsRowInfo'),'material row should show cost context');
-assert.strictEqual(win.document.querySelectorAll('[data-project-economics="1"]').length,1,'enhancement must remain idempotent');
+assert.strictEqual(win.document.querySelectorAll('.projectEconomicsSummary[data-project-economics="1"]').length,1,'enhancement must remain idempotent');
 win.ProjectEconomics.enhance();
-assert.strictEqual(win.document.querySelectorAll('[data-project-economics="1"]').length,1,'repeated enhance must not duplicate summary');
+assert.strictEqual(win.document.querySelectorAll('.projectEconomicsSummary[data-project-economics="1"]').length,1,'repeated enhance must not duplicate summary');
+assert.strictEqual(win.document.querySelectorAll('[data-project-economics-row="1"]').length,1,'material row enhancement must remain idempotent');
 
 console.log('project economics tests passed');
