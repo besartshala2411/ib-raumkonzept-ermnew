@@ -1,5 +1,4 @@
 name: Phase 3B/3C CI
-
 on:
   push:
     branches:
@@ -11,10 +10,8 @@ on:
       - phase3b-prep
       - phase3c-task-runtime-flag
   workflow_dispatch:
-
 permissions:
   contents: read
-
 jobs:
   tests:
     runs-on: ubuntu-latest
@@ -67,5 +64,7 @@ jobs:
         run: npm run test:project-commercial
       - name: Project measurement and actual-cost tests
         run: npm run test:project-measurement
+      - name: Project quick action tests
+        run: npm run test:project-quick-actions
       - name: Full sidebar functional navigation audit
         run: npm run test:functional-navigation
