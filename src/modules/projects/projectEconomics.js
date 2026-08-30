@@ -95,8 +95,8 @@
     if(!table) return;
     const rows=Array.from(table.querySelectorAll('tbody tr'));
     (project.material||[]).forEach((item,index)=>{
-      const row=rows[index];if(!row||row.dataset.projectEconomics==='1')return;
-      row.dataset.projectEconomics='1';
+      const row=rows[index];if(!row||row.dataset.projectEconomicsRow==='1')return;
+      row.dataset.projectEconomicsRow='1';
       const cells=row.querySelectorAll('td');if(cells.length<2)return;
       const info=make('div','projectEconomicsRowInfo');
       info.appendChild(make('span','projectEconomicsPill','VK '+money(materialSales(item))));
@@ -134,7 +134,7 @@
   function enhance(){
     const state=parseProjectHash(global.location&&global.location.hash);if(!state||state.tab!=='material')return false;
     const project=projectById(state.projectId),body=global.document&&global.document.getElementById('projektTabBody');if(!project||!body)return false;
-    if(!body.querySelector('[data-project-economics="1"]'))body.insertBefore(summaryCard(project),body.firstChild);
+    if(!body.querySelector('.projectEconomicsSummary[data-project-economics="1"]'))body.insertBefore(summaryCard(project),body.firstChild);
     enhanceRows(project,body);return true;
   }
   let observer=null;
