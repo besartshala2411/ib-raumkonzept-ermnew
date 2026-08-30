@@ -138,45 +138,16 @@
     return true;
   }
 
-  function loadAcceptance(){
-    if(!global.document||global.document.getElementById('projectAcceptanceScript')) return false;
+  function loadModule(id,src){
+    if(!global.document||global.document.getElementById(id)) return false;
     const script=global.document.createElement('script');
-    script.id='projectAcceptanceScript';
-    script.src='./src/modules/projects/projectAcceptance.js';
-    script.async=false;
-    global.document.head.appendChild(script);
-    return true;
+    script.id=id;script.src=src;script.async=false;global.document.head.appendChild(script);return true;
   }
-
-  function loadEconomics(){
-    if(!global.document||global.document.getElementById('projectEconomicsScript')) return false;
-    const script=global.document.createElement('script');
-    script.id='projectEconomicsScript';
-    script.src='./src/modules/projects/projectEconomics.js';
-    script.async=false;
-    global.document.head.appendChild(script);
-    return true;
-  }
-
-  function loadExpenses(){
-    if(!global.document||global.document.getElementById('projectExpensesScript')) return false;
-    const script=global.document.createElement('script');
-    script.id='projectExpensesScript';
-    script.src='./src/modules/projects/projectExpenses.js';
-    script.async=false;
-    global.document.head.appendChild(script);
-    return true;
-  }
-
-  function loadDocuments(){
-    if(!global.document||global.document.getElementById('projectDocumentsScript')) return false;
-    const script=global.document.createElement('script');
-    script.id='projectDocumentsScript';
-    script.src='./src/modules/projects/projectDocuments.js';
-    script.async=false;
-    global.document.head.appendChild(script);
-    return true;
-  }
+  function loadAcceptance(){return loadModule('projectAcceptanceScript','./src/modules/projects/projectAcceptance.js');}
+  function loadEconomics(){return loadModule('projectEconomicsScript','./src/modules/projects/projectEconomics.js');}
+  function loadExpenses(){return loadModule('projectExpensesScript','./src/modules/projects/projectExpenses.js');}
+  function loadDocuments(){return loadModule('projectDocumentsScript','./src/modules/projects/projectDocuments.js');}
+  function loadCommercial(){return loadModule('projectCommercialScript','./src/modules/projects/projectCommercial.js');}
 
   let observer=null;
   function install(){
@@ -186,6 +157,7 @@
     loadAcceptance();
     loadEconomics();
     loadExpenses();
+    loadCommercial();
     if(typeof global.MutationObserver==='function'){
       const view=global.document.getElementById('view');
       if(view){
@@ -201,5 +173,5 @@
     return true;
   }
 
-  return {projectIdFromCard,customerName,projectPeriod,formatDate,warningFor,latestPhoto,enhanceCard,enhance,loadDocuments,loadAcceptance,loadEconomics,loadExpenses,install};
+  return {projectIdFromCard,customerName,projectPeriod,formatDate,warningFor,latestPhoto,enhanceCard,enhance,loadDocuments,loadAcceptance,loadEconomics,loadExpenses,loadCommercial,install};
 });
