@@ -72,5 +72,8 @@ jobs:
       - name: Project workspace contract tests
         run: npm run test:project-workspace
 
+      - name: Project acceptance workflow tests
+        run: npm run test:project-acceptance
+
       - name: Full sidebar functional navigation audit
         run: npm run test:functional-navigation
