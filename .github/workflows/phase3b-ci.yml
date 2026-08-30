@@ -75,5 +75,8 @@ jobs:
       - name: Project acceptance workflow tests
         run: npm run test:project-acceptance
 
+      - name: Project economics tests
+        run: npm run test:project-economics
+
       - name: Full sidebar functional navigation audit
         run: npm run test:functional-navigation
