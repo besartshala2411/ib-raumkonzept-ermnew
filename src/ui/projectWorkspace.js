@@ -138,10 +138,21 @@
     return true;
   }
 
+  function loadAcceptance(){
+    if(!global.document||global.document.getElementById('projectAcceptanceScript')) return false;
+    const script=global.document.createElement('script');
+    script.id='projectAcceptanceScript';
+    script.src='./src/modules/projects/projectAcceptance.js';
+    script.async=false;
+    global.document.head.appendChild(script);
+    return true;
+  }
+
   let observer=null;
   function install(){
     if(!global.document) return false;
     enhance();
+    loadAcceptance();
     if(typeof global.MutationObserver==='function'){
       const view=global.document.getElementById('view');
       if(view){
@@ -157,5 +168,5 @@
     return true;
   }
 
-  return {projectIdFromCard,customerName,projectPeriod,formatDate,warningFor,latestPhoto,enhanceCard,enhance,install};
+  return {projectIdFromCard,customerName,projectPeriod,formatDate,warningFor,latestPhoto,enhanceCard,enhance,loadAcceptance,install};
 });
