@@ -1,0 +1,17 @@
+const assert=require('assert');
+const fs=require('fs');const path=require('path');
+const source=fs.readFileSync(path.join(__dirname,'../src/modules/projects/projectCloseout.js'),'utf8');
+const workspace=fs.readFileSync(path.join(__dirname,'../src/ui/projectWorkspace.js'),'utf8');
+const quick=fs.readFileSync(path.join(__dirname,'../src/modules/projects/projectQuickActions.js'),'utf8');
+assert(!/supabase|TaskRuntime|password|Realtime/i.test(source),'closeout must stay isolated from protected runtime areas');
+assert(workspace.includes('projectCloseout.js'),'workspace should load closeout assistant');
+assert(quick.includes('Projektabschluss prüfen')&&quick.includes('Abschluss prüfen'),'project actions should expose closeout check');
+const api=require('../src/modules/projects/projectCloseout.js');
+global.S={aufgaben:[{id:'a1',projektId:'p1',status:'offen'}]};
+let p={id:'p1',fotos:[],maengel:[{status:'offen'}],tagesberichte:[],aufmasse:[],nachtraege:[{status:'Entwurf'}],abnahme:{status:'Offen'}};
+let c=api.check(p);assert.strictEqual(c.ready,false);assert(c.open>=6);assert(c.items.some(x=>x.key==='acceptance'&&!x.ok));
+global.S={aufgaben:[{id:'a1',projektId:'p1',status:'erledigt'}]};
+p={id:'p1',fotos:[{}],maengel:[{status:'erledigt'}],tagesberichte:[{}],aufmasse:[{}],nachtraege:[{status:'Freigegeben'}],abnahme:{status:'Abgenommen',unterschrift:'data:image/png;base64,x'}};
+c=api.check(p);assert.strictEqual(c.ready,true);assert.strictEqual(c.open,0);
+delete global.S;
+console.log('project closeout tests passed');
