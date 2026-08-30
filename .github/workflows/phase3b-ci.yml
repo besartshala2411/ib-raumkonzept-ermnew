@@ -66,5 +66,7 @@ jobs:
         run: npm run test:project-measurement
       - name: Project quick action tests
         run: npm run test:project-quick-actions
+      - name: Project field operations tests
+        run: npm run test:project-field-ops
       - name: Full sidebar functional navigation audit
         run: npm run test:functional-navigation
