@@ -158,6 +158,16 @@
     return true;
   }
 
+  function loadExpenses(){
+    if(!global.document||global.document.getElementById('projectExpensesScript')) return false;
+    const script=global.document.createElement('script');
+    script.id='projectExpensesScript';
+    script.src='./src/modules/projects/projectExpenses.js';
+    script.async=false;
+    global.document.head.appendChild(script);
+    return true;
+  }
+
   function loadDocuments(){
     if(!global.document||global.document.getElementById('projectDocumentsScript')) return false;
     const script=global.document.createElement('script');
@@ -175,6 +185,7 @@
     loadDocuments();
     loadAcceptance();
     loadEconomics();
+    loadExpenses();
     if(typeof global.MutationObserver==='function'){
       const view=global.document.getElementById('view');
       if(view){
@@ -190,5 +201,5 @@
     return true;
   }
 
-  return {projectIdFromCard,customerName,projectPeriod,formatDate,warningFor,latestPhoto,enhanceCard,enhance,loadDocuments,loadAcceptance,loadEconomics,install};
+  return {projectIdFromCard,customerName,projectPeriod,formatDate,warningFor,latestPhoto,enhanceCard,enhance,loadDocuments,loadAcceptance,loadEconomics,loadExpenses,install};
 });
