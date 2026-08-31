@@ -74,5 +74,7 @@ jobs:
         run: npm run test:project-site-control
       - name: Project control center tests
         run: npm run test:project-control-center
+      - name: Project employee time sheet tests
+        run: npm run test:project-employee-time-sheet
       - name: Full sidebar functional navigation audit
         run: npm run test:functional-navigation
