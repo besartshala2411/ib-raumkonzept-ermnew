@@ -229,6 +229,49 @@ async function main() {
   assert(Math.abs(window.rechnungMwst(rechnung) - 95) < 0.01, "MwSt 19% = 95€");
   assert(Math.abs(window.rechnungSumme(rechnung) - 595) < 0.01, "Brutto = 595€");
 
+  console.log("\n== Verständliche Positionen & Duplikatschutz ==");
+  const duplicateIndexes = window.duplicatePositionIndexes([
+    { beschreibung: "Wandflächen streichen" },
+    { beschreibung: "  wandflächen   STREICHEN " },
+    { beschreibung: "Decke streichen" },
+  ], "beschreibung");
+  assert(duplicateIndexes.size === 2 && duplicateIndexes.has(0) && duplicateIndexes.has(1), "Doppelte Positionen werden unabhängig von Großschreibung und Leerzeichen erkannt");
+  assert(window.duplicatePositionIndexes([{beschreibung:""},{beschreibung:""}], "beschreibung").size === 0, "Leere Entwurfszeilen gelten nicht fälschlich als Duplikat");
+
+  window.openRechnungForm();
+  window._rechnungDraft.positionen = [
+    { beschreibung:"Trockenbau", menge:2, einheit:"m²", preis:50 },
+    { beschreibung:" trockenbau ", menge:1, einheit:"m²", preis:50 },
+  ];
+  window.renderRechnungPosList();
+  assert(window.document.querySelectorAll(".positionEditor").length === 2, "Rechnungspositionen werden als klar getrennte Karten dargestellt");
+  assert(window.document.querySelector(".positionEditor label").textContent.includes("Leistung"), "Positionsfelder haben sichtbare, verständliche Beschriftungen");
+  assert(window.document.getElementById("rSaveBtn").disabled === true, "Speichern ist bei doppelten Rechnungspositionen gesperrt");
+  assert(!window.document.getElementById("rPosDuplicateNotice").classList.contains("hidden"), "Doppelte Rechnungspositionen werden sichtbar erklärt");
+  window.rechnungPosChange(1, "beschreibung", "Decke streichen");
+  assert(window.document.getElementById("rSaveBtn").disabled === false, "Nach eindeutiger Benennung kann die Rechnung gespeichert werden");
+  window.closeModal();
+
+  const p1ForDuplicateTest = window.S.projekte.find((p) => p.id === "p1");
+  p1ForDuplicateTest.material.push({ id:"mat-existing", bezeichnung:"Spachtelarbeiten", titel:"", beschreibung:"", menge:1, einheit:"psch", preis:0, datum:"2026-01-01" });
+  window.openMaterialForm("p1");
+  window.document.getElementById("matBez").value = "  SPACHTELARBEITEN ";
+  window.saveMaterial("p1");
+  assert(p1ForDuplicateTest.material.length === 1, "Manuell doppelt angelegte LV-Position wird verhindert");
+  window.closeModal();
+  p1ForDuplicateTest.material = [];
+
+  window.openLvReviewForm({ name:"Import", positionen:[{bezeichnung:"Fliesen legen"},{bezeichnung:" fliesen   LEGEN "}] }, null);
+  assert(window.document.getElementById("lvConfirmBtn").disabled === true, "PDF-Import kann bei doppelten LV-Positionen nicht bestätigt werden");
+  window.updateLvPos(1, "bezeichnung", "Fugen herstellen");
+  assert(window.document.getElementById("lvConfirmBtn").disabled === false, "PDF-Import wird nach Korrektur der Doppelposition freigegeben");
+  window.closeModal();
+  window._lvImportDraft = null;
+
+  window.renderDashboard(window.document.getElementById("view"));
+  const dashboardHtml = window.document.getElementById("view").innerHTML;
+  assert(dashboardHtml.includes('onclick="openProjektForm()"') && dashboardHtml.includes('onclick="openRechnungForm()"'), "Dashboard-Schnellaktionen öffnen Formulare direkt ohne zusätzlichen Zwischenschritt");
+
   console.log("\n== Storage Layer: sichtbare Fehlerbehandlung bei Speicherfehler ==");
   let toastMsgs = [];
   const origToast = window.toast;

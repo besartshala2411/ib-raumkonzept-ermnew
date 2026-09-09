@@ -162,6 +162,18 @@ a{color:var(--primary);}
 .quickTile:hover{border-color:var(--primary); transform:translateY(-2px); box-shadow:var(--shadow-lg);}
 .quickTile .qIcon{font-size:24px; width:46px; height:46px; display:flex; align-items:center; justify-content:center; background:var(--primary-bg); border-radius:13px;}
 .quickTile .qLabel{font-size:12px; font-weight:600;}
+.sectionIntro{display:flex; align-items:end; justify-content:space-between; gap:12px; margin:2px 0 10px;}
+.sectionIntro b{font-size:14px;}
+.sectionIntro span{font-size:12px; color:var(--text-dim);}
+
+.positionEditor{background:var(--card2); border:1px solid var(--border); border-radius:var(--radius-sm); padding:12px; margin-bottom:10px;}
+.positionEditor.duplicate,.positionDuplicate{border-color:var(--amber) !important; background:var(--amber-bg);}
+.positionEditorHead{display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px;}
+.positionEditorTitle{font-size:12px; font-weight:750; color:var(--text-dim);}
+.positionEditorTotal{font-size:12px; font-weight:700;}
+.positionGrid{display:grid; grid-template-columns:minmax(180px,2fr) minmax(80px,.65fr) minmax(80px,.65fr) minmax(110px,.8fr); gap:8px;}
+.positionGrid .formRow{margin-bottom:0;}
+.inlineNotice{padding:10px 12px; border:1px solid var(--amber); border-radius:var(--radius-sm); background:var(--amber-bg); color:var(--amber); font-size:12.5px; margin:8px 0;}
 
 table{width:100%; border-collapse:collapse; font-size:13.5px;}
 th{text-align:left; color:var(--text-dim); font-size:11.5px; text-transform:uppercase; letter-spacing:.04em; padding:9px 10px; border-bottom:1px solid var(--border);}
@@ -253,7 +265,7 @@ tr:hover td{background:var(--card2);}
 }
 @media(max-width:768px){
   :root{--mobile-nav-h:calc(58px + env(safe-area-inset-bottom));}
-  #hamburgerBtn{display:inline-flex;}
+  #hamburgerBtn{display:none;}
   #sidebar{
     position:fixed; top:var(--ticker-h); left:0; bottom:0; z-index:520;
     width:min(82vw,300px); transform:translateX(-100%); transition:transform .25s ease;
@@ -280,6 +292,8 @@ tr:hover td{background:var(--card2);}
   .tickerSpacer{display:none;}
   #ticker{overflow:hidden; gap:2px; padding:0 8px;}
   .tickerBtn{min-width:40px; min-height:40px; display:inline-flex; align-items:center; justify-content:center;}
+  .positionGrid{grid-template-columns:1fr 1fr;}
+  .positionGrid .positionDescription{grid-column:1/-1;}
   .grid.cols-2,.grid.cols-3,.grid.cols-4,.grid.cols-6{grid-template-columns:1fr 1fr;}
 }
 @media(max-width:480px){
@@ -459,6 +473,22 @@ function initialsOf(name){
   return String(name||"").trim().split(/\s+/).map(w=>w[0]).slice(0,2).join("").toUpperCase() || "?";
 }
 function uniqId(prefix){ return (prefix||"ID") + "-" + Math.random().toString(36).slice(2,8).toUpperCase(); }
+function normalizedPositionLabel(value){
+  return String(value||"").trim().replace(/\s+/g," ").toLocaleLowerCase("de-DE");
+}
+function duplicatePositionIndexes(positionen, field){
+  const firstByLabel = new Map();
+  const duplicates = new Set();
+  (positionen||[]).forEach((position, index)=>{
+    const label = normalizedPositionLabel(position && position[field||"beschreibung"]);
+    if(!label) return;
+    if(firstByLabel.has(label)){
+      duplicates.add(firstByLabel.get(label));
+      duplicates.add(index);
+    }else firstByLabel.set(label, index);
+  });
+  return duplicates;
+}
 
 /* =========================================================
    STATE MODEL
@@ -1537,15 +1567,16 @@ function renderDashboard(view){
       <div id="aiOverviewOut" style="margin-top:12px; font-size:13.5px; line-height:1.6; white-space:pre-wrap;"></div>
     </div>
 
+    <div class="sectionIntro"><b>Schnell erledigen</b><span>Ein Klick öffnet direkt das passende Formular.</span></div>
     <div class="grid cols-6" style="margin-bottom:18px;">
       <button class="quickTile" onclick="goTo('#stempeluhr')"><div class="qIcon">⏱️</div><div class="qLabel">Stempeln</div></button>
-      <button class="quickTile" onclick="goTo('#mitarbeiter')"><div class="qIcon">➕</div><div class="qLabel">Mitarbeiter</div></button>
-      <button class="quickTile" onclick="goTo('#projekte')"><div class="qIcon">🏢</div><div class="qLabel">Neues Projekt</div></button>
-      ${admin?`<button class="quickTile" onclick="goTo('#rechnungen')"><div class="qIcon">🧾</div><div class="qLabel">Rechnung</div></button>`:""}
-      <button class="quickTile" onclick="goTo('#aufgaben')"><div class="qIcon">📝</div><div class="qLabel">Aufgabe</div></button>
-      <button class="quickTile" onclick="goTo('#schluessel')"><div class="qIcon">🔑</div><div class="qLabel">Schlüssel</div></button>
+      <button class="quickTile" onclick="openMitarbeiterForm()"><div class="qIcon">👷</div><div class="qLabel">Mitarbeiter anlegen</div></button>
+      <button class="quickTile" onclick="openProjektForm()"><div class="qIcon">🏢</div><div class="qLabel">Projekt anlegen</div></button>
+      ${admin?`<button class="quickTile" onclick="openRechnungForm()"><div class="qIcon">🧾</div><div class="qLabel">Rechnung erstellen</div></button>`:""}
+      <button class="quickTile" onclick="openAufgabeForm()"><div class="qIcon">📝</div><div class="qLabel">Aufgabe anlegen</div></button>
+      <button class="quickTile" onclick="openSchluesselForm()"><div class="qIcon">🔑</div><div class="qLabel">Schlüssel ausgeben</div></button>
       <button class="quickTile" onclick="goTo('#dokumente')"><div class="qIcon">📁</div><div class="qLabel">Dokument</div></button>
-      ${admin?`<button class="quickTile" onclick="goTo('#vertraege')"><div class="qIcon">📜</div><div class="qLabel">Vertrag</div></button>`:""}
+      ${admin?`<button class="quickTile" onclick="openVertragForm()"><div class="qIcon">📜</div><div class="qLabel">Vertrag erstellen</div></button>`:""}
     </div>
 
     <div class="grid cols-2">
@@ -3723,6 +3754,10 @@ function saveMaterial(pid){
   const bezeichnung = document.getElementById("matBez").value.trim();
   if(!bezeichnung){ toast("Bezeichnung erforderlich.", "warn"); return; }
   const p = S.projekte.find(x=>x.id===pid);
+  if(p.material.some(m=>normalizedPositionLabel(m.bezeichnung)===normalizedPositionLabel(bezeichnung))){
+    toast("Diese LV-Position ist bereits vorhanden. Bitte die bestehende Position verwenden oder die Bezeichnung genauer unterscheiden.", "warn");
+    return;
+  }
   p.material.push({id:uid(), titel:document.getElementById("matTitel").value.trim(), bezeichnung, beschreibung:document.getElementById("matBeschreibung").value.trim(), menge:document.getElementById("matMenge").value, einheit:document.getElementById("matEinheit").value.trim(), preis:Number(document.getElementById("matPreis").value)||0, datum:todayISO()});
   saveState(); closeModal(); route(location.hash);
 }
@@ -4975,41 +5010,85 @@ function openRechnungForm(id){
       <div class="formRow"><label>Rechnungsdatum</label><input type="date" value="${escAttr(r.datum)}" oninput="window._rechnungDraft.datum=this.value"></div>
       <div class="formRow"><label>Fällig am</label><input type="date" value="${escAttr(r.faellig)}" oninput="window._rechnungDraft.faellig=this.value"></div>
     </div>
-    <div class="formRow"><label>Positionen</label>
+    <div class="formRow"><label>Rechnungspositionen</label>
+      <div class="pageSub" style="margin-bottom:8px;">Jede Leistung nur einmal anlegen. Menge und Einzelpreis ergeben automatisch den Positionsbetrag.</div>
       <div id="rPosList"></div>
-      <button class="btn sm" style="margin-top:6px;" onclick="addRechnungPos()">➕ Position</button>
+      <div id="rPosDuplicateNotice" class="inlineNotice hidden">⚠️ Diese Beschreibung ist mehrfach vorhanden. Bitte Positionen zusammenfassen oder eindeutig benennen.</div>
+      <button class="btn sm" style="margin-top:6px;" onclick="addRechnungPos()">➕ Weitere Position</button>
     </div>
     <div style="text-align:right; font-size:13.5px; margin-bottom:10px;" id="rSummeOut"></div>
     <div class="formRow"><label>Notiz</label><textarea id="rNotiz" oninput="window._rechnungDraft.notiz=this.value">${escHtml(r.notiz||"")}</textarea></div>
     ${sigPadHTML("rSig", "Unterschrift")}
-    <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="saveRechnung()">Speichern</button></div>
+    <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" id="rSaveBtn" onclick="saveRechnung()">Rechnung speichern</button></div>
   `, true);
   renderRechnungPosList();
   initSigPad("rSig", r.unterschrift || "", v=>window._rechnungDraft.unterschrift=v);
 }
 function renderRechnungPosList(){
   const r = window._rechnungDraft;
+  const duplicates = duplicatePositionIndexes(r.positionen, "beschreibung");
   document.getElementById("rPosList").innerHTML = r.positionen.map((pos,i)=>`
-    <div class="grid cols-4" style="margin-bottom:8px;">
-      <div class="formRow" style="margin-bottom:0; grid-column:span 1;"><input type="text" placeholder="Beschreibung" value="${escAttr(pos.beschreibung)}" oninput="rechnungPosChange(${i},'beschreibung',this.value)"></div>
-      <div class="formRow" style="margin-bottom:0;"><input type="number" step="0.01" placeholder="Menge" value="${escAttr(pos.menge)}" oninput="rechnungPosChange(${i},'menge',this.value)"></div>
-      <div class="formRow" style="margin-bottom:0;"><input type="text" placeholder="Einheit" value="${escAttr(pos.einheit)}" oninput="rechnungPosChange(${i},'einheit',this.value)"></div>
-      <div class="formRow" style="margin-bottom:0; display:flex; gap:6px;"><input type="number" step="0.01" placeholder="Preis €" value="${escAttr(pos.preis)}" oninput="rechnungPosChange(${i},'preis',this.value)"><button class="iconBtn" onclick="removeRechnungPos(${i})">🗑️</button></div>
+    <div class="positionEditor ${duplicates.has(i)?"duplicate":""}" data-rechnung-pos="${i}">
+      <div class="positionEditorHead">
+        <span class="positionEditorTitle">Position ${i+1}${duplicates.has(i)?" · doppelt":""}</span>
+        <span style="display:flex; align-items:center; gap:6px;"><span class="positionEditorTotal">${fmtCurrency((Number(pos.menge)||0)*(Number(pos.preis)||0))}</span><button type="button" class="iconBtn" onclick="removeRechnungPos(${i})" title="Position entfernen" aria-label="Position ${i+1} entfernen">🗑️</button></span>
+      </div>
+      <div class="positionGrid">
+        <div class="formRow positionDescription"><label>Leistung / Beschreibung</label><input type="text" placeholder="z.B. Wandflächen streichen" value="${escAttr(pos.beschreibung)}" oninput="rechnungPosChange(${i},'beschreibung',this.value)"></div>
+        <div class="formRow"><label>Menge</label><input type="number" min="0" step="0.01" value="${escAttr(pos.menge)}" oninput="rechnungPosChange(${i},'menge',this.value)"></div>
+        <div class="formRow"><label>Einheit</label><input type="text" placeholder="m², Std., Stk." value="${escAttr(pos.einheit)}" oninput="rechnungPosChange(${i},'einheit',this.value)"></div>
+        <div class="formRow"><label>Einzelpreis netto (€)</label><input type="number" min="0" step="0.01" value="${escAttr(pos.preis)}" oninput="rechnungPosChange(${i},'preis',this.value)"></div>
+      </div>
     </div>
   `).join("");
   updateRechnungSumme();
+  updateRechnungPositionValidation();
 }
 function rechnungPosChange(i, field, val){
   window._rechnungDraft.positionen[i][field] = (field==="menge"||field==="preis") ? Number(val) : val;
   updateRechnungSumme();
+  updateRechnungPositionValidation();
 }
 function addRechnungPos(){
+  const current = window._rechnungDraft.positionen;
+  if(current.some(pos=>!normalizedPositionLabel(pos.beschreibung))){
+    toast("Bitte zuerst die leere Position ausfüllen.", "warn");
+    const emptyIndex = current.findIndex(pos=>!normalizedPositionLabel(pos.beschreibung));
+    const input = document.querySelector(`[data-rechnung-pos="${emptyIndex}"] input[type="text"]`);
+    if(input) input.focus();
+    return;
+  }
   window._rechnungDraft.positionen.push({beschreibung:"",menge:1,einheit:"Stk",preis:0});
   renderRechnungPosList();
+  const input = document.querySelector(`[data-rechnung-pos="${window._rechnungDraft.positionen.length-1}"] input[type="text"]`);
+  if(input) input.focus();
 }
 function removeRechnungPos(i){
+  if(window._rechnungDraft.positionen.length===1){
+    window._rechnungDraft.positionen[0] = {beschreibung:"",menge:1,einheit:"Stk",preis:0};
+    renderRechnungPosList();
+    toast("Eine Rechnung benötigt mindestens eine Position.", "warn");
+    return;
+  }
   window._rechnungDraft.positionen.splice(i,1);
   renderRechnungPosList();
+}
+function updateRechnungPositionValidation(){
+  const duplicates = duplicatePositionIndexes(window._rechnungDraft.positionen, "beschreibung");
+  document.querySelectorAll("[data-rechnung-pos]").forEach(el=>{
+    const index = Number(el.dataset.rechnungPos);
+    el.classList.toggle("duplicate", duplicates.has(index));
+    const title = el.querySelector(".positionEditorTitle");
+    if(title) title.textContent = `Position ${index+1}${duplicates.has(index)?" · doppelt":""}`;
+    const total = el.querySelector(".positionEditorTotal");
+    const pos = window._rechnungDraft.positionen[index];
+    if(total && pos) total.textContent = fmtCurrency((Number(pos.menge)||0)*(Number(pos.preis)||0));
+  });
+  const notice = document.getElementById("rPosDuplicateNotice");
+  if(notice) notice.classList.toggle("hidden", duplicates.size===0);
+  const saveBtn = document.getElementById("rSaveBtn");
+  if(saveBtn) saveBtn.disabled = duplicates.size>0;
+  return duplicates.size===0;
 }
 function updateRechnungSumme(){
   const r = window._rechnungDraft;
@@ -5018,6 +5097,8 @@ function updateRechnungSumme(){
 function saveRechnung(){
   const r = window._rechnungDraft;
   if(!r.kundeId){ toast("Bitte Kunde wählen.", "warn"); return; }
+  if(!r.positionen.length || r.positionen.some(pos=>!normalizedPositionLabel(pos.beschreibung))){ toast("Bitte jede Rechnungsposition verständlich beschreiben.", "warn"); return; }
+  if(!updateRechnungPositionValidation()){ toast("Doppelte Rechnungspositionen bitte zuerst zusammenfassen oder umbenennen.", "warn"); return; }
   if(window._rechnungIsEdit){
     const idx = S.rechnungen.findIndex(x=>x.id===r.id);
     S.rechnungen[idx] = r;
@@ -5865,6 +5946,7 @@ function renderLvReviewForm(){
   const d = window._lvImportDraft;
   if(!d) return;
   const summe = d.positionen.reduce((s,p)=>s+(Number(p.preis)||0),0);
+  const duplicates = duplicatePositionIndexes(d.positionen, "bezeichnung");
   const matchedKunde = d.kundeName ? S.kunden.find(k=>k.name.toLowerCase()===d.kundeName.toLowerCase()) : null;
   openModal(`
     <div class="modalHead"><div class="modalTitle">📄 Projektvorschlag prüfen</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
@@ -5876,16 +5958,17 @@ function renderLvReviewForm(){
     </div>
     ${d.kundeName && !matchedKunde ? `<div class="pageSub" style="color:var(--amber); margin:-6px 0 12px;">Im PDF erkannter Kunde „${escHtml(d.kundeName)}“ wurde nicht in deiner Kundenliste gefunden – bitte manuell auswählen oder leer lassen.</div>` : ""}
     <b style="display:block; margin:16px 0 8px;">Positionen (${d.positionen.length})</b>
+    <div id="lvDuplicateNotice" class="inlineNotice ${duplicates.size?"":"hidden"}">⚠️ Gleich benannte Positionen wurden mehrfach erkannt. Bitte zusammenfassen oder eindeutig benennen.</div>
     <div class="tableWrap" style="max-height:280px; overflow-y:auto;"><table>
       <thead><tr><th>Bezeichnung</th><th>Menge</th><th>Einheit</th><th>Preis (€)</th><th></th></tr></thead>
-      <tbody id="lvPosBody">${d.positionen.map((p,i)=>lvPosRowHTML(p,i)).join("") || `<tr><td colspan="5"><div class="empty">Keine Positionen erkannt.</div></td></tr>`}</tbody>
+      <tbody id="lvPosBody">${d.positionen.map((p,i)=>lvPosRowHTML(p,i,duplicates.has(i))).join("") || `<tr><td colspan="5"><div class="empty">Keine Positionen erkannt.</div></td></tr>`}</tbody>
     </table></div>
     <div style="text-align:right; font-weight:700; margin-top:10px;">Geschätztes Budget: <span id="lvSumme">${fmtCurrency(summe||d.budgetSchaetzung)}</span></div>
-    <div class="modalFoot"><button class="btn" onclick="openLvImportForm()">← Zurück</button><button class="btn primary" onclick="confirmLvImport()">✅ Projekt erstellen</button></div>
+    <div class="modalFoot"><button class="btn" onclick="openLvImportForm()">← Zurück</button><button class="btn primary" id="lvConfirmBtn" onclick="confirmLvImport()" ${duplicates.size?"disabled":""}>✅ Projekt erstellen</button></div>
   `, true);
 }
-function lvPosRowHTML(p,i){
-  return `<tr>
+function lvPosRowHTML(p,i,isDuplicate){
+  return `<tr data-lv-pos="${i}" class="${isDuplicate?"positionDuplicate":""}">
     <td style="min-width:180px;">
       <input type="text" value="${escAttr(p.bezeichnung)}" oninput="updateLvPos(${i},'bezeichnung',this.value)" placeholder="Bezeichnung" style="width:100%; background:var(--bg2); border:1px solid var(--border); border-radius:6px; padding:4px 6px; color:var(--text); margin-bottom:4px;">
       <textarea oninput="updateLvPos(${i},'beschreibung',this.value)" placeholder="Kurzbeschreibung (optional)" style="width:100%; min-height:32px; font-size:11px; background:var(--bg2); border:1px solid var(--border); border-radius:6px; padding:4px 6px; color:var(--text);">${escHtml(p.beschreibung||"")}</textarea>
@@ -5903,6 +5986,17 @@ function updateLvPos(i, field, val){
   const summe = d.positionen.reduce((s,p)=>s+(Number(p.preis)||0),0);
   const summeEl = document.getElementById("lvSumme");
   if(summeEl) summeEl.textContent = fmtCurrency(summe||d.budgetSchaetzung);
+  updateLvPositionValidation();
+}
+function updateLvPositionValidation(){
+  const d = window._lvImportDraft;
+  const duplicates = duplicatePositionIndexes(d && d.positionen, "bezeichnung");
+  document.querySelectorAll("[data-lv-pos]").forEach(row=>row.classList.toggle("positionDuplicate", duplicates.has(Number(row.dataset.lvPos))));
+  const notice = document.getElementById("lvDuplicateNotice");
+  if(notice) notice.classList.toggle("hidden", duplicates.size===0);
+  const confirmBtn = document.getElementById("lvConfirmBtn");
+  if(confirmBtn) confirmBtn.disabled = duplicates.size>0;
+  return duplicates.size===0;
 }
 function removeLvPos(i){
   const d = window._lvImportDraft;
@@ -5915,6 +6009,8 @@ function confirmLvImport(){
   if(!d) return;
   const name = document.getElementById("lvName").value.trim();
   if(!name){ toast("Projektname erforderlich.", "warn"); return; }
+  if(d.positionen.some(pos=>!normalizedPositionLabel(pos.bezeichnung))){ toast("Bitte jede LV-Position verständlich benennen.", "warn"); return; }
+  if(!updateLvPositionValidation()){ toast("Doppelte LV-Positionen bitte zuerst zusammenfassen oder umbenennen.", "warn"); return; }
   const adresse = document.getElementById("lvAdresse").value.trim();
   const kundeId = document.getElementById("lvKunde").value;
   const summe = d.positionen.reduce((s,p)=>s+(Number(p.preis)||0),0);
