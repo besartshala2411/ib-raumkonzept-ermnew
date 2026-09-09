@@ -345,7 +345,7 @@ tr:hover td{background:var(--card2);}
   .tickerUser{display:none;}
   #refreshBtn{display:none;}
   .mobileNavItem{font-size:10px;}
-  .cockpitMetrics{grid-template-columns:1fr;gap:9px;}
+  .cockpitMetrics{gap:9px;}
   .cockpitMetric{padding:14px;}
   .projectActionGrid{grid-template-columns:1fr 1fr;}
   .filterBar input,.filterBar select{width:100%;}
@@ -3151,21 +3151,17 @@ const PROJEKT_TABS = [
 function renderProjektDetail(view, id, tab){
   const p = S.projekte.find(x=>x.id===id);
   if(!p){ view.innerHTML = `<div class="empty">Projekt nicht gefunden. <button class="btn" onclick="goTo('#projekte')">Zurück</button></div>`; return; }
+  const isOverview=tab==="uebersicht";
   view.innerHTML = `
     <div class="projectHero">
       <div>
-        <button class="btn sm" onclick="goTo('#projekte')" style="margin-bottom:10px;">← Projekte</button>
+        <button class="btn sm" onclick="goTo('${isOverview?'#projekte':'#projekte/'+escAttr(p.id)}')" style="margin-bottom:10px;">← ${isOverview?'Projekte':'Projekt'}</button>
         <div class="pageTitle">${escHtml(p.name)} ${projektStatusBadge(p.status)}</div>
-        <div class="pageSub">${escHtml(p.adresse||"–")} · ${escHtml(kundeName(p.kundeId))}</div>
+        <div class="pageSub">${escHtml(p.adresse||"Keine Adresse")}</div>
       </div>
       <div class="projectHeroActions">
-        ${p.adresse?`<a class="btn" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.adresse)}" target="_blank" rel="noopener">Route</a>`:""}
-        <button class="btn" onclick="openAuftragsmappeForm('${escAttr(p.id)}')">Projekt-PDF</button>
-        <button class="btn primary" onclick="openProjektForm('${escAttr(p.id)}')">Bearbeiten</button>
+        ${isOverview?`<button class="btn primary" onclick="openProjektForm('${escAttr(p.id)}')">Bearbeiten</button>`:""}
       </div>
-    </div>
-    <div class="tabs projectTabs">
-      ${PROJEKT_TABS.map(t=>`<button class="tabBtn ${tab===t.id?"active":""}" onclick="goTo('#projekte/${escAttr(p.id)}/${t.id}')">${t.icon} ${t.label}</button>`).join("")}
     </div>
     <div id="projektTabBody"></div>
   `;
@@ -3300,9 +3296,7 @@ function renderTabUebersichtLegacy(body, p){
   renderProjektDetailKarte(p);
 }
 function renderTabUebersicht(body, p){
-  const offeneAufgaben=S.aufgaben.filter(a=>a.projektId===p.id&&a.status!=="erledigt");
   const material=projektMaterialkosten(p);
-  const gesamtKosten=projektGesamtkosten(p);
   const marge=projektMarge(p);
   const margePct=projektMargeProzent(p);
   const abnahme=projektAbnahmeStatus(p);
@@ -3315,30 +3309,12 @@ function renderTabUebersicht(body, p){
       <div class="cockpitMetric"><div class="cockpitMetricLabel">Voraussichtliche Marge</div><div class="cockpitMetricValue" style="color:${marge<0?'var(--red)':'var(--green)'}">${fmtCurrency(marge)}</div><div class="cockpitMetricHint">${margePct.toFixed(1).replace('.',',')} % vom Auftrag</div><div class="marginBar"><div style="width:${Math.max(0,Math.min(100,margePct))}%"></div></div></div>
     </div>
     <div class="projectActionGrid">
-      <button class="projectAction" onclick="goTo('#projekte/${escAttr(p.id)}/material')"><span>Material erfassen</span><small>${fmtCurrency(material)} bisher</small></button>
-      <button class="projectAction" onclick="goTo('#projekte/${escAttr(p.id)}/fotos')"><span>Fotos ablegen</span><small>${p.fotos.length} Fotos</small></button>
-      <button class="projectAction" onclick="goTo('#projekte/${escAttr(p.id)}/dokumente')"><span>Dateien öffnen</span><small>${p.dokumente.length} Dokumente</small></button>
-      <button class="projectAction" onclick="goTo('#projekte/${escAttr(p.id)}/checkliste')"><span>Abnahmeprotokoll</span><small>${escHtml(abnahme.label)}</small></button>
+      <button class="projectAction" onclick="goTo('#projekte/${escAttr(p.id)}/material')"><span>Material</span><small>${fmtCurrency(material)}</small></button>
+      <button class="projectAction" onclick="goTo('#projekte/${escAttr(p.id)}/fotos')"><span>Fotos</span><small>${p.fotos.length} gespeichert</small></button>
+      <button class="projectAction" onclick="goTo('#projekte/${escAttr(p.id)}/dokumente')"><span>Dateien</span><small>${p.dokumente.length} gespeichert</small></button>
+      <button class="projectAction" onclick="goTo('#projekte/${escAttr(p.id)}/checkliste')"><span>Abnahme</span><small>${escHtml(abnahme.label)}</small></button>
     </div>
-    <div class="grid cols-2">
-      <div class="card">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px"><b>Kostenübersicht</b><button class="btn sm" onclick="openProjektForm('${escAttr(p.id)}')">Kosten ändern</button></div>
-        <div class="simpleList">
-          <div class="simpleRow"><span>Material</span><b>${fmtCurrency(material)}</b></div>
-          <div class="simpleRow"><span>Personal</span><b>${fmtCurrency(p.personalkosten)}</b></div>
-          <div class="simpleRow"><span>Fremdleistungen</span><b>${fmtCurrency(p.fremdkosten)}</b></div>
-          <div class="simpleRow"><strong>Kosten gesamt</strong><strong>${fmtCurrency(gesamtKosten)}</strong></div>
-        </div>
-      </div>
-      <div class="card">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px"><b>Offene Aufgaben</b><button class="btn sm primary" onclick="openAufgabeForm()">＋ Aufgabe</button></div>
-        <div class="simpleList">${offeneAufgaben.slice(0,5).map(a=>`<div class="simpleRow"><span class="simpleRowMain">${escHtml(a.titel)}</span><span class="${a.faellig&&a.faellig<todayISO()?'deadlineLate':''}">${a.faellig?fmtDate(a.faellig):'Ohne Termin'}</span></div>`).join('')||`<div class="empty" style="padding:24px">Keine offenen Aufgaben.</div>`}</div>
-      </div>
-    </div>
-    <div class="card" style="margin-top:16px">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px"><div><b>Projektfortschritt</b><div class="pageSub">Mit dem Regler direkt aktualisieren</div></div><strong>${p.fortschritt||0} %</strong></div>
-      <input type="range" min="0" max="100" value="${p.fortschritt||0}" style="width:100%;margin-top:14px" oninput="updateProjektFortschritt('${escAttr(p.id)}',this.value);this.previousElementSibling.querySelector('strong').textContent=this.value+' %'">
-    </div>`;
+    `;
 }
 async function addProjektGrundriss(pid, input){
   const p = S.projekte.find(x=>x.id===pid);

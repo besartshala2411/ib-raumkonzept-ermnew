@@ -440,7 +440,7 @@ async function main() {
   catch (e) { bzOk = false; bzMsg = e.message; }
   assert(bzOk, "Bauzeitenplan-Tab rendert ohne Exception (leer)" + (bzOk ? "" : " (" + bzMsg + ")"));
   const bzTabHtml = window.document.getElementById("view").innerHTML;
-  assert(!bzTabHtml.includes("#projekte/p1/bauzeitenplan") && bzTabHtml.includes("Abnahme"), "Projekt-Navigation ist reduziert und zeigt die Abnahme direkt");
+  assert(!bzTabHtml.includes("projectTabs") && bzTabHtml.includes("← Projekt"), "Projekt-Unterseiten haben keine dauerhafte Tab-Leiste und einen klaren Zurück-Knopf");
   assert(bzTabHtml.includes("Noch keine Phasen geplant"), "Leerer Bauzeitenplan zeigt Hinweistext");
 
   // effective status: fertig überschreibt alles, überfällige Bis-Daten werden "verzögert"
@@ -466,21 +466,22 @@ async function main() {
   window.deleteBauphase("p1", bzPhaseId);
   assert(window.S.projekte.find((p) => p.id === "p1").bauzeitenplan.length === 0, "Bauphase kann wieder gelöscht werden");
 
-  console.log("\n== Projekt-Übersicht: verknüpfte Aufgaben & Rechnungen ==");
+  console.log("\n== Projekt-Übersicht: minimaler Baustellen-Kern ==");
   window.S.aufgaben.push({ id: "ag-ueb1", titel: "Fenster bestellen", beschreibung: "", faellig: "", prioritaet: "mittel", projektId: "p1", zugeordnet: null, status: "offen" });
   window.S.rechnungen.push({ id: "re-ueb1", nr: "RE-UEB-0001", kundeId: "", projektId: "p1", datum: "2026-01-01", faellig: "2099-01-01", status: "offen", positionen: [{ beschreibung: "Trockenbau", menge: 5, einheit: "m²", preis: 40 }], notiz: "" });
   window.document.getElementById("view").innerHTML = "";
   window.renderProjekte(window.document.getElementById("view"), "p1", "uebersicht");
   let uebHtml = window.document.getElementById("view").innerHTML;
-  assert(uebHtml.includes("Fenster bestellen"), "Übersicht zeigt verknüpfte offene Aufgabe des Projekts");
-  assert(uebHtml.includes("Kostenübersicht") && uebHtml.includes("Voraussichtliche Marge"), "Übersicht zeigt Kosten und Marge direkt");
+  assert(!uebHtml.includes("Fenster bestellen"), "Projekt-Übersicht bleibt frei von zusätzlichen Aufgabenlisten");
+  assert(uebHtml.includes("Auftragssumme") && uebHtml.includes("Materialkosten") && uebHtml.includes("Voraussichtliche Marge"), "Übersicht zeigt nur die entscheidenden Baustellen-Kennzahlen");
+  assert(uebHtml.includes(">Material<") && uebHtml.includes(">Fotos<") && uebHtml.includes(">Dateien<") && uebHtml.includes(">Abnahme<"), "Vier große Projektaktionen sind direkt erreichbar");
 
   window.S.mitarbeiter.push({ id: "uebWorker", name: "Übersicht Arbeiter", position: "Maler", rolle: "Mitarbeiter", tel: "", email: "uebworker@example.com", adresse: "", eintritt: "2024-01-01", status: "aktiv", urlaubstageJahr: 30, stundenlohn: 20, dokumente: [] });
   window.S.currentUserId = "uebWorker";
   window.document.getElementById("view").innerHTML = "";
   window.renderProjekte(window.document.getElementById("view"), "p1", "uebersicht");
   uebHtml = window.document.getElementById("view").innerHTML;
-  assert(uebHtml.includes("Fenster bestellen"), "Übersicht zeigt Aufgaben weiterhin für normale Mitarbeiter");
+  assert(!uebHtml.includes("Fenster bestellen"), "Reduzierte Übersicht bleibt auch für Mitarbeiter gleich einfach");
   assert(!uebHtml.includes("RE-UEB-0001"), "Übersicht blendet Rechnungen für normale Mitarbeiter aus");
   window.S.currentUserId = "m1";
 
