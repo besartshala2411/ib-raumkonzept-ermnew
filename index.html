@@ -17,10 +17,10 @@
   --primary:#3b82f6; --primary-dim:#1d4ed8; --primary-bg:#132039;
   --green:#22c55e; --green-bg:#0f2618; --red:#ef4444; --red-bg:#2a1416;
   --amber:#f59e0b; --amber-bg:#2a2010; --purple:#a855f7;
-  --radius:16px; --radius-sm:10px;
+  --radius:12px; --radius-sm:9px;
   --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.28);
   --shadow-lg:0 4px 10px rgba(0,0,0,.3), 0 16px 40px rgba(0,0,0,.35);
-  --sidebar-w:250px; --ticker-h:44px; --mobile-nav-h:0px;
+  --sidebar-w:216px; --ticker-h:48px; --mobile-nav-h:0px;
   color-scheme: dark;
 }
 :root[data-theme="light"]{
@@ -258,6 +258,42 @@ tr:hover td{background:var(--card2);}
 .thumb .thumbEdit{position:absolute; bottom:4px; left:4px; background:rgba(0,0,0,.6); color:#fff; border:none; border-radius:6px; padding:3px 8px; font-size:11px; display:flex; align-items:center; gap:3px;}
 .thumb .thumbMarkedBadge{position:absolute; top:4px; left:4px; background:var(--primary); color:#fff; font-size:9px; font-weight:700; border-radius:5px; padding:2px 5px;}
 
+/* ---- Bauleiter-Cockpit: reduzierte, mobile Projektansicht ---- */
+.projectGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;}
+.projectCard{padding:0;overflow:hidden;cursor:pointer;}
+.projectCardMain{padding:17px;}
+.projectCardHead{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;}
+.projectCardName{font-size:17px;font-weight:800;line-height:1.25;}
+.projectCardAddress{color:var(--text-dim);font-size:13px;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.projectNumbers{display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid var(--border);background:var(--card2);}
+.projectNumber{padding:11px 14px;border-right:1px solid var(--border);min-width:0;}
+.projectNumber:last-child{border-right:0;}
+.projectNumber span{display:block;color:var(--text-dim);font-size:11.5px;margin-bottom:3px;}
+.projectNumber b{display:block;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.projectNumber.marginPositive b{color:var(--green);}
+.projectNumber.marginNegative b{color:var(--red);}
+.deadlineLine{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:14px;font-size:13px;}
+.deadlineLate{color:var(--red);font-weight:700;}
+.cockpitMetrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:16px;}
+.cockpitMetric{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px;min-width:0;}
+.cockpitMetricLabel{color:var(--text-dim);font-size:12px;margin-bottom:8px;}
+.cockpitMetricValue{font-size:clamp(19px,2.2vw,28px);font-weight:850;line-height:1.1;overflow:hidden;text-overflow:ellipsis;}
+.cockpitMetricHint{color:var(--text-dim);font-size:12px;margin-top:7px;}
+.projectActionGrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:16px;}
+.projectAction{min-height:78px;display:flex;flex-direction:column;justify-content:center;align-items:flex-start;gap:6px;padding:14px;border:1px solid var(--border);border-radius:var(--radius);background:var(--card);color:var(--text);font-weight:750;text-align:left;}
+.projectAction:hover{border-color:var(--primary);background:var(--primary-bg);}
+.projectAction small{color:var(--text-dim);font-weight:500;}
+.simpleList{display:flex;flex-direction:column;gap:8px;}
+.simpleRow{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 12px;border-radius:9px;background:var(--card2);font-size:13.5px;}
+.simpleRowMain{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.projectHero{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:14px;}
+.projectHeroActions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;}
+.tabs.projectTabs{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;position:sticky;top:0;z-index:20;}
+.tabs.projectTabs::-webkit-scrollbar{display:none;}
+.marginBar{height:8px;border-radius:99px;background:var(--bg2);overflow:hidden;margin-top:10px;}
+.marginBar>div{height:100%;background:var(--green);border-radius:inherit;}
+.compactFormNote{font-size:12.5px;color:var(--text-dim);background:var(--card2);border-radius:9px;padding:10px 12px;margin-bottom:14px;}
+
 @media(max-width:900px){
   :root{--sidebar-w:210px;}
   #view{padding:16px;}
@@ -295,11 +331,25 @@ tr:hover td{background:var(--card2);}
   .positionGrid{grid-template-columns:1fr 1fr;}
   .positionGrid .positionDescription{grid-column:1/-1;}
   .grid.cols-2,.grid.cols-3,.grid.cols-4,.grid.cols-6{grid-template-columns:1fr 1fr;}
+  .projectGrid{grid-template-columns:1fr;}
+  .cockpitMetrics{grid-template-columns:1fr 1fr;}
+  .projectActionGrid{grid-template-columns:1fr 1fr;}
+  .projectHero{display:block;}
+  .projectHeroActions{justify-content:flex-start;margin-top:12px;}
+  .projectHeroActions .btn{flex:1;justify-content:center;}
+  .projectNumbers{grid-template-columns:1fr 1fr;}
+  .projectNumber:nth-child(2){border-right:0;}
+  .projectNumber:nth-child(3){grid-column:1/-1;border-top:1px solid var(--border);border-right:0;}
 }
 @media(max-width:480px){
   .tickerUser{display:none;}
   #refreshBtn{display:none;}
   .mobileNavItem{font-size:10px;}
+  .cockpitMetrics{grid-template-columns:1fr;gap:9px;}
+  .cockpitMetric{padding:14px;}
+  .projectActionGrid{grid-template-columns:1fr 1fr;}
+  .filterBar input,.filterBar select{width:100%;}
+  .modal{padding:18px;}
 }
 </style>
 </head>
@@ -643,6 +693,10 @@ function ensureShape(s){
     if(!p.chat) p.chat=[];
     if(!p.status) p.status="In Planung";
     if(p.fortschritt==null) p.fortschritt=0;
+    if(p.personalkosten==null) p.personalkosten=0;
+    if(p.fremdkosten==null) p.fremdkosten=0;
+    if(p.abnahmeDatum==null) p.abnahmeDatum="";
+    if(p.abnahmeBemerkung==null) p.abnahmeBemerkung="";
   });
   s.fuhrpark.forEach(f=>{
     if(!f.tankkosten) f.tankkosten=[];
@@ -965,13 +1019,15 @@ function buildManifest(iconURL, name){
 ========================================================= */
 var MODULES = [];
 function reg(id,label,icon,group,render){ MODULES.push({id,label,icon,group,render}); }
+const PRIMARY_NAV_IDS = ["dashboard","projekte","aufgaben","kunden","mitarbeiter","stempeluhr","rechnungen","einstellungen"];
 
 function buildSidebar(){
   const groups = [];
   const admin = hasAdminAccess();
-  MODULES.filter(m=>admin || !RESTRICTED_MODULES.includes(m.id)).forEach(m=>{
-    let g = groups.find(g=>g.name===m.group);
-    if(!g){ g={name:m.group, items:[]}; groups.push(g); }
+  MODULES.filter(m=>PRIMARY_NAV_IDS.includes(m.id) && (admin || !RESTRICTED_MODULES.includes(m.id))).forEach(m=>{
+    const simpleGroup = ["dashboard","projekte","aufgaben"].includes(m.id) ? "" : (["kunden","mitarbeiter","stempeluhr"].includes(m.id) ? "Betrieb" : "Verwaltung");
+    let g = groups.find(g=>g.name===simpleGroup);
+    if(!g){ g={name:simpleGroup, items:[]}; groups.push(g); }
     g.items.push(m);
   });
   const sidebar = document.getElementById("sidebar");
@@ -980,7 +1036,7 @@ function buildSidebar(){
     <div class="sidebarLogo" id="sidebarLogo">IB</div>
     <div>
       <div class="sidebarBrandName">${escHtml(S.firma.name || "IB Raumkonzept")}</div>
-      <div class="sidebarBrandSub">ERM System</div>
+      <div class="sidebarBrandSub">Baustellen-Cockpit</div>
     </div>
   </div>`;
   groups.forEach(g=>{
@@ -1529,96 +1585,35 @@ function savePflichtDefs(type){
    MODULE: DASHBOARD
 ========================================================= */
 function renderDashboard(view){
-  const admin = hasAdminAccess();
-  const activeM = S.mitarbeiter.filter(m=>m.status==="aktiv");
-  const aktiveProjekte = S.projekte.filter(p=>p.status==="Aktiv");
-  const offen = S.rechnungen.filter(r=>r.status!=="bezahlt").reduce((s,r)=>s+rechnungSumme(r),0);
   const heute = todayISO();
-  const gestempeltHeute = S.zeiterfassung.filter(z=>z.datum===heute && z.kommen).length;
-  const anwesend = S.zeiterfassung.filter(z=>z.datum===heute && z.kommen && !z.gehen);
-  const tuevWarn = S.fuhrpark.filter(f=>{
-    if(!f.tuev) return false;
-    const days = (new Date(f.tuev) - new Date(todayISO())) / 86400000;
-    return days <= 30;
-  });
-  const pflichtWarnungen = pflichtAlleAblaufwarnungen();
-  const ungelesen = S.benachrichtigungen.filter(n=>!n.gelesen);
-
+  const aktiveProjekte = S.projekte.filter(p=>p.status!=="Abgeschlossen").sort((a,b)=>(a.deadline||"9999").localeCompare(b.deadline||"9999"));
+  const offeneAufgaben = S.aufgaben.filter(a=>a.status!=="erledigt");
+  const ueberfaellig = offeneAufgaben.filter(a=>a.faellig && a.faellig<heute);
+  const auftragssumme = aktiveProjekte.reduce((sum,p)=>sum+(Number(p.budget)||0),0);
+  const material = aktiveProjekte.reduce((sum,p)=>sum+projektMaterialkosten(p),0);
+  const marge = aktiveProjekte.reduce((sum,p)=>sum+projektMarge(p),0);
   view.innerHTML = `
     <div class="pageHead">
       <div>
-        <div class="pageTitle">Dashboard</div>
+        <div class="pageTitle">Heute im Blick</div>
         <div class="pageSub">${new Date().toLocaleDateString("de-DE",{weekday:"long",day:"2-digit",month:"long",year:"numeric"})}</div>
       </div>
+      <button class="btn primary" onclick="openProjektForm()">＋ Projekt anlegen</button>
     </div>
-
-    <div class="grid cols-4" style="margin-bottom:18px;">
-      <div class="kpi"><div class="kpiIcon">👷</div><div class="kpiVal">${activeM.length}</div><div class="kpiLabel">Aktive Mitarbeiter</div></div>
-      <div class="kpi"><div class="kpiIcon">🏢</div><div class="kpiVal">${aktiveProjekte.length}</div><div class="kpiLabel">Aktive Projekte</div></div>
-      ${admin?`<div class="kpi"><div class="kpiIcon">💶</div><div class="kpiVal">${fmtCurrency(offen)}</div><div class="kpiLabel">Offene Beträge</div></div>`:""}
-      <div class="kpi"><div class="kpiIcon">⏱️</div><div class="kpiVal">${gestempeltHeute}</div><div class="kpiLabel">Heute gestempelt</div></div>
+    <div class="cockpitMetrics">
+      <div class="cockpitMetric"><div class="cockpitMetricLabel">Laufende Projekte</div><div class="cockpitMetricValue">${aktiveProjekte.length}</div><div class="cockpitMetricHint">${ueberfaellig.length} Aufgaben überfällig</div></div>
+      <div class="cockpitMetric"><div class="cockpitMetricLabel">Auftragssumme</div><div class="cockpitMetricValue">${fmtCurrency(auftragssumme)}</div><div class="cockpitMetricHint">laufende Baustellen</div></div>
+      <div class="cockpitMetric"><div class="cockpitMetricLabel">Materialkosten</div><div class="cockpitMetricValue">${fmtCurrency(material)}</div><div class="cockpitMetricHint">bereits erfasst</div></div>
+      <div class="cockpitMetric"><div class="cockpitMetricLabel">Voraussichtliche Marge</div><div class="cockpitMetricValue" style="color:${marge<0?'var(--red)':'var(--green)'}">${fmtCurrency(marge)}</div><div class="cockpitMetricHint">nach erfassten Kosten</div></div>
     </div>
-
-    <div class="aiBox" style="margin-bottom:18px;">
-      <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
-        <div><b>🤖 KI-Tagesüberblick</b><div class="pageSub" style="margin-top:2px;">Prioritäten, Risikocheck, Auslastung – generiert von Gemini</div></div>
-        <button class="btn primary sm" onclick="runDailyOverview()">Generieren</button>
-      </div>
-      <div id="aiOverviewOut" style="margin-top:12px; font-size:13.5px; line-height:1.6; white-space:pre-wrap;"></div>
-    </div>
-
-    <div class="sectionIntro"><b>Schnell erledigen</b><span>Ein Klick öffnet direkt das passende Formular.</span></div>
-    <div class="grid cols-6" style="margin-bottom:18px;">
-      <button class="quickTile" onclick="goTo('#stempeluhr')"><div class="qIcon">⏱️</div><div class="qLabel">Stempeln</div></button>
-      <button class="quickTile" onclick="openMitarbeiterForm()"><div class="qIcon">👷</div><div class="qLabel">Mitarbeiter anlegen</div></button>
-      <button class="quickTile" onclick="openProjektForm()"><div class="qIcon">🏢</div><div class="qLabel">Projekt anlegen</div></button>
-      ${admin?`<button class="quickTile" onclick="openRechnungForm()"><div class="qIcon">🧾</div><div class="qLabel">Rechnung erstellen</div></button>`:""}
-      <button class="quickTile" onclick="openAufgabeForm()"><div class="qIcon">📝</div><div class="qLabel">Aufgabe anlegen</div></button>
-      <button class="quickTile" onclick="openSchluesselForm()"><div class="qIcon">🔑</div><div class="qLabel">Schlüssel ausgeben</div></button>
-      <button class="quickTile" onclick="goTo('#dokumente')"><div class="qIcon">📁</div><div class="qLabel">Dokument</div></button>
-      ${admin?`<button class="quickTile" onclick="openVertragForm()"><div class="qIcon">📜</div><div class="qLabel">Vertrag erstellen</div></button>`:""}
-    </div>
-
     <div class="grid cols-2">
       <div class="card">
-        <b>📣 Benachrichtigungen ${ungelesen.length?`<span class="badge red">${ungelesen.length} neu</span>`:""}</b>
-        <div style="margin-top:12px; display:flex; flex-direction:column; gap:8px; max-height:260px; overflow-y:auto;">
-          ${S.benachrichtigungen.slice(0,15).map(n=>`
-            <div style="display:flex; gap:8px; align-items:flex-start; padding:8px; border-radius:8px; background:${n.gelesen?'transparent':'var(--card2)'};">
-              <span>${n.typ==='error'?'🔴':n.typ==='warn'?'🟡':'🔵'}</span>
-              <div style="flex:1;"><div style="font-size:13px;">${escHtml(n.text)}</div><div style="font-size:11px;color:var(--text-dim2);">${fmtDateTime(n.zeit)}</div></div>
-            </div>
-          `).join("") || `<div class="empty" style="padding:16px;">Keine Benachrichtigungen</div>`}
-        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px;"><b>Nächste Fertigstellungen</b><button class="btn sm" onclick="goTo('#projekte')">Alle Projekte</button></div>
+        <div class="simpleList">${aktiveProjekte.slice(0,6).map(p=>`<div class="simpleRow" onclick="goTo('#projekte/${escAttr(p.id)}')" style="cursor:pointer"><div class="simpleRowMain"><b>${escHtml(p.name)}</b><div class="pageSub">${escHtml(p.adresse||'Keine Adresse')}</div></div><span class="${p.deadline&&p.deadline<heute?'deadlineLate':''}">${p.deadline?fmtDate(p.deadline):'Kein Termin'}</span></div>`).join('')||`<div class="empty" style="padding:24px">Keine laufenden Projekte.</div>`}</div>
       </div>
       <div class="card">
-        <b>📈 Projektfortschritt</b>
-        <div style="margin-top:12px; display:flex; flex-direction:column; gap:14px; max-height:260px; overflow-y:auto;">
-          ${aktiveProjekte.map(p=>`
-            <div>
-              <div style="display:flex; justify-content:space-between; font-size:13px; margin-bottom:5px;"><span>${escHtml(p.name)}</span><span>${p.fortschritt||0}%</span></div>
-              <div class="progressBar"><div style="width:${p.fortschritt||0}%"></div></div>
-            </div>
-          `).join("") || `<div class="empty" style="padding:16px;">Keine aktiven Projekte</div>`}
-        </div>
-      </div>
-      <div class="card">
-        <b>🟢 Anwesend heute (${anwesend.length})</b>
-        <div style="margin-top:12px; display:flex; flex-direction:column; gap:8px; max-height:220px; overflow-y:auto;">
-          ${anwesend.map(z=>`<div style="display:flex; justify-content:space-between; font-size:13px;"><span>${escHtml(mitarbeiterName(z.mitarbeiterId))}</span><span class="badge green">seit ${z.kommen}</span></div>`).join("") || `<div class="empty" style="padding:16px;">Niemand eingestempelt</div>`}
-        </div>
-      </div>
-      <div class="card">
-        <b>🚐 Fuhrpark-Warnungen</b>
-        <div style="margin-top:12px; display:flex; flex-direction:column; gap:8px; max-height:220px; overflow-y:auto;">
-          ${tuevWarn.map(f=>`<div style="display:flex; justify-content:space-between; font-size:13px;"><span>${escHtml(f.kennzeichen)}</span><span class="badge amber">TÜV bis ${fmtDate(f.tuev)}</span></div>`).join("") || `<div class="empty" style="padding:16px;">Keine anstehenden Fristen</div>`}
-        </div>
-      </div>
-      <div class="card">
-        <b>📋 Pflichtdokumente</b>
-        <div style="margin-top:12px; display:flex; flex-direction:column; gap:8px; max-height:220px; overflow-y:auto;">
-          ${pflichtWarnungen.map(w=>`<div style="display:flex; justify-content:space-between; font-size:13px;"><span>${escHtml(w.dokName)} · ${escHtml(w.entityName)}</span><span class="badge ${w.status==='expired'?'red':'amber'}">${w.status==='expired'?'abgelaufen':'bis '+fmtDate(w.gueltigBis)}</span></div>`).join("") || `<div class="empty" style="padding:16px;">Alle Pflichtdokumente gültig</div>`}
-        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px;"><b>Offene Aufgaben</b><button class="btn sm primary" onclick="openAufgabeForm()">＋ Aufgabe</button></div>
+        <div class="simpleList">${offeneAufgaben.sort((a,b)=>(a.faellig||'9999').localeCompare(b.faellig||'9999')).slice(0,6).map(a=>`<div class="simpleRow"><span class="simpleRowMain">${escHtml(a.titel)}</span><span class="${a.faellig&&a.faellig<heute?'deadlineLate':''}">${a.faellig?fmtDate(a.faellig):'Ohne Termin'}</span></div>`).join('')||`<div class="empty" style="padding:24px">Alles erledigt.</div>`}</div>
       </div>
     </div>
   `;
@@ -2995,44 +2990,66 @@ function projektStatusBadge(s){
   const map = {"In Planung":"amber","Aktiv":"blue","Abgeschlossen":"green"};
   return `<span class="badge ${map[s]||"gray"}">${escHtml(s)}</span>`;
 }
+function projektMaterialkosten(p){
+  return (p.material||[]).reduce((sum,m)=>sum+(Number(m.preis)||0),0);
+}
+function projektGesamtkosten(p){
+  return projektMaterialkosten(p)+(Number(p.personalkosten)||0)+(Number(p.fremdkosten)||0);
+}
+function projektMarge(p){
+  return (Number(p.budget)||0)-projektGesamtkosten(p);
+}
+function projektMargeProzent(p){
+  const summe=Number(p.budget)||0;
+  return summe ? (projektMarge(p)/summe)*100 : 0;
+}
+function projektAbnahmeStatus(p){
+  if(p.checklisteUnterschrift) return {label:"Abgenommen",color:"green"};
+  if((p.checkliste||[]).some(c=>c.done)||p.abnahmeDatum) return {label:"In Vorbereitung",color:"amber"};
+  return {label:"Offen",color:"gray"};
+}
 function renderProjekte(view, id, tab){
   if(id) return renderProjektDetail(view, id, tab||"uebersicht");
   view.innerHTML = `
     <div class="pageHead">
-      <div><div class="pageTitle">Projekte</div><div class="pageSub">${S.projekte.length} Projekte</div></div>
+      <div><div class="pageTitle">Projekte</div><div class="pageSub">Auftrag, Kosten, Termin und Marge auf einen Blick</div></div>
       <div style="display:flex; gap:8px;">
-        <button class="btn" onclick="openLvImportForm()">📄 Aus PDF erstellen</button>
-        <button class="btn primary" onclick="openProjektForm()">➕ Neues Projekt</button>
+        <button class="btn" onclick="openLvImportForm()">Aus PDF</button>
+        <button class="btn primary" onclick="openProjektForm()">＋ Neues Projekt</button>
       </div>
     </div>
     <div class="filterBar">
-      <input type="text" id="pjFilter" placeholder="🔍 Suchen..." oninput="renderProjekte(document.getElementById('view'))" style="min-width:220px;">
+      <input type="search" id="pjFilter" placeholder="Projekt oder Adresse suchen" oninput="filterProjektCards()" style="min-width:260px;">
       <select id="pjStatusFilter" onchange="renderProjekte(document.getElementById('view'))">
         <option value="">Alle Status</option>${PROJEKT_STATI.map(s=>`<option value="${s}">${s}</option>`).join("")}
       </select>
     </div>
-    <div class="card" style="margin-bottom:16px; padding:0; overflow:hidden;">
-      <div id="pjMapStatus" class="pageSub" style="padding:8px 14px 0;"></div>
-      <div id="pjMapWrap" style="height:320px;"></div>
-    </div>
-    <div class="grid cols-3" id="pjGrid"></div>
+    <div class="projectGrid" id="pjGrid"></div>
   `;
-  const q = (document.getElementById("pjFilter")?.value||"").toLowerCase();
   const stF = document.getElementById("pjStatusFilter")?.value||"";
-  const list = S.projekte.filter(p=>(!q || p.name.toLowerCase().includes(q) || (p.adresse||"").toLowerCase().includes(q)) && (!stF || p.status===stF));
+  const list = S.projekte.filter(p=>!stF || p.status===stF).sort((a,b)=>{
+    if(a.status==="Abgeschlossen"&&b.status!=="Abgeschlossen") return 1;
+    if(b.status==="Abgeschlossen"&&a.status!=="Abgeschlossen") return -1;
+    return (a.deadline||"9999").localeCompare(b.deadline||"9999");
+  });
   document.getElementById("pjGrid").innerHTML = list.map(p=>`
-    <div class="card" style="cursor:pointer;" onclick="goTo('#projekte/${escAttr(p.id)}')">
-      <div style="display:flex; justify-content:space-between; align-items:flex-start;">
-        <b>${escHtml(p.name)}</b>${projektStatusBadge(p.status)}
+    <article class="card projectCard" data-search="${escAttr((p.name+' '+(p.adresse||'')).toLowerCase())}" onclick="goTo('#projekte/${escAttr(p.id)}')">
+      <div class="projectCardMain">
+        <div class="projectCardHead"><div style="min-width:0"><div class="projectCardName">${escHtml(p.name)}</div><div class="projectCardAddress">${escHtml(p.adresse||"Keine Adresse hinterlegt")}</div></div>${projektStatusBadge(p.status)}</div>
+        <div class="deadlineLine"><span>Fertig bis</span><b class="${p.deadline&&p.deadline<todayISO()&&p.status!=="Abgeschlossen"?'deadlineLate':''}">${p.deadline?fmtDate(p.deadline):"Termin fehlt"}</b></div>
+        <div class="progressBar" style="margin-top:10px"><div style="width:${p.fortschritt||0}%"></div></div>
       </div>
-      <div class="pageSub" style="margin:6px 0 10px;">${escHtml(p.adresse||"–")}</div>
-      <div class="progressBar" style="margin-bottom:8px;"><div style="width:${p.fortschritt||0}%"></div></div>
-      <div style="display:flex; justify-content:space-between; font-size:12px; color:var(--text-dim);">
-        <span>💶 ${fmtCurrency(p.budget)}</span><span>📅 ${fmtDate(p.deadline)}</span>
+      <div class="projectNumbers">
+        <div class="projectNumber"><span>Auftrag</span><b>${fmtCurrency(p.budget)}</b></div>
+        <div class="projectNumber"><span>Material</span><b>${fmtCurrency(projektMaterialkosten(p))}</b></div>
+        <div class="projectNumber ${projektMarge(p)<0?'marginNegative':'marginPositive'}"><span>Marge</span><b>${fmtCurrency(projektMarge(p))}</b></div>
       </div>
-    </div>
+    </article>
   `).join("") || `<div class="empty" style="grid-column:1/-1;">Keine Projekte gefunden.</div>`;
-  renderProjekteKarte(list);
+}
+function filterProjektCards(){
+  const q=(document.getElementById("pjFilter")?.value||"").trim().toLowerCase();
+  document.querySelectorAll("#pjGrid [data-search]").forEach(card=>card.classList.toggle("hidden",q&&!card.dataset.search.includes(q)));
 }
 async function geocodeAddress(address){
   if(!address || !address.trim()) return null;
@@ -3084,17 +3101,20 @@ async function renderProjekteKarte(list){
   if(statusEl) statusEl.textContent = markers.length ? "" : (withAdresse.length ? "Keine Adresse konnte auf der Karte gefunden werden." : "");
 }
 function openProjektForm(id){
-  const p = id ? S.projekte.find(x=>x.id===id) : {id:uid(), name:"", kundeId:"", adresse:"", status:"In Planung", budget:0, deadline:"", fortschritt:0, team:[], subunternehmer:[], fotos:[], dokumente:[], grundrisse:[], material:[], ausschreibung:[], bautagebuch:[], zugaenge:[], checkliste:[], aufmasse:[], bauzeitenplan:[], chat:[]};
+  const p = id ? S.projekte.find(x=>x.id===id) : {id:uid(), name:"", kundeId:"", adresse:"", status:"In Planung", budget:0, deadline:"", fortschritt:0, personalkosten:0, fremdkosten:0, abnahmeDatum:"", abnahmeBemerkung:"", team:[], subunternehmer:[], fotos:[], dokumente:[], grundrisse:[], material:[], ausschreibung:[], bautagebuch:[], zugaenge:[], checkliste:[], aufmasse:[], bauzeitenplan:[], chat:[]};
   openModal(`
     <div class="modalHead"><div class="modalTitle">${id?"Projekt bearbeiten":"Neues Projekt"}</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
+    <div class="compactFormNote">Nur die wichtigsten Projektdaten. Materialkosten werden automatisch aus den Materialeinträgen berechnet.</div>
     <div class="formRow"><label>Projektname</label><div class="micWrap"><input id="pName" type="text" value="${escAttr(p.name)}">${fieldMic("pName")}</div></div>
     <div class="grid cols-2">
       <div class="formRow"><label>Kunde</label>${kundeSearchHTML("pKunde", p.kundeId)}</div>
       <div class="formRow"><label>Status</label><select id="pStatus">${PROJEKT_STATI.map(s=>`<option ${p.status===s?"selected":""}>${s}</option>`).join("")}</select></div>
-      <div class="formRow" style="grid-column:1/-1;"><label>Adresse</label><input id="pAdresse" type="text" value="${escAttr(p.adresse||"")}"></div>
-      <div class="formRow"><label>Budget (€)</label><input id="pBudget" type="number" step="0.01" value="${escAttr(p.budget||0)}"></div>
-      <div class="formRow"><label>Deadline</label><input id="pDeadline" type="date" value="${escAttr(p.deadline||"")}"></div>
-      <div class="formRow" style="grid-column:1/-1;"><label>Fortschritt (%)</label><input id="pFortschritt" type="number" min="0" max="100" value="${escAttr(p.fortschritt||0)}"></div>
+      <div class="formRow" style="grid-column:1/-1;"><label>Adresse der Baustelle</label><input id="pAdresse" type="text" value="${escAttr(p.adresse||"")}"></div>
+      <div class="formRow"><label>Auftragssumme (€)</label><input id="pBudget" type="number" step="0.01" value="${escAttr(p.budget||0)}"></div>
+      <div class="formRow"><label>Fertigstellung</label><input id="pDeadline" type="date" value="${escAttr(p.deadline||"")}"></div>
+      <div class="formRow"><label>Personalkosten (€)</label><input id="pPersonalkosten" type="number" step="0.01" value="${escAttr(p.personalkosten||0)}"></div>
+      <div class="formRow"><label>Fremdleistungen (€)</label><input id="pFremdkosten" type="number" step="0.01" value="${escAttr(p.fremdkosten||0)}"></div>
+      <div class="formRow" style="grid-column:1/-1;"><label>Fortschritt: ${Number(p.fortschritt)||0}%</label><input id="pFortschritt" type="range" min="0" max="100" value="${escAttr(p.fortschritt||0)}"></div>
     </div>
     <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="saveProjekt('${escAttr(p.id)}', ${id?"true":"false"})">Speichern</button></div>
   `, true);
@@ -3107,6 +3127,8 @@ function saveProjekt(id, isEdit){
   p.name=name; p.kundeId=document.getElementById("pKunde").value;
   p.status=document.getElementById("pStatus").value; p.adresse=document.getElementById("pAdresse").value.trim();
   p.budget=Number(document.getElementById("pBudget").value)||0; p.deadline=document.getElementById("pDeadline").value;
+  p.personalkosten=Number(document.getElementById("pPersonalkosten").value)||0;
+  p.fremdkosten=Number(document.getElementById("pFremdkosten").value)||0;
   p.fortschritt=Math.max(0,Math.min(100,Number(document.getElementById("pFortschritt").value)||0));
   if(!isEdit){ S.projekte.push(p); window._newProjektDraft=null; }
   saveState(); closeModal();
@@ -3120,39 +3142,30 @@ function deleteProjekt(id){
 }
 
 const PROJEKT_TABS = [
-  {id:"uebersicht", label:"Übersicht", icon:"📋", group:"Planung"},
-  {id:"team", label:"Team", icon:"👷", group:"Planung"},
-  {id:"bauzeitenplan", label:"Bauzeitenplan", icon:"📊", group:"Planung"},
-  {id:"material", label:"Material / LV", icon:"📦", group:"Kalkulation & Vergabe"},
-  {id:"ausschreibung", label:"Ausschreibung", icon:"🏗️", group:"Kalkulation & Vergabe"},
-  {id:"dokumente", label:"Dokumente", icon:"📁", group:"Kalkulation & Vergabe"},
-  {id:"fotos", label:"Fotos", icon:"📷", group:"Baustelle"},
-  {id:"bautagebuch", label:"Bautagebuch", icon:"📔", group:"Baustelle"},
-  {id:"aufmass", label:"Aufmaß", icon:"📐", group:"Baustelle"},
-  {id:"zugaenge", label:"Zugänge", icon:"🔐", group:"Baustelle"},
-  {id:"checkliste", label:"WISO/Checkliste", icon:"✅", group:"Abschluss"},
-  {id:"chat", label:"Chat", icon:"💬", group:"Abschluss"},
+  {id:"uebersicht", label:"Überblick", icon:"▦"},
+  {id:"material", label:"Material", icon:"▤"},
+  {id:"fotos", label:"Fotos", icon:"▧"},
+  {id:"dokumente", label:"Dateien", icon:"▱"},
+  {id:"checkliste", label:"Abnahme", icon:"✓"},
 ];
 function renderProjektDetail(view, id, tab){
   const p = S.projekte.find(x=>x.id===id);
   if(!p){ view.innerHTML = `<div class="empty">Projekt nicht gefunden. <button class="btn" onclick="goTo('#projekte')">Zurück</button></div>`; return; }
   view.innerHTML = `
-    <div class="pageHead">
+    <div class="projectHero">
       <div>
-        <button class="btn sm" onclick="goTo('#projekte')" style="margin-bottom:8px;">← Alle Projekte</button>
+        <button class="btn sm" onclick="goTo('#projekte')" style="margin-bottom:10px;">← Projekte</button>
         <div class="pageTitle">${escHtml(p.name)} ${projektStatusBadge(p.status)}</div>
         <div class="pageSub">${escHtml(p.adresse||"–")} · ${escHtml(kundeName(p.kundeId))}</div>
-        ${p.adresse ? mapsLinksHTML(p.adresse) : ""}
       </div>
-      <div style="display:flex; gap:8px;">
-        <button class="btn" onclick="exportArbeitsauftrag('${escAttr(p.id)}')">🧾 Arbeitsauftrag (ohne Preise)</button>
-        <button class="btn" onclick="openAuftragsmappeForm('${escAttr(p.id)}')">📁 Auftragsmappe</button>
-        <button class="btn" onclick="openProjektForm('${escAttr(p.id)}')">✏️ Bearbeiten</button>
-        <button class="btn danger" onclick="deleteProjekt('${escAttr(p.id)}')">🗑️ Löschen</button>
+      <div class="projectHeroActions">
+        ${p.adresse?`<a class="btn" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.adresse)}" target="_blank" rel="noopener">Route</a>`:""}
+        <button class="btn" onclick="openAuftragsmappeForm('${escAttr(p.id)}')">Projekt-PDF</button>
+        <button class="btn primary" onclick="openProjektForm('${escAttr(p.id)}')">Bearbeiten</button>
       </div>
     </div>
-    <div class="tabs">
-      ${PROJEKT_TABS.map((t,i)=>(i>0 && t.group!==PROJEKT_TABS[i-1].group ? `<div class="tabDivider"></div>` : "")+`<button class="tabBtn ${tab===t.id?"active":""}" onclick="goTo('#projekte/${escAttr(p.id)}/${t.id}')">${t.icon} ${t.label}</button>`).join("")}
+    <div class="tabs projectTabs">
+      ${PROJEKT_TABS.map(t=>`<button class="tabBtn ${tab===t.id?"active":""}" onclick="goTo('#projekte/${escAttr(p.id)}/${t.id}')">${t.icon} ${t.label}</button>`).join("")}
     </div>
     <div id="projektTabBody"></div>
   `;
@@ -3171,7 +3184,7 @@ function projektBauzeitraum(p){
   const bisListe = phasen.map(ph=>ph.bis).filter(Boolean).sort();
   return { beginn: vonListe[0]||null, ende: bisListe.length?bisListe[bisListe.length-1]:null };
 }
-function renderTabUebersicht(body, p){
+function renderTabUebersichtLegacy(body, p){
   const admin = hasAdminAccess();
   const offeneAufgaben = S.aufgaben.filter(a=>a.projektId===p.id && a.status!=="erledigt");
   const ueberfaelligeAufgaben = offeneAufgaben.filter(a=>a.faellig && a.faellig<todayISO());
@@ -3285,6 +3298,47 @@ function renderTabUebersicht(body, p){
     </div>
   `;
   renderProjektDetailKarte(p);
+}
+function renderTabUebersicht(body, p){
+  const offeneAufgaben=S.aufgaben.filter(a=>a.projektId===p.id&&a.status!=="erledigt");
+  const material=projektMaterialkosten(p);
+  const gesamtKosten=projektGesamtkosten(p);
+  const marge=projektMarge(p);
+  const margePct=projektMargeProzent(p);
+  const abnahme=projektAbnahmeStatus(p);
+  const deadlineLate=p.deadline&&p.deadline<todayISO()&&p.status!=="Abgeschlossen";
+  body.innerHTML=`
+    <div class="cockpitMetrics">
+      <div class="cockpitMetric"><div class="cockpitMetricLabel">Fertigstellung</div><div class="cockpitMetricValue ${deadlineLate?'deadlineLate':''}">${p.deadline?fmtDate(p.deadline):"Termin fehlt"}</div><div class="cockpitMetricHint">${deadlineLate?'Termin überschritten':(p.fortschritt||0)+' % erledigt'}</div></div>
+      <div class="cockpitMetric"><div class="cockpitMetricLabel">Auftragssumme</div><div class="cockpitMetricValue">${fmtCurrency(p.budget)}</div><div class="cockpitMetricHint">vereinbarter Auftrag</div></div>
+      <div class="cockpitMetric"><div class="cockpitMetricLabel">Materialkosten</div><div class="cockpitMetricValue">${fmtCurrency(material)}</div><div class="cockpitMetricHint">${(p.material||[]).length} Einträge</div></div>
+      <div class="cockpitMetric"><div class="cockpitMetricLabel">Voraussichtliche Marge</div><div class="cockpitMetricValue" style="color:${marge<0?'var(--red)':'var(--green)'}">${fmtCurrency(marge)}</div><div class="cockpitMetricHint">${margePct.toFixed(1).replace('.',',')} % vom Auftrag</div><div class="marginBar"><div style="width:${Math.max(0,Math.min(100,margePct))}%"></div></div></div>
+    </div>
+    <div class="projectActionGrid">
+      <button class="projectAction" onclick="goTo('#projekte/${escAttr(p.id)}/material')"><span>Material erfassen</span><small>${fmtCurrency(material)} bisher</small></button>
+      <button class="projectAction" onclick="goTo('#projekte/${escAttr(p.id)}/fotos')"><span>Fotos ablegen</span><small>${p.fotos.length} Fotos</small></button>
+      <button class="projectAction" onclick="goTo('#projekte/${escAttr(p.id)}/dokumente')"><span>Dateien öffnen</span><small>${p.dokumente.length} Dokumente</small></button>
+      <button class="projectAction" onclick="goTo('#projekte/${escAttr(p.id)}/checkliste')"><span>Abnahmeprotokoll</span><small>${escHtml(abnahme.label)}</small></button>
+    </div>
+    <div class="grid cols-2">
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px"><b>Kostenübersicht</b><button class="btn sm" onclick="openProjektForm('${escAttr(p.id)}')">Kosten ändern</button></div>
+        <div class="simpleList">
+          <div class="simpleRow"><span>Material</span><b>${fmtCurrency(material)}</b></div>
+          <div class="simpleRow"><span>Personal</span><b>${fmtCurrency(p.personalkosten)}</b></div>
+          <div class="simpleRow"><span>Fremdleistungen</span><b>${fmtCurrency(p.fremdkosten)}</b></div>
+          <div class="simpleRow"><strong>Kosten gesamt</strong><strong>${fmtCurrency(gesamtKosten)}</strong></div>
+        </div>
+      </div>
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px"><b>Offene Aufgaben</b><button class="btn sm primary" onclick="openAufgabeForm()">＋ Aufgabe</button></div>
+        <div class="simpleList">${offeneAufgaben.slice(0,5).map(a=>`<div class="simpleRow"><span class="simpleRowMain">${escHtml(a.titel)}</span><span class="${a.faellig&&a.faellig<todayISO()?'deadlineLate':''}">${a.faellig?fmtDate(a.faellig):'Ohne Termin'}</span></div>`).join('')||`<div class="empty" style="padding:24px">Keine offenen Aufgaben.</div>`}</div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px"><div><b>Projektfortschritt</b><div class="pageSub">Mit dem Regler direkt aktualisieren</div></div><strong>${p.fortschritt||0} %</strong></div>
+      <input type="range" min="0" max="100" value="${p.fortschritt||0}" style="width:100%;margin-top:14px" oninput="updateProjektFortschritt('${escAttr(p.id)}',this.value);this.previousElementSibling.querySelector('strong').textContent=this.value+' %'">
+    </div>`;
 }
 async function addProjektGrundriss(pid, input){
   const p = S.projekte.find(x=>x.id===pid);
@@ -3713,39 +3767,26 @@ function renderTabMaterial(body, p){
   const summe = p.material.reduce((s,m)=>s+(Number(m.preis)||0),0);
   body.innerHTML = `
     <div class="card">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:8px;">
-        <b>Material / LV (${p.material.length})</b>
-        <div style="display:flex; gap:8px;">
-          <button class="btn sm" onclick="exportLvPDF('${escAttr(p.id)}', true)">📄 LV mit Preisen</button>
-          <button class="btn sm" onclick="exportLvPDF('${escAttr(p.id)}', false)">📄 LV ohne Preise</button>
-          <button class="btn primary sm" onclick="openMaterialForm('${escAttr(p.id)}')">➕ Position</button>
-        </div>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; gap:12px;">
+        <div><b>Materialkosten</b><div class="pageSub">Einfach die Gesamtkosten je Einkauf eintragen.</div></div>
+        <button class="btn primary" onclick="openMaterialForm('${escAttr(p.id)}')">＋ Material</button>
       </div>
-      <div class="tableWrap"><table>
-        <thead><tr><th>Titel/Gewerk</th><th>Bezeichnung</th><th>Menge</th><th>Einheit</th><th>Preis (€)</th><th>Datum</th><th></th></tr></thead>
-        <tbody>
-        ${p.material.map(m=>`
-          <tr><td>${m.titel?escHtml(m.titel):"–"}</td><td>${escHtml(m.bezeichnung)}${m.beschreibung?`<div class="pageSub">${escHtml(m.beschreibung)}</div>`:""}</td><td>${escHtml(m.menge)}</td><td>${escHtml(m.einheit)}</td><td>${m.preis?fmtCurrency(m.preis):"–"}</td><td>${fmtDate(m.datum)}</td>
-          <td style="text-align:right;"><button class="iconBtn" onclick="deleteMaterial('${escAttr(p.id)}','${escAttr(m.id)}')">🗑️</button></td></tr>
-        `).join("") || `<tr><td colspan="7"><div class="empty">Kein Material erfasst.</div></td></tr>`}
-        </tbody>
-      </table></div>
-      ${summe ? `<div style="text-align:right; font-weight:700; margin-top:10px;">Summe: ${fmtCurrency(summe)}</div>` : ""}
+      <div class="simpleList">${p.material.map(m=>`<div class="simpleRow"><div class="simpleRowMain"><b>${escHtml(m.bezeichnung)}</b><div class="pageSub">${[m.menge,m.einheit,fmtDate(m.datum)].filter(Boolean).join(' · ')}</div></div><div style="display:flex;align-items:center;gap:8px"><b>${fmtCurrency(m.preis)}</b><button class="iconBtn" aria-label="Material löschen" onclick="deleteMaterial('${escAttr(p.id)}','${escAttr(m.id)}')">×</button></div></div>`).join('')||`<div class="empty" style="padding:28px">Noch kein Material erfasst.</div>`}</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--border);margin-top:14px;padding-top:14px"><span>Material gesamt</span><strong style="font-size:20px">${fmtCurrency(summe)}</strong></div>
+      <div style="display:flex;gap:8px;margin-top:14px"><button class="btn sm" onclick="exportLvPDF('${escAttr(p.id)}',true)">Liste als PDF</button></div>
     </div>
   `;
 }
 function openMaterialForm(pid){
   const p = S.projekte.find(x=>x.id===pid);
-  const bestehendeTitel = Array.from(new Set(p.material.map(m=>m.titel).filter(Boolean)));
   openModal(`
     <div class="modalHead"><div class="modalTitle">Material erfassen</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
-    <div class="formRow"><label>Titel/Gewerk (optional)</label><input id="matTitel" type="text" list="matTitelListe" placeholder="z.B. Fliesenarbeiten"><datalist id="matTitelListe">${bestehendeTitel.map(t=>`<option value="${escAttr(t)}">`).join("")}</datalist></div>
-    <div class="formRow"><label>Bezeichnung</label><div class="micWrap"><input id="matBez" type="text">${fieldMic("matBez")}</div></div>
-    <div class="formRow"><label>Kurzbeschreibung (optional)</label><div class="micWrap"><textarea id="matBeschreibung" style="min-height:50px;"></textarea>${fieldMic("matBeschreibung")}</div></div>
+    <div class="compactFormNote">Ein Eintrag pro Einkauf oder Lieferung. Doppelte Bezeichnungen werden verhindert.</div>
+    <div class="formRow"><label>Was wurde gekauft?</label><div class="micWrap"><input id="matBez" type="text" placeholder="z. B. Gipskartonplatten">${fieldMic("matBez")}</div></div>
     <div class="grid cols-2">
-      <div class="formRow"><label>Menge</label><input id="matMenge" type="number" step="0.01"></div>
-      <div class="formRow"><label>Einheit</label><input id="matEinheit" type="text" placeholder="m², Stk, kg..."></div>
-      <div class="formRow" style="grid-column:1/-1;"><label>Preis (€, optional)</label><input id="matPreis" type="number" step="0.01"></div>
+      <div class="formRow"><label>Menge (optional)</label><input id="matMenge" type="number" step="0.01"></div>
+      <div class="formRow"><label>Einheit (optional)</label><input id="matEinheit" type="text" placeholder="Stk., m², kg"></div>
+      <div class="formRow" style="grid-column:1/-1;"><label>Gesamtkosten (€)</label><input id="matPreis" type="number" min="0" step="0.01"></div>
     </div>
     <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="saveMaterial('${escAttr(pid)}')">Speichern</button></div>
   `);
@@ -3758,7 +3799,7 @@ function saveMaterial(pid){
     toast("Diese LV-Position ist bereits vorhanden. Bitte die bestehende Position verwenden oder die Bezeichnung genauer unterscheiden.", "warn");
     return;
   }
-  p.material.push({id:uid(), titel:document.getElementById("matTitel").value.trim(), bezeichnung, beschreibung:document.getElementById("matBeschreibung").value.trim(), menge:document.getElementById("matMenge").value, einheit:document.getElementById("matEinheit").value.trim(), preis:Number(document.getElementById("matPreis").value)||0, datum:todayISO()});
+  p.material.push({id:uid(), titel:"", bezeichnung, beschreibung:"", menge:document.getElementById("matMenge").value, einheit:document.getElementById("matEinheit").value.trim(), preis:Number(document.getElementById("matPreis").value)||0, datum:todayISO()});
   saveState(); closeModal(); route(location.hash);
 }
 function deleteMaterial(pid, mid){
@@ -4265,34 +4306,46 @@ function deleteZugang(pid, zid){
 }
 
 function renderTabChecklist(body, p){
+  const status=projektAbnahmeStatus(p);
   body.innerHTML = `
     <div class="card">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
-        <b>WISO / Abnahme-Checkliste (${p.checkliste.filter(c=>c.done).length}/${p.checkliste.length})</b>
+        <div><b>Abnahmeprotokoll</b><div class="pageSub">${p.checkliste.filter(c=>c.done).length} von ${p.checkliste.length} Punkten erledigt · <span class="badge ${status.color}">${status.label}</span></div></div>
         <div style="display:flex; gap:8px;">
-          <button class="btn sm" onclick="exportChecklistePDF('${escAttr(p.id)}')">📄 PDF Export</button>
-          <button class="btn primary sm" onclick="openChecklistItemForm('${escAttr(p.id)}')">➕ Punkt</button>
+          <button class="btn sm" onclick="exportChecklistePDF('${escAttr(p.id)}')">Protokoll als PDF</button>
+          <button class="btn primary sm" onclick="openChecklistItemForm('${escAttr(p.id)}')">＋ Prüfpunkt</button>
         </div>
+      </div>
+      <div class="grid cols-2" style="margin-bottom:14px">
+        <div class="formRow" style="margin:0"><label>Abnahmedatum</label><input type="date" value="${escAttr(p.abnahmeDatum||'')}" onchange="saveAbnahmeMeta('${escAttr(p.id)}','datum',this.value)"></div>
+        <div class="formRow" style="margin:0"><label>Bemerkung / Mängel</label><input type="text" value="${escAttr(p.abnahmeBemerkung||'')}" placeholder="optional" onchange="saveAbnahmeMeta('${escAttr(p.id)}','bemerkung',this.value)"></div>
       </div>
       <div style="display:flex; flex-direction:column; gap:6px;">
         ${p.checkliste.map((c,i)=>`
-          <label style="display:flex; gap:10px; align-items:center; background:var(--card2); padding:10px 14px; border-radius:10px;">
+          <div style="display:flex; gap:10px; align-items:center; background:var(--card2); padding:10px 14px; border-radius:10px;">
             <input type="checkbox" ${c.done?"checked":""} onchange="toggleChecklistItem('${escAttr(p.id)}',${i})">
             <span style="flex:1; ${c.done?'text-decoration:line-through;color:var(--text-dim);':''}">${escHtml(c.text)}</span>
-            <button class="iconBtn" onclick="deleteChecklistItem('${escAttr(p.id)}',${i})">🗑️</button>
-          </label>
-        `).join("") || `<div class="empty">Keine Checklisten-Punkte.</div>`}
+            <button class="iconBtn" aria-label="Prüfpunkt löschen" onclick="deleteChecklistItem('${escAttr(p.id)}',${i})">×</button>
+          </div>
+        `).join("") || `<div class="empty">Noch keine Prüfpunkte. Lege die Punkte an, die vor der Abnahme kontrolliert werden müssen.</div>`}
       </div>
     </div>
     <div class="card" style="margin-top:16px;">
-      <b>Abnahme-Bestätigung</b>
-      <div class="pageSub" style="margin:4px 0 10px;">Unterschrift des Kunden/Auftraggebers zur Bestätigung der Abnahme.</div>
+      <b>Unterschrift Auftraggeber</b>
+      <div class="pageSub" style="margin:4px 0 10px;">Direkt auf dem Handy oder Tablet unterschreiben.</div>
       ${sigPadHTML("clSig", "Unterschrift Kunde/Auftraggeber")}
       <button class="btn sm primary" style="margin-top:8px;" onclick="saveChecklisteUnterschrift('${escAttr(p.id)}')">Unterschrift speichern</button>
     </div>
   `;
   window._checklisteSigDraft = p.checklisteUnterschrift || "";
   initSigPad("clSig", p.checklisteUnterschrift || "", v=>window._checklisteSigDraft=v);
+}
+function saveAbnahmeMeta(pid,field,value){
+  const p=S.projekte.find(x=>x.id===pid);
+  if(!p) return;
+  if(field==="datum") p.abnahmeDatum=value;
+  if(field==="bemerkung") p.abnahmeBemerkung=value.trim();
+  saveState();
 }
 function saveChecklisteUnterschrift(pid){
   const p = S.projekte.find(x=>x.id===pid);
@@ -4302,10 +4355,12 @@ function saveChecklisteUnterschrift(pid){
 }
 function buildChecklisteDoc(p){
   const doc = pdfNewDoc();
-  let y = pdfHeader(doc, "WISO / Abnahme-Checkliste");
+  let y = pdfHeader(doc, "Abnahmeprotokoll");
   doc.setFontSize(10.5);
   doc.text("Projekt: "+p.name, 15, y); y+=6;
   doc.text("Adresse: "+(p.adresse||"–"), 15, y); y+=12;
+  doc.text("Abnahmedatum: "+(p.abnahmeDatum?fmtDate(p.abnahmeDatum):"–"),15,y); y+=6;
+  if(p.abnahmeBemerkung){ doc.text("Bemerkung / Mängel: "+p.abnahmeBemerkung,15,y); y+=10; }
   p.checkliste.forEach(c=>{
     if(y>270){ doc.addPage(); y=20; }
     doc.text((c.done?"[x] ":"[ ] ")+c.text, 15, y);
@@ -4325,9 +4380,8 @@ function buildChecklisteDoc(p){
 }
 function exportChecklistePDF(pid){
   const p = S.projekte.find(x=>x.id===pid);
-  if(!p.checkliste.length){ toast("Keine Checklisten-Punkte zum Exportieren.", "warn"); return; }
-  saveOrSharePdf(buildChecklisteDoc(p), "Abnahme-Checkliste_"+p.name.replace(/[^a-z0-9]+/gi,"_")+".pdf");
-  toast("Checkliste-PDF erstellt.", "success");
+  saveOrSharePdf(buildChecklisteDoc(p), "Abnahmeprotokoll_"+p.name.replace(/[^a-z0-9]+/gi,"_")+".pdf");
+  toast("Abnahmeprotokoll erstellt.", "success");
 }
 
 /* =========================================================

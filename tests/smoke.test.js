@@ -270,7 +270,8 @@ async function main() {
 
   window.renderDashboard(window.document.getElementById("view"));
   const dashboardHtml = window.document.getElementById("view").innerHTML;
-  assert(dashboardHtml.includes('onclick="openProjektForm()"') && dashboardHtml.includes('onclick="openRechnungForm()"'), "Dashboard-Schnellaktionen öffnen Formulare direkt ohne zusätzlichen Zwischenschritt");
+  assert(dashboardHtml.includes('onclick="openProjektForm()"') && dashboardHtml.includes('onclick="openAufgabeForm()"'), "Dashboard öffnet Projekt- und Aufgabenformular direkt ohne Zwischenschritt");
+  assert(dashboardHtml.includes("Auftragssumme") && dashboardHtml.includes("Materialkosten") && dashboardHtml.includes("Voraussichtliche Marge"), "Dashboard zeigt die entscheidenden Baustellen-Kennzahlen");
 
   console.log("\n== Storage Layer: sichtbare Fehlerbehandlung bei Speicherfehler ==");
   let toastMsgs = [];
@@ -439,7 +440,7 @@ async function main() {
   catch (e) { bzOk = false; bzMsg = e.message; }
   assert(bzOk, "Bauzeitenplan-Tab rendert ohne Exception (leer)" + (bzOk ? "" : " (" + bzMsg + ")"));
   const bzTabHtml = window.document.getElementById("view").innerHTML;
-  assert(bzTabHtml.includes("#projekte/p1/bauzeitenplan") && bzTabHtml.includes("Bauzeitenplan"), "Bauzeitenplan ist als Projekt-Tab registriert und verlinkt");
+  assert(!bzTabHtml.includes("#projekte/p1/bauzeitenplan") && bzTabHtml.includes("Abnahme"), "Projekt-Navigation ist reduziert und zeigt die Abnahme direkt");
   assert(bzTabHtml.includes("Noch keine Phasen geplant"), "Leerer Bauzeitenplan zeigt Hinweistext");
 
   // effective status: fertig überschreibt alles, überfällige Bis-Daten werden "verzögert"
@@ -472,7 +473,7 @@ async function main() {
   window.renderProjekte(window.document.getElementById("view"), "p1", "uebersicht");
   let uebHtml = window.document.getElementById("view").innerHTML;
   assert(uebHtml.includes("Fenster bestellen"), "Übersicht zeigt verknüpfte offene Aufgabe des Projekts");
-  assert(uebHtml.includes("RE-UEB-0001"), "Übersicht zeigt verknüpfte Rechnung des Projekts (als Admin)");
+  assert(uebHtml.includes("Kostenübersicht") && uebHtml.includes("Voraussichtliche Marge"), "Übersicht zeigt Kosten und Marge direkt");
 
   window.S.mitarbeiter.push({ id: "uebWorker", name: "Übersicht Arbeiter", position: "Maler", rolle: "Mitarbeiter", tel: "", email: "uebworker@example.com", adresse: "", eintritt: "2024-01-01", status: "aktiv", urlaubstageJahr: 30, stundenlohn: 20, dokumente: [] });
   window.S.currentUserId = "uebWorker";
@@ -705,7 +706,7 @@ async function main() {
 
   window.document.getElementById("view").innerHTML = "";
   window.renderDashboard(window.document.getElementById("view"));
-  assert(window.document.getElementById("view").innerHTML.includes("Pflichtdokumente"), "Dashboard zeigt Pflichtdokumente-Warnkachel");
+  assert(!window.document.getElementById("view").innerHTML.includes("Fuhrpark-Warnungen"), "Dashboard bleibt auf Baustellen-Kennzahlen fokussiert");
 
   console.log("\n== Logo-Verzerrung im PDF-Briefkopf behoben ==");
   {
