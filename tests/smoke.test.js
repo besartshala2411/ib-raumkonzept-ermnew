@@ -7,6 +7,9 @@ let html = fs.readFileSync(APP_PATH, "utf8");
 // Strip external CDN <script src> tags — offline sandbox, and app already
 // feature-detects window.jspdf / window.QRCode / window.supabase before use.
 html = html.replace(/<script src="https:[^>]*><\/script>\s*/g, "");
+// Stylesheets are irrelevant for DOM/logic smoke tests and would otherwise
+// make jsdom contact the CDN, which makes the suite depend on network access.
+html = html.replace(/<link[^>]+href="https:[^"]+"[^>]*>\s*/g, "");
 // Local module scripts (e.g. ./src/core/formatters.js) are NOT stripped — jsdom is given a
 // fake "http://localhost/" base URL with no real server behind it, so a <script src="./...">
 // would try a real network fetch and fail silently. Inline their file content directly instead,
@@ -34,6 +37,10 @@ async function main() {
       window.indexedDB = new FDBFactory();
       window.scrollTo = () => {};
       window.matchMedia = window.matchMedia || (() => ({ matches: false, addListener(){}, removeListener(){} }));
+      // No smoke test needs a real HTTP response. In particular, project-map
+      // rendering schedules geocoding after route changes; keep that path
+      // deterministic and make the complete suite safe to run offline.
+      window.fetch = async () => ({ ok: true, json: async () => [], text: async () => "" });
       window.navigator.serviceWorker = { register: () => Promise.resolve({}), ready: Promise.resolve({}) };
       // jsdom has no canvas backend without native deps; stub a no-op 2D context
       // so branding/signature/image-compression code paths don't throw during the test.
@@ -73,6 +80,21 @@ async function main() {
   window.enterApp();
   assert(window.document.getElementById("appShell").classList.contains("hidden") === false, "App-Shell nach Login sichtbar");
   assert(window.hasAdminAccess() === true, "Simulierter Geschäftsführer-Login hat Admin-Zugriff (für restliche Testsuite)");
+
+  console.log("\n== Mobile Navigation ==");
+  const mobileNav = window.document.getElementById("mobileNav");
+  assert(!!mobileNav, "Mobile Hauptnavigation vorhanden");
+  assert(mobileNav.querySelectorAll(".mobileNavItem").length === 5, "Mobile Navigation enthält vier Hauptziele und Mehr-Menü");
+  assert(mobileNav.querySelector('[data-route="dashboard"]').getAttribute("aria-current") === "page", "Aktueller Bereich ist für Screenreader markiert");
+  window.route("#projekte");
+  assert(mobileNav.querySelector('[data-route="projekte"]').classList.contains("active"), "Projekt-Ziel wird beim Routenwechsel aktiv markiert");
+  assert(mobileNav.querySelector('[data-route="dashboard"]').getAttribute("aria-current") === null, "Vorheriges Navigationsziel verliert aria-current");
+  assert(window.document.getElementById("mobilePageTitle").textContent === "Projekte", "Mobile Kopfzeile zeigt den aktuellen Bereich");
+  window.toggleSidebar();
+  assert(window.document.getElementById("mobileMoreBtn").getAttribute("aria-expanded") === "true", "Mehr-Schaltfläche meldet geöffnetes Menü");
+  window.closeSidebar();
+  assert(window.document.getElementById("mobileMoreBtn").getAttribute("aria-expanded") === "false", "Mehr-Schaltfläche meldet geschlossenes Menü");
+  window.route("#dashboard");
 
   console.log("\n== Login: E-Mail/Passwort, Konto-Zuordnung ==");
   window.renderLogin();

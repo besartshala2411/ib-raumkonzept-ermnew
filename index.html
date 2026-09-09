@@ -20,7 +20,7 @@
   --radius:16px; --radius-sm:10px;
   --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.28);
   --shadow-lg:0 4px 10px rgba(0,0,0,.3), 0 16px 40px rgba(0,0,0,.35);
-  --sidebar-w:250px; --ticker-h:44px;
+  --sidebar-w:250px; --ticker-h:44px; --mobile-nav-h:0px;
   color-scheme: dark;
 }
 :root[data-theme="light"]{
@@ -81,6 +81,7 @@ a{color:var(--primary);}
 .tickerBtn:disabled{opacity:.6; cursor:default;}
 #hamburgerBtn{display:none;}
 #sidebarBackdrop{display:none;}
+.mobilePageTitle{display:none; min-width:0; font-size:14px; font-weight:750; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
 .tickerBtn.spinning{animation:spin .8s linear infinite;}
 @keyframes spin{from{transform:rotate(0deg);}to{transform:rotate(360deg);}}
 
@@ -109,6 +110,21 @@ a{color:var(--primary);}
 .navBadge{margin-left:auto; background:var(--red); color:#fff; font-size:10px; font-weight:700; border-radius:20px; padding:1px 7px;}
 
 #view{flex:1; overflow-y:auto; padding:22px 26px 60px;}
+
+/* ---- Mobile primary navigation ---- */
+#mobileNav{display:none;}
+.mobileNavItem{
+  appearance:none; border:0; background:transparent; color:var(--text-dim);
+  min-width:0; min-height:56px; padding:6px 4px calc(5px + env(safe-area-inset-bottom));
+  align-items:center; justify-content:center; flex-direction:column; gap:2px;
+  font-size:10.5px; font-weight:650; position:relative;
+}
+.mobileNavIcon{font-size:20px; line-height:1;}
+.mobileNavItem.active{color:var(--primary);}
+.mobileNavItem.active::before{
+  content:""; position:absolute; top:0; left:24%; right:24%; height:3px;
+  border-radius:0 0 4px 4px; background:var(--primary);
+}
 
 /* ---- Generic Components ---- */
 .pageHead{display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom:20px; flex-wrap:wrap;}
@@ -236,6 +252,7 @@ tr:hover td{background:var(--card2);}
   .grid.cols-3,.grid.cols-4{grid-template-columns:repeat(2,1fr);}
 }
 @media(max-width:768px){
+  :root{--mobile-nav-h:calc(58px + env(safe-area-inset-bottom));}
   #hamburgerBtn{display:inline-flex;}
   #sidebar{
     position:fixed; top:var(--ticker-h); left:0; bottom:0; z-index:520;
@@ -248,8 +265,27 @@ tr:hover td{background:var(--card2);}
     background:rgba(0,0,0,.5); z-index:510; opacity:0; pointer-events:none; transition:opacity .25s ease;
   }
   #sidebarBackdrop.open{opacity:1; pointer-events:auto;}
-  #view{padding:14px;}
+  #view{padding:14px 14px calc(20px + var(--mobile-nav-h));}
+  #mobileNav{
+    display:grid; grid-template-columns:repeat(5,minmax(0,1fr));
+    position:fixed; left:0; right:0; bottom:0; z-index:505;
+    min-height:var(--mobile-nav-h); background:var(--card);
+    background:color-mix(in srgb,var(--card) 94%,transparent);
+    border-top:1px solid var(--border); box-shadow:0 -8px 24px rgba(0,0,0,.18);
+    backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+  }
+  .mobileNavItem{display:flex;}
+  .tickerMetric{display:none;}
+  .mobilePageTitle{display:block; flex:1;}
+  .tickerSpacer{display:none;}
+  #ticker{overflow:hidden; gap:2px; padding:0 8px;}
+  .tickerBtn{min-width:40px; min-height:40px; display:inline-flex; align-items:center; justify-content:center;}
   .grid.cols-2,.grid.cols-3,.grid.cols-4,.grid.cols-6{grid-template-columns:1fr 1fr;}
+}
+@media(max-width:480px){
+  .tickerUser{display:none;}
+  #refreshBtn{display:none;}
+  .mobileNavItem{font-size:10px;}
 }
 </style>
 </head>
@@ -270,6 +306,7 @@ tr:hover td{background:var(--card2);}
     <div id="sidebarBackdrop" onclick="closeSidebar()"></div>
     <div id="view"></div>
   </div>
+  <nav id="mobileNav" aria-label="Hauptnavigation"></nav>
 </div>
 
 <div class="toastWrap" id="toastWrap"></div>
@@ -925,14 +962,40 @@ function buildSidebar(){
     });
   });
   sidebar.innerHTML = html;
+  buildMobileNav();
+}
+function buildMobileNav(){
+  const nav = document.getElementById("mobileNav");
+  if(!nav) return;
+  const items = [
+    {id:"dashboard", label:"Start", icon:"🏠"},
+    {id:"projekte", label:"Projekte", icon:"🏢"},
+    {id:"aufgaben", label:"Aufgaben", icon:"📝"},
+    {id:"stempeluhr", label:"Zeit", icon:"⏱️"},
+  ];
+  nav.innerHTML = items.map(item=>`
+    <button type="button" class="mobileNavItem" data-route="${escAttr(item.id)}"
+      onclick="location.hash='#${escAttr(item.id)}'; closeSidebar();" aria-label="${escAttr(item.label)}">
+      <span class="mobileNavIcon" aria-hidden="true">${item.icon}</span>
+      <span>${escHtml(item.label)}</span>
+    </button>
+  `).join("") + `
+    <button type="button" class="mobileNavItem" id="mobileMoreBtn" onclick="toggleSidebar()"
+      aria-label="Weitere Bereiche" aria-controls="sidebar" aria-expanded="false">
+      <span class="mobileNavIcon" aria-hidden="true">☰</span><span>Mehr</span>
+    </button>`;
 }
 function toggleSidebar(){
-  document.getElementById("sidebar").classList.toggle("open");
-  document.getElementById("sidebarBackdrop").classList.toggle("open");
+  const isOpen = document.getElementById("sidebar").classList.toggle("open");
+  document.getElementById("sidebarBackdrop").classList.toggle("open", isOpen);
+  const moreBtn = document.getElementById("mobileMoreBtn");
+  if(moreBtn){ moreBtn.classList.toggle("active", isOpen); moreBtn.setAttribute("aria-expanded", String(isOpen)); }
 }
 function closeSidebar(){
   document.getElementById("sidebar").classList.remove("open");
   document.getElementById("sidebarBackdrop").classList.remove("open");
+  const moreBtn = document.getElementById("mobileMoreBtn");
+  if(moreBtn){ moreBtn.classList.remove("active"); moreBtn.setAttribute("aria-expanded", "false"); }
 }
 function route(hash){
   const raw = (hash||"#dashboard").replace("#","") || "dashboard";
@@ -943,10 +1006,17 @@ function route(hash){
   document.querySelectorAll(".navItem").forEach(el=>{
     el.classList.toggle("active", el.dataset.route===mod.id);
   });
+  document.querySelectorAll(".mobileNavItem[data-route]").forEach(el=>{
+    el.classList.toggle("active", el.dataset.route===mod.id);
+    if(el.dataset.route===mod.id) el.setAttribute("aria-current", "page");
+    else el.removeAttribute("aria-current");
+  });
+  const mobileTitle = document.getElementById("mobilePageTitle");
+  if(mobileTitle) mobileTitle.textContent = mod.label;
   const view = document.getElementById("view");
   if(RESTRICTED_MODULES.includes(mod.id) && !hasAdminAccess()){
     view.innerHTML = `<div class="empty"><div class="emptyIcon">🔒</div>Dieser Bereich ist nur für Geschäftsführung/Bauleitung sichtbar.</div>`;
-    renderTicker();
+    renderTicker(mod);
     return;
   }
   try{
@@ -956,11 +1026,11 @@ function route(hash){
     console.error(e);
     view.innerHTML = `<div class="empty"><div class="emptyIcon">⚠️</div>Fehler beim Laden des Moduls „${escHtml(mod.label)}“.<br><small>${escHtml(e.message)}</small></div>`;
   }
-  renderTicker();
+  renderTicker(mod);
 }
 window.addEventListener("hashchange", ()=>route(location.hash));
 
-function renderTicker(){
+function renderTicker(activeModule){
   const t = document.getElementById("ticker");
   const admin = hasAdminAccess();
   const activeMitarbeiter = S.mitarbeiter.filter(m=>m.status==="aktiv").length;
@@ -971,12 +1041,13 @@ function renderTicker(){
   const user = currentUser();
   t.innerHTML = `
     <button class="tickerBtn" id="hamburgerBtn" title="Menü" onclick="toggleSidebar()">☰</button>
-    <div class="tickerItem">👷 <b>${activeMitarbeiter}</b> Mitarbeiter</div>
-    <div class="tickerItem">🏢 <b>${aktiveProjekte}</b> aktive Projekte</div>
-    ${admin?`<div class="tickerItem">💶 <b>${fmtCurrency(offen)}</b> offen</div>`:""}
-    <div class="tickerItem">⏱️ <b>${gestempelt}</b> heute gestempelt</div>
+    <div class="mobilePageTitle" id="mobilePageTitle">${escHtml((activeModule||MODULES.find(m=>m.id===(location.hash||"#dashboard").replace("#","").split("/")[0])||MODULES[0]||{}).label||"Dashboard")}</div>
+    <div class="tickerItem tickerMetric">👷 <b>${activeMitarbeiter}</b> Mitarbeiter</div>
+    <div class="tickerItem tickerMetric">🏢 <b>${aktiveProjekte}</b> aktive Projekte</div>
+    ${admin?`<div class="tickerItem tickerMetric">💶 <b>${fmtCurrency(offen)}</b> offen</div>`:""}
+    <div class="tickerItem tickerMetric">⏱️ <b>${gestempelt}</b> heute gestempelt</div>
     <div class="tickerSpacer"></div>
-    <div class="tickerItem">${user? "👤 "+escHtml(user.name) : "👤 Gast/Büro"}</div>
+    <div class="tickerItem tickerUser">${user? "👤 "+escHtml(user.name) : "👤 Gast/Büro"}</div>
     <button class="tickerBtn" id="refreshBtn" title="Daten aktualisieren" onclick="manualRefresh()">🔄</button>
     <button class="tickerBtn" title="Suche (Strg/Cmd+K)" onclick="openGlobalSearch()">🔍</button>
     <button class="tickerBtn" title="Theme wechseln" onclick="toggleTheme()">🌗</button>
