@@ -299,7 +299,8 @@ async function main() {
   const fakeState = window.defaultState();
   fakeState.projekte.push(oldSavedProject);
   const shaped = window.ensureShape(fakeState);
-  assert(Array.isArray(shaped.projekte[0].team) && Array.isArray(shaped.projekte[0].fotos) && Array.isArray(shaped.projekte[0].aufmasse), "Alte Projekt-Datensätze bekommen fehlende Arrays via ensureShape()");
+  assert(Array.isArray(shaped.projekte[0].team) && Array.isArray(shaped.projekte[0].fotos) && Array.isArray(shaped.projekte[0].aufmasse) && Array.isArray(shaped.projekte[0].lvPositionen), "Alte Projekt-Datensätze bekommen fehlende Arrays inklusive LV via ensureShape()");
+  assert(shaped.projekte[0].standardSubLvAbzug === 20, "Alte Projekte erhalten 20 % als verständlichen Standardabzug");
 
   console.log("\n== Router / Alle Module rendern ohne Exception ==");
   for (const mod of window.MODULES) {
@@ -434,6 +435,19 @@ async function main() {
   window.removeSubFromProjekt("sub1", "p1");
   assert(!window.S.projekte.find((p) => p.id === "p1").subunternehmer.includes("sub1"), "Subunternehmer-Zuordnung wird wieder entfernt");
 
+  console.log("\n== Projekt-LV: Angebot getrennt vom Material und Preisabzug ==");
+  const p1Lv = window.S.projekte.find((p) => p.id === "p1");
+  p1Lv.lvPositionen = [{ id:"lv1", titel:"Maler", bezeichnung:"Wände streichen", beschreibung:"", menge:1, einheit:"psch", preis:1000, datum:window.todayISO() }];
+  p1Lv.material = [];
+  window.renderProjekte(window.document.getElementById("view"), "p1", "lv");
+  const projektLvHtml = window.document.getElementById("view").innerHTML;
+  assert(projektLvHtml.includes("Wände streichen") && projektLvHtml.includes("An Subunternehmer"), "Projekt-LV zeigt Angebot und direkte Weitergabe");
+  window.openAusschreibungForm("p1");
+  assert(window.currentAusPreisMode() === "reduziert", "Subunternehmer-LV startet direkt mit reduzierten Preisen");
+  assert(Number(window.document.getElementById("ausReduktionInput").value) === 20, "20 % Abzug ist voreingestellt");
+  assert(window._ausDraft.positionen[0].preis === 800, "20 % Abzug reduziert 1.000 € korrekt auf 800 €");
+  window.closeModal();
+
   console.log("\n== Bauzeitenplan (Gantt, Phasen-Verwaltung, PDF-Export) ==");
   let bzOk = true, bzMsg = "";
   try { window.document.getElementById("view").innerHTML = ""; window.renderProjekte(window.document.getElementById("view"), "p1", "bauzeitenplan"); }
@@ -473,7 +487,7 @@ async function main() {
   window.renderProjekte(window.document.getElementById("view"), "p1", "uebersicht");
   let uebHtml = window.document.getElementById("view").innerHTML;
   assert(!uebHtml.includes("Fenster bestellen"), "Projekt-Übersicht bleibt frei von zusätzlichen Aufgabenlisten");
-  assert(uebHtml.includes("Auftragssumme") && uebHtml.includes("Materialkosten") && uebHtml.includes("Voraussichtliche Marge"), "Übersicht zeigt nur die entscheidenden Baustellen-Kennzahlen");
+  assert(uebHtml.includes("Fertig") && uebHtml.includes("Auftrag") && uebHtml.includes("Material") && uebHtml.includes("Marge"), "Übersicht zeigt nur die entscheidenden Baustellen-Kennzahlen");
   assert(uebHtml.includes(">Material<") && uebHtml.includes(">Fotos<") && uebHtml.includes(">Dateien<") && uebHtml.includes(">Abnahme<"), "Vier große Projektaktionen sind direkt erreichbar");
 
   window.S.mitarbeiter.push({ id: "uebWorker", name: "Übersicht Arbeiter", position: "Maler", rolle: "Mitarbeiter", tel: "", email: "uebworker@example.com", adresse: "", eintritt: "2024-01-01", status: "aktiv", urlaubstageJahr: 30, stundenlohn: 20, dokumente: [] });
@@ -634,8 +648,8 @@ async function main() {
   assert(window.document.getElementById("modalOverlay").innerHTML.includes("rSig"), "Rechnungs-Formular enthält Unterschrift-Canvas");
   window.closeModal();
 
-  console.log("\n== Vorlagen-Katalog (11 Kategorien-Vorlagen, Checkbox-Felder, PDF) ==");
-  assert(window.VORLAGEN_DEFS.length === 11, "Vorlagen-Katalog enthält 11 Vorlagen (" + window.VORLAGEN_DEFS.length + ")");
+  console.log("\n== Vorlagen-Katalog (13 Kategorien-Vorlagen, Checkbox-Felder, PDF) ==");
+  assert(window.VORLAGEN_DEFS.length === 13, "Vorlagen-Katalog enthält 13 Vorlagen (" + window.VORLAGEN_DEFS.length + ")");
   window.document.getElementById("view").innerHTML = "";
   window.renderVorlagen(window.document.getElementById("view"));
   const vorlagenHtml = window.document.getElementById("view").innerHTML;
@@ -650,6 +664,12 @@ async function main() {
   const checkboxCount = (voModalHtml.match(/type="checkbox"/g) || []).length;
   assert(checkboxCount === uebergabeDef.felder.filter((f) => f.typ === "checkbox").length, "Checkbox-Felder werden als echte Checkboxen gerendert (" + checkboxCount + ")");
   assert(voModalHtml.includes("voSig"), "Vorlagen-Formular enthält Unterschrift-Canvas");
+  window.closeModal();
+
+  window.renderProjekte(window.document.getElementById("view"), "p1", "vorlagen");
+  assert(window.document.getElementById("view").innerHTML.includes("Mängelprüfung") && window.document.getElementById("view").innerHTML.includes("Abnahmebestätigung"), "Projekt zeigt die wichtigen Baustellen-Vorlagen direkt");
+  window.openVorlageForm("abnahme", "p1");
+  assert(window._vorlageDraft.projektId === "p1" && window.document.getElementById("voProjekt").value === "p1", "Vorlage aus dem Projekt ist automatisch dem richtigen Projekt zugeordnet");
   window.closeModal();
 
   window.S.vorlagen.push({ id: "vo1", defId: "uebergabe_mietobjekt", projektId: "", werte: { "Objekt": "Musterhaus", "Schlüssel übergeben": "Ja", "Mängelfrei übergeben": "Nein" }, unterschrift: "", datum: window.todayISO() });

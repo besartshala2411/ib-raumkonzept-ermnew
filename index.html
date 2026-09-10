@@ -293,6 +293,17 @@ tr:hover td{background:var(--card2);}
 .marginBar{height:8px;border-radius:99px;background:var(--bg2);overflow:hidden;margin-top:10px;}
 .marginBar>div{height:100%;background:var(--green);border-radius:inherit;}
 .compactFormNote{font-size:12.5px;color:var(--text-dim);background:var(--card2);border-radius:9px;padding:10px 12px;margin-bottom:14px;}
+.projectSummaryBar{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:12px;}
+.projectSummaryItem{padding:13px 15px;border-right:1px solid var(--border);min-width:0;}
+.projectSummaryItem:last-child{border-right:0;}
+.projectSummaryItem span{display:block;color:var(--text-dim);font-size:12px;margin-bottom:4px;}
+.projectSummaryItem b{display:block;font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.projectTools{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;}
+.projectTool{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:56px;padding:10px 12px;background:var(--card);border:1px solid var(--border);border-radius:10px;color:var(--text);text-align:left;font-weight:700;}
+.projectTool:hover{border-color:var(--primary);background:var(--primary-bg);}
+.projectTool small{display:block;color:var(--text-dim);font-weight:500;margin-top:2px;}
+.projectToolArrow{color:var(--text-dim);font-size:18px;}
+.compactSectionTitle{font-size:13px;color:var(--text-dim);font-weight:700;margin:14px 0 8px;}
 
 @media(max-width:900px){
   :root{--sidebar-w:210px;}
@@ -334,6 +345,10 @@ tr:hover td{background:var(--card2);}
   .projectGrid{grid-template-columns:1fr;}
   .cockpitMetrics{grid-template-columns:1fr 1fr;}
   .projectActionGrid{grid-template-columns:1fr 1fr;}
+  .projectSummaryBar{grid-template-columns:1fr 1fr;}
+  .projectSummaryItem:nth-child(2){border-right:0;}
+  .projectSummaryItem:nth-child(-n+2){border-bottom:1px solid var(--border);}
+  .projectTools{grid-template-columns:1fr 1fr;}
   .projectHero{display:block;}
   .projectHeroActions{justify-content:flex-start;margin-top:12px;}
   .projectHeroActions .btn{flex:1;justify-content:center;}
@@ -684,6 +699,8 @@ function ensureShape(s){
     if(!p.dokumente) p.dokumente=[];
     if(!p.grundrisse) p.grundrisse=[];
     if(!p.material) p.material=[];
+    if(!p.lvPositionen) p.lvPositionen=[];
+    if(p.standardSubLvAbzug==null) p.standardSubLvAbzug=20;
     if(!p.ausschreibung) p.ausschreibung=[];
     if(!p.bautagebuch) p.bautagebuch=[];
     if(!p.zugaenge) p.zugaenge=[];
@@ -3101,7 +3118,7 @@ async function renderProjekteKarte(list){
   if(statusEl) statusEl.textContent = markers.length ? "" : (withAdresse.length ? "Keine Adresse konnte auf der Karte gefunden werden." : "");
 }
 function openProjektForm(id){
-  const p = id ? S.projekte.find(x=>x.id===id) : {id:uid(), name:"", kundeId:"", adresse:"", status:"In Planung", budget:0, deadline:"", fortschritt:0, personalkosten:0, fremdkosten:0, abnahmeDatum:"", abnahmeBemerkung:"", team:[], subunternehmer:[], fotos:[], dokumente:[], grundrisse:[], material:[], ausschreibung:[], bautagebuch:[], zugaenge:[], checkliste:[], aufmasse:[], bauzeitenplan:[], chat:[]};
+  const p = id ? S.projekte.find(x=>x.id===id) : {id:uid(), name:"", kundeId:"", adresse:"", status:"In Planung", budget:0, deadline:"", fortschritt:0, personalkosten:0, fremdkosten:0, abnahmeDatum:"", abnahmeBemerkung:"", standardSubLvAbzug:20, team:[], subunternehmer:[], fotos:[], dokumente:[], grundrisse:[], material:[], lvPositionen:[], ausschreibung:[], bautagebuch:[], zugaenge:[], checkliste:[], aufmasse:[], bauzeitenplan:[], chat:[]};
   openModal(`
     <div class="modalHead"><div class="modalTitle">${id?"Projekt bearbeiten":"Neues Projekt"}</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
     <div class="compactFormNote">Nur die wichtigsten Projektdaten. Materialkosten werden automatisch aus den Materialeinträgen berechnet.</div>
@@ -3143,6 +3160,9 @@ function deleteProjekt(id){
 
 const PROJEKT_TABS = [
   {id:"uebersicht", label:"Überblick", icon:"▦"},
+  {id:"lv", label:"LV / Subunternehmer", icon:"%"},
+  {id:"bauzeitenplan", label:"Bauzeitenplan", icon:"◫"},
+  {id:"vorlagen", label:"Vorlagen", icon:"▱"},
   {id:"material", label:"Material", icon:"▤"},
   {id:"fotos", label:"Fotos", icon:"▧"},
   {id:"dokumente", label:"Dateien", icon:"▱"},
@@ -3169,7 +3189,7 @@ function renderProjektDetail(view, id, tab){
   const renderers = {
     uebersicht: renderTabUebersicht, team: renderTabTeam, bauzeitenplan: renderTabBauzeitenplan, fotos: renderTabFotos, dokumente: renderTabProjektDokumente,
     material: renderTabMaterial, ausschreibung: renderTabAusschreibung, bautagebuch: renderTabBautagebuch, zugaenge: renderTabZugaenge,
-    checkliste: renderTabChecklist, aufmass: renderTabAufmass, chat: renderTabProjektChat
+    checkliste: renderTabChecklist, aufmass: renderTabAufmass, chat: renderTabProjektChat, lv: renderTabProjektLv, vorlagen: renderTabProjektVorlagen
   };
   (renderers[tab]||renderTabUebersicht)(body, p);
 }
@@ -3302,19 +3322,52 @@ function renderTabUebersicht(body, p){
   const abnahme=projektAbnahmeStatus(p);
   const deadlineLate=p.deadline&&p.deadline<todayISO()&&p.status!=="Abgeschlossen";
   body.innerHTML=`
-    <div class="cockpitMetrics">
-      <div class="cockpitMetric"><div class="cockpitMetricLabel">Fertigstellung</div><div class="cockpitMetricValue ${deadlineLate?'deadlineLate':''}">${p.deadline?fmtDate(p.deadline):"Termin fehlt"}</div><div class="cockpitMetricHint">${deadlineLate?'Termin überschritten':(p.fortschritt||0)+' % erledigt'}</div></div>
-      <div class="cockpitMetric"><div class="cockpitMetricLabel">Auftragssumme</div><div class="cockpitMetricValue">${fmtCurrency(p.budget)}</div><div class="cockpitMetricHint">vereinbarter Auftrag</div></div>
-      <div class="cockpitMetric"><div class="cockpitMetricLabel">Materialkosten</div><div class="cockpitMetricValue">${fmtCurrency(material)}</div><div class="cockpitMetricHint">${(p.material||[]).length} Einträge</div></div>
-      <div class="cockpitMetric"><div class="cockpitMetricLabel">Voraussichtliche Marge</div><div class="cockpitMetricValue" style="color:${marge<0?'var(--red)':'var(--green)'}">${fmtCurrency(marge)}</div><div class="cockpitMetricHint">${margePct.toFixed(1).replace('.',',')} % vom Auftrag</div><div class="marginBar"><div style="width:${Math.max(0,Math.min(100,margePct))}%"></div></div></div>
+    <div class="projectSummaryBar">
+      <div class="projectSummaryItem"><span>Fertig</span><b class="${deadlineLate?'deadlineLate':''}">${p.deadline?fmtDate(p.deadline):"Termin fehlt"}</b></div>
+      <div class="projectSummaryItem"><span>Auftrag</span><b>${fmtCurrency(p.budget)}</b></div>
+      <div class="projectSummaryItem"><span>Material</span><b>${fmtCurrency(material)}</b></div>
+      <div class="projectSummaryItem"><span>Marge · ${margePct.toFixed(1).replace('.',',')} %</span><b style="color:${marge<0?'var(--red)':'var(--green)'}">${fmtCurrency(marge)}</b></div>
     </div>
-    <div class="projectActionGrid">
-      <button class="projectAction" onclick="goTo('#projekte/${escAttr(p.id)}/material')"><span>Material</span><small>${fmtCurrency(material)}</small></button>
-      <button class="projectAction" onclick="goTo('#projekte/${escAttr(p.id)}/fotos')"><span>Fotos</span><small>${p.fotos.length} gespeichert</small></button>
-      <button class="projectAction" onclick="goTo('#projekte/${escAttr(p.id)}/dokumente')"><span>Dateien</span><small>${p.dokumente.length} gespeichert</small></button>
-      <button class="projectAction" onclick="goTo('#projekte/${escAttr(p.id)}/checkliste')"><span>Abnahme</span><small>${escHtml(abnahme.label)}</small></button>
+    <div class="compactSectionTitle">Projekt-Werkzeuge</div>
+    <div class="projectTools">
+      <button class="projectTool" onclick="goTo('#projekte/${escAttr(p.id)}/lv')"><span>LV / Subunternehmer<small>${(p.lvPositionen||[]).length} Positionen</small></span><span class="projectToolArrow">›</span></button>
+      <button class="projectTool" onclick="goTo('#projekte/${escAttr(p.id)}/bauzeitenplan')"><span>Bauzeitenplan<small>${p.bauzeitenplan.length} Phasen</small></span><span class="projectToolArrow">›</span></button>
+      <button class="projectTool" onclick="goTo('#projekte/${escAttr(p.id)}/vorlagen')"><span>Vorlagen<small>Protokolle & Nachweise</small></span><span class="projectToolArrow">›</span></button>
+      <button class="projectTool" onclick="goTo('#projekte/${escAttr(p.id)}/checkliste')"><span>Abnahme<small>${escHtml(abnahme.label)}</small></span><span class="projectToolArrow">›</span></button>
+    </div>
+    <div class="compactSectionTitle">Baustelle</div>
+    <div class="projectTools">
+      <button class="projectTool" onclick="goTo('#projekte/${escAttr(p.id)}/material')"><span>Material<small>${fmtCurrency(material)}</small></span><span class="projectToolArrow">›</span></button>
+      <button class="projectTool" onclick="goTo('#projekte/${escAttr(p.id)}/fotos')"><span>Fotos<small>${p.fotos.length} gespeichert</small></span><span class="projectToolArrow">›</span></button>
+      <button class="projectTool" onclick="goTo('#projekte/${escAttr(p.id)}/dokumente')"><span>Dateien<small>${p.dokumente.length} gespeichert</small></span><span class="projectToolArrow">›</span></button>
+      <button class="projectTool" onclick="openAuftragsmappeForm('${escAttr(p.id)}')"><span>Projekt-PDF<small>Alles bündeln</small></span><span class="projectToolArrow">›</span></button>
     </div>
     `;
+}
+function projektLvSumme(p){
+  return (p.lvPositionen||[]).reduce((sum,pos)=>sum+(Number(pos.preis)||0),0);
+}
+function renderTabProjektLv(body, p){
+  const positionen=p.lvPositionen||[];
+  const summe=projektLvSumme(p);
+  body.innerHTML=`
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+        <div><b>LV / Subunternehmer</b><div class="pageSub">Angebot einlesen, Preisabzug festlegen und weitergeben.</div></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn sm" onclick="openProjektAngebotImport('${escAttr(p.id)}')">PDF einlesen</button>
+          <button class="btn primary sm" onclick="openAusschreibungForm('${escAttr(p.id)}')" ${positionen.length?'':'disabled'}>An Subunternehmer</button>
+        </div>
+      </div>
+      ${positionen.length?`
+        <div class="simpleList">
+          ${positionen.map((pos,i)=>`<div class="simpleRow"><div class="simpleRowMain"><b>${i+1}. ${escHtml(pos.bezeichnung)}</b><div class="pageSub">${[pos.menge,pos.einheit,pos.titel].filter(Boolean).map(escHtml).join(' · ')}</div></div><b>${fmtCurrency(pos.preis)}</b></div>`).join('')}
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;padding-top:12px;border-top:1px solid var(--border);"><span class="pageSub">Angebotssumme</span><b>${fmtCurrency(summe)}</b></div>
+      `:`<div class="empty" style="padding:28px 12px;">Noch kein Angebot hinterlegt.<br><button class="btn primary sm" style="margin-top:10px;" onclick="openProjektAngebotImport('${escAttr(p.id)}')">Angebot als PDF einlesen</button></div>`}
+    </div>
+    ${(p.ausschreibung||[]).length?`<div style="margin-top:12px;"><button class="btn sm" onclick="goTo('#projekte/${escAttr(p.id)}/ausschreibung')">Versendete Anfragen (${p.ausschreibung.length})</button></div>`:''}
+  `;
 }
 async function addProjektGrundriss(pid, input){
   const p = S.projekte.find(x=>x.id===pid);
@@ -3956,7 +4009,7 @@ function exportArbeitsauftrag(pid){
 }
 
 /* =========================================================
-   NACHUNTERNEHMER-AUSSCHREIBUNG
+   SUBUNTERNEHMER-AUSSCHREIBUNG
 ========================================================= */
 const AUSSCHREIBUNG_STATUS_BADGE = {"versendet":"gray","angebot erhalten":"blue","beauftragt":"green","abgelehnt":"red"};
 function renderTabAusschreibung(body, p){
@@ -3965,12 +4018,12 @@ function renderTabAusschreibung(body, p){
   body.innerHTML = `
     <div class="card" style="margin-bottom:16px;">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px;">
-        <b>Nachunternehmer-Ausschreibung (${entries.length})</b>
-        <button class="btn primary sm" onclick="openAusschreibungForm('${escAttr(p.id)}')">📤 LV an Nachunternehmer senden</button>
+        <b>Subunternehmer-Anfragen (${entries.length})</b>
+        <button class="btn primary sm" onclick="openAusschreibungForm('${escAttr(p.id)}')">LV an Subunternehmer</button>
       </div>
-      <div class="pageSub" style="margin-bottom:14px;">Schickt das LV aus dem Tab „Material / LV“ an ausgewählte Nachunternehmer zur Angebotsabgabe und hält die Angebote fest.</div>
+      <div class="pageSub" style="margin-bottom:14px;">LV mit deinem Preisabzug erstellen und an ausgewählte Subunternehmer weitergeben.</div>
       <div class="tableWrap"><table>
-        <thead><tr><th>Nachunternehmer</th><th>Versendet</th><th>Status</th><th>Angebot</th><th></th></tr></thead>
+        <thead><tr><th>Subunternehmer</th><th>Versendet</th><th>Status</th><th>Angebot</th><th></th></tr></thead>
         <tbody>
         ${entries.map(e=>{
           const sub = S.subunternehmer.find(s=>s.id===e.subunternehmerId);
@@ -3993,7 +4046,7 @@ function renderTabAusschreibung(body, p){
     <div class="card">
       <b>Preisvergleich</b>
       <div class="tableWrap" style="margin-top:12px;"><table>
-        <thead><tr><th>Nachunternehmer</th><th>Angebot</th><th>Differenz zum günstigsten</th></tr></thead>
+        <thead><tr><th>Subunternehmer</th><th>Angebot</th><th>Differenz zum günstigsten</th></tr></thead>
         <tbody>
           ${angebote.map(e=>{
             const sub = S.subunternehmer.find(s=>s.id===e.subunternehmerId);
@@ -4007,34 +4060,38 @@ function renderTabAusschreibung(body, p){
 }
 function openAusschreibungForm(pid){
   const p = S.projekte.find(x=>x.id===pid);
-  if(!p.material.length){ toast("Bitte zuerst LV-Positionen im Tab „Material / LV“ anlegen oder importieren.", "warn"); return; }
+  if(!p.ausschreibung) p.ausschreibung=[];
+  const quelle=(p.lvPositionen&&p.lvPositionen.length)?p.lvPositionen:p.material;
+  const standardAbzug=Number(p.standardSubLvAbzug==null?20:p.standardSubLvAbzug);
+  if(!quelle.length){ toast("Bitte zuerst ein Angebot oder LV einlesen.", "warn"); return; }
   const bereitsEingeladen = new Set(p.ausschreibung.map(e=>e.subunternehmerId));
   const verfuegbar = S.subunternehmer.filter(s=>!bereitsEingeladen.has(s.id));
   window._ausDraft = {
     pid,
-    original: p.material.map(m=>({titel:m.titel||"", bezeichnung:m.bezeichnung, beschreibung:m.beschreibung||"", menge:m.menge, einheit:m.einheit, preis:Number(m.preis)||0})),
-    positionen: p.material.map(m=>({titel:m.titel||"", bezeichnung:m.bezeichnung, beschreibung:m.beschreibung||"", menge:m.menge, einheit:m.einheit, preis:Number(m.preis)||0})),
+    original: quelle.map(m=>({titel:m.titel||"", bezeichnung:m.bezeichnung, beschreibung:m.beschreibung||"", menge:m.menge, einheit:m.einheit, preis:Number(m.preis)||0})),
+    positionen: quelle.map(m=>({titel:m.titel||"", bezeichnung:m.bezeichnung, beschreibung:m.beschreibung||"", menge:m.menge, einheit:m.einheit, preis:Number(m.preis)||0})),
   };
   openModal(`
-    <div class="modalHead"><div class="modalTitle">📤 LV an Nachunternehmer senden</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
-    <div class="pageSub" style="margin-bottom:12px;">Wähle Nachunternehmer aus, die das LV zur Angebotsabgabe erhalten sollen.</div>
+    <div class="modalHead"><div class="modalTitle">LV an Subunternehmer</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
+    <div class="pageSub" style="margin-bottom:12px;">Subunternehmer auswählen, Preisabzug prüfen und PDF weitergeben.</div>
     <div style="display:flex; flex-direction:column; gap:8px; max-height:180px; overflow-y:auto; margin-bottom:14px;">
-      ${verfuegbar.map(s=>`<label style="display:flex; align-items:center; gap:10px;"><input type="checkbox" class="ausSubChk" value="${escAttr(s.id)}"> ${escHtml(s.firma)}${s.gewerk?` <span class="pageSub">(${escHtml(s.gewerk)})</span>`:""}</label>`).join("") || `<div class="empty">Alle vorhandenen Nachunternehmer wurden bereits eingeladen.</div>`}
+      ${verfuegbar.map(s=>`<label style="display:flex; align-items:center; gap:10px;"><input type="checkbox" class="ausSubChk" value="${escAttr(s.id)}"> ${escHtml(s.firma)}${s.gewerk?` <span class="pageSub">(${escHtml(s.gewerk)})</span>`:""}</label>`).join("") || `<div class="empty">Alle vorhandenen Subunternehmer wurden bereits eingeladen.</div>`}
     </div>
     <div class="formRow"><label>LV-Variante</label>
       <div style="display:flex; flex-direction:column; gap:8px;">
-        <label style="display:flex; align-items:center; gap:6px;"><input type="radio" name="ausPreise" value="ohne" checked onchange="onAusPreisModeChange()"> Ohne Preise (Nachunternehmer kalkuliert selbst)</label>
+        <label style="display:flex; align-items:center; gap:6px;"><input type="radio" name="ausPreise" value="ohne" onchange="onAusPreisModeChange()"> Ohne Preise (Subunternehmer kalkuliert selbst)</label>
         <label style="display:flex; align-items:center; gap:6px;"><input type="radio" name="ausPreise" value="mit" onchange="onAusPreisModeChange()"> Mit meinen Preisen (100%)</label>
         <label style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-          <input type="radio" name="ausPreise" value="reduziert" onchange="onAusPreisModeChange()"> Mit reduzierten Preisen
+          <input type="radio" name="ausPreise" value="reduziert" checked onchange="onAusPreisModeChange()"> Mit reduzierten Preisen
           <button type="button" class="btn sm" onclick="setAusReduktion(5)">-5%</button>
           <button type="button" class="btn sm" onclick="setAusReduktion(10)">-10%</button>
           <button type="button" class="btn sm" onclick="setAusReduktion(15)">-15%</button>
-          <span style="display:inline-flex; align-items:center; gap:4px;"><input id="ausReduktionInput" type="number" step="1" value="10" min="0" max="100" style="width:60px; background:var(--bg2); border:1px solid var(--border); border-radius:6px; padding:4px 6px; color:var(--text);" oninput="onAusReduktionInput()">%</span>
+          <button type="button" class="btn sm" onclick="setAusReduktion(20)">-20%</button>
+          <span style="display:inline-flex; align-items:center; gap:4px;"><input id="ausReduktionInput" type="number" step="1" value="${escAttr(standardAbzug)}" min="0" max="100" style="width:60px; background:var(--bg2); border:1px solid var(--border); border-radius:6px; padding:4px 6px; color:var(--text);" oninput="onAusReduktionInput()">%</span>
         </label>
       </div>
     </div>
-    <div id="ausPosWrap" class="hidden">
+    <div id="ausPosWrap">
       <b style="display:block; margin:12px 0 8px;">Positionen (bearbeitbar)</b>
       <div class="tableWrap" style="max-height:220px; overflow-y:auto;"><table>
         <thead><tr><th>Bezeichnung</th><th>Menge</th><th>Einheit</th><th>Preis (€)</th></tr></thead>
@@ -4047,6 +4104,7 @@ function openAusschreibungForm(pid){
       <button class="btn primary" onclick="confirmAusschreibung()">📤 Senden</button>
     </div>
   `, true);
+  recalcAusPositionen();
 }
 function currentAusPreisMode(){
   const el = document.querySelector('input[name="ausPreise"]:checked');
@@ -4098,7 +4156,7 @@ function previewAusschreibungLv(){
   const p = S.projekte.find(x=>x.id===d.pid);
   const mode = currentAusPreisMode();
   const mitPreisen = mode !== "ohne";
-  const doc = buildLvDocPositions(p, d.positionen, mitPreisen, mode==="reduziert" ? "Nachunternehmer-Preise" : (mitPreisen ? "Referenzpreise" : null));
+  const doc = buildLvDocPositions(p, d.positionen, mitPreisen, mode==="reduziert" ? "Subunternehmer-Preise" : (mitPreisen ? "Referenzpreise" : null));
   const blob = doc.output("blob");
   const url = URL.createObjectURL(blob);
   window.open(url, "_blank", "noopener");
@@ -4108,18 +4166,19 @@ function confirmAusschreibung(){
   const d = window._ausDraft;
   const p = S.projekte.find(x=>x.id===d.pid);
   const checked = Array.from(document.querySelectorAll(".ausSubChk:checked")).map(el=>el.value);
-  if(!checked.length){ toast("Bitte mindestens einen Nachunternehmer auswählen.", "warn"); return; }
+  if(!checked.length){ toast("Bitte mindestens einen Subunternehmer auswählen.", "warn"); return; }
   const mode = currentAusPreisMode();
   const mitPreisen = mode !== "ohne";
+  if(mode==="reduziert") p.standardSubLvAbzug=Math.max(0,Math.min(100,Number(document.getElementById("ausReduktionInput").value)||0));
   checked.forEach(subId=>{
     p.ausschreibung.push({id:uid(), subunternehmerId:subId, versandAm:todayISO(), status:"versendet", angebotSumme:null, angebotNotiz:"", angebotDatum:null});
   });
-  const doc = buildLvDocPositions(p, d.positionen, mitPreisen, mode==="reduziert" ? "Nachunternehmer-Preise" : (mitPreisen ? "Referenzpreise" : null));
+  const doc = buildLvDocPositions(p, d.positionen, mitPreisen, mode==="reduziert" ? "Subunternehmer-Preise" : (mitPreisen ? "Referenzpreise" : null));
   const suffix = mode==="reduziert" ? "_reduziert" : (mitPreisen ? "" : "_ohne_Preise");
   saveState(); closeModal(); route(location.hash);
   saveOrSharePdf(doc, "LV_"+p.name.replace(/[^a-z0-9]+/gi,"_")+suffix+".pdf");
   window._ausDraft = null;
-  toast(checked.length+" Nachunternehmer zur Ausschreibung hinzugefügt. LV zum Versenden bereit.", "success");
+  toast(checked.length+" Subunternehmer hinzugefügt. LV zum Weitergeben bereit.", "success");
 }
 function openAngebotForm(pid, entryId){
   const p = S.projekte.find(x=>x.id===pid);
@@ -5444,6 +5503,10 @@ var VORLAGEN_DEFS = [
     felder:[{label:"Gewerk",typ:"text"},{label:"Mängel",typ:"textarea"},{label:"Abgenommen ohne Vorbehalt",typ:"checkbox"},{label:"Abgenommen mit Vorbehalt",typ:"checkbox"}]},
   {id:"schluesseluebergabe_vorlage", name:"Schlüsselübergabeprotokoll", icon:"🗝️", kategorie:"Übergabe",
     felder:[{label:"Schlüsselbezeichnung",typ:"text"},{label:"Anzahl",typ:"text"},{label:"Übergeben an",typ:"textarea"}]},
+  {id:"maengelpruefung", name:"Mängelprüfung", icon:"🔎", kategorie:"Baustelle",
+    felder:[{label:"Geprüfter Bereich",typ:"text"},{label:"Festgestellte Mängel",typ:"textarea"},{label:"Frist zur Behebung",typ:"date"},{label:"Mängel behoben",typ:"checkbox"}]},
+  {id:"abnahmebestaetigung", name:"Abnahmebestätigung", icon:"✔️", kategorie:"Übergabe",
+    felder:[{label:"Abgenommene Leistung",typ:"textarea"},{label:"Restarbeiten",typ:"textarea"},{label:"Leistung vollständig abgenommen",typ:"checkbox"}]},
 ];
 function renderVorlagen(view){
   view.innerHTML = `
@@ -5479,17 +5542,31 @@ function renderVorlagen(view){
   `;
 }
 function vorlagenDefName(defId){ const d=VORLAGEN_DEFS.find(x=>x.id===defId); return d?d.name:"Vorlage"; }
-function openVorlageForm(defId){
+function renderTabProjektVorlagen(body,p){
+  const ids=["abnahme","schluesseluebergabe_vorlage","maengelpruefung","abnahmebestaetigung","bautagebuch_vorlage","materialbestellliste"];
+  const defs=ids.map(id=>VORLAGEN_DEFS.find(d=>d.id===id)).filter(Boolean);
+  const ausgefuellt=(S.vorlagen||[]).filter(v=>v.projektId===p.id).sort((a,b)=>(b.datum||"").localeCompare(a.datum||""));
+  body.innerHTML=`
+    <div class="compactSectionTitle" style="margin-top:0;">Vorlage auswählen</div>
+    <div class="projectTools">
+      ${defs.map(d=>`<button class="projectTool" onclick="openVorlageForm('${escAttr(d.id)}','${escAttr(p.id)}')"><span>${d.icon} ${escHtml(d.name)}<small>Ausfüllen & im Projekt speichern</small></span><span class="projectToolArrow">›</span></button>`).join("")}
+    </div>
+    <div class="card" style="margin-top:14px;">
+      <b>Bereits ausgefüllt (${ausgefuellt.length})</b>
+      <div class="simpleList" style="margin-top:10px;">${ausgefuellt.map(v=>`<div class="simpleRow"><div class="simpleRowMain"><b>${escHtml(vorlagenDefName(v.defId))}</b><div class="pageSub">${fmtDate(v.datum)}</div></div><div><button class="iconBtn" aria-label="PDF öffnen" onclick="exportVorlagePDF('${escAttr(v.id)}')">📄</button><button class="iconBtn" aria-label="Vorlage löschen" onclick="deleteVorlageInstanz('${escAttr(v.id)}')">×</button></div></div>`).join("")||`<div class="empty" style="padding:20px;">Noch keine Vorlage ausgefüllt.</div>`}</div>
+    </div>`;
+}
+function openVorlageForm(defId, projektId){
   const def = VORLAGEN_DEFS.find(x=>x.id===defId);
   const f = S.firma;
-  window._vorlageDraft = {id:uid(), defId, projektId:"", werte:{}, unterschrift:"", datum:todayISO()};
+  window._vorlageDraft = {id:uid(), defId, projektId:projektId||"", werte:{}, unterschrift:"", datum:todayISO()};
   openModal(`
     <div class="modalHead"><div class="modalTitle">${def.icon||"📄"} ${escHtml(def.name)}</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
     <div style="background:var(--card2); border-radius:10px; padding:10px 14px; font-size:12px; color:var(--text-dim); margin-bottom:16px;">
       ${escHtml(f.name)} · ${escHtml([f.strasse,[f.plz,f.ort].filter(Boolean).join(" ")].filter(Boolean).join(", "))} ${f.tel?"· Tel: "+escHtml(f.tel):""}<br>${fmtDate(todayISO())}
     </div>
     <div class="formRow"><label>Projekt (optional, zum Speichern in Projekt-Dokumente)</label>
-      <select id="voProjekt" onchange="window._vorlageDraft.projektId=this.value"><option value="">–</option>${S.projekte.map(p=>`<option value="${escAttr(p.id)}">${escHtml(p.name)}</option>`).join("")}</select>
+      <select id="voProjekt" onchange="window._vorlageDraft.projektId=this.value"><option value="">–</option>${S.projekte.map(p=>`<option value="${escAttr(p.id)}" ${p.id===(projektId||"")?"selected":""}>${escHtml(p.name)}</option>`).join("")}</select>
     </div>
     ${def.felder.map((fd,i)=>`
       ${fd.typ==="checkbox" ? `
@@ -5923,6 +6000,103 @@ function extractJsonFromText(text){
 }
 
 /* =========================================================
+   ANGEBOT IM BESTEHENDEN PROJEKT EINLESEN
+========================================================= */
+function openProjektAngebotImport(pid){
+  const p=S.projekte.find(x=>x.id===pid);
+  if(!p) return;
+  openModal(`
+    <div class="modalHead"><div class="modalTitle">Angebot in ${escHtml(p.name)} einlesen</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
+    <div class="compactFormNote">PDF auswählen. Positionen und Preise werden automatisch erkannt und bleiben getrennt von den tatsächlichen Materialkosten.</div>
+    <div class="formRow"><label>Angebot oder LV als PDF</label><input id="projektLvFile" type="file" accept="application/pdf"></div>
+    <div class="formRow"><label>Preisabzug für Subunternehmer</label><div style="display:flex;align-items:center;gap:8px;"><input id="projektLvAbzug" type="number" min="0" max="100" step="1" value="${escAttr(p.standardSubLvAbzug==null?20:p.standardSubLvAbzug)}" style="max-width:100px;"><b>%</b></div></div>
+    <div id="projektLvStatus" class="pageSub"></div>
+    <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="analyzeProjektAngebotPdf('${escAttr(pid)}')">PDF einlesen</button></div>
+  `,true);
+}
+async function analyzeProjektAngebotPdf(pid){
+  const input=document.getElementById("projektLvFile");
+  const statusEl=document.getElementById("projektLvStatus");
+  const file=input&&input.files&&input.files[0];
+  if(!file){ statusEl.textContent="Bitte zuerst eine PDF-Datei auswählen."; return; }
+  const apiKey=getGeminiKey();
+  if(!apiKey){ statusEl.innerHTML="Bitte zuerst unter <b>Einstellungen → KI-Assistent</b> den Gemini API-Key eintragen."; return; }
+  const abzug=Math.max(0,Math.min(100,Number(document.getElementById("projektLvAbzug").value)||0));
+  statusEl.textContent="Angebot wird gelesen …";
+  try{
+    const dataURL=await fileToDataURL(file);
+    const base64=dataURL.slice(dataURL.indexOf(",")+1);
+    const prompt=`Analysiere dieses deutsche Handwerker-Angebot oder Leistungsverzeichnis. Antworte ausschließlich als valides JSON ohne Markdown: {"positionen":[{"titel":"Abschnitt oder Gewerk, sonst leer","bezeichnung":"kurze eindeutige Leistung","beschreibung":"Leistungstext, sonst leer","menge":0,"einheit":"","einzelpreis":0,"gesamtpreis":0}],"angebotssumme":0}. Nutze bei preis den Gesamtpreis der Position. Keine Position doppelt ausgeben.`;
+    const result=extractJsonFromText(await callGeminiWithFile(prompt,apiKey,base64,file.type||"application/pdf"));
+    const positionen=(Array.isArray(result.positionen)?result.positionen:[]).map(pos=>({
+      id:uid(), titel:String(pos.titel||"").slice(0,100), bezeichnung:String(pos.bezeichnung||"Position").slice(0,220),
+      beschreibung:String(pos.beschreibung||"").slice(0,800), menge:Number(pos.menge)||0, einheit:String(pos.einheit||"").slice(0,20),
+      preis:Number(pos.gesamtpreis)||((Number(pos.menge)||0)*(Number(pos.einzelpreis)||0)), datum:todayISO()
+    }));
+    window._projektLvDraft={pid,abzug,positionen,angebotssumme:Number(result.angebotssumme)||0,originalFile:{name:file.name,dataURL}};
+    renderProjektLvReview();
+  }catch(e){ statusEl.textContent="Das Angebot konnte nicht gelesen werden: "+e.message; }
+}
+function renderProjektLvReview(){
+  const d=window._projektLvDraft;
+  if(!d) return;
+  const summe=d.positionen.reduce((s,pos)=>s+(Number(pos.preis)||0),0)||d.angebotssumme;
+  const ziel=summe*(1-d.abzug/100);
+  const duplicates=duplicatePositionIndexes(d.positionen,"bezeichnung");
+  openModal(`
+    <div class="modalHead"><div class="modalTitle">Erkannte Positionen prüfen</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
+    <div class="projectSummaryBar" style="grid-template-columns:1fr 1fr;margin-bottom:12px;"><div class="projectSummaryItem"><span>Angebot</span><b id="projektLvOriginalSumme">${fmtCurrency(summe)}</b></div><div class="projectSummaryItem" style="border-right:0;"><span>Subunternehmer · <span id="projektLvAbzugLabel">${escHtml(d.abzug)}</span> % Abzug</span><b id="projektLvZielSumme">${fmtCurrency(ziel)}</b></div></div>
+    <div class="formRow"><label>Abzug frei wählen</label><div style="display:flex;align-items:center;gap:6px;"><input id="projektLvReviewAbzug" type="number" min="0" max="100" step="1" value="${escAttr(d.abzug)}" style="max-width:90px;" oninput="updateProjektLvAbzug(this.value)"><b>%</b></div></div>
+    <div class="inlineNotice ${duplicates.size?'':'hidden'}" id="projektLvDuplicateNotice">Gleich benannte Positionen bitte umbenennen.</div>
+    <div class="tableWrap" style="max-height:300px;overflow-y:auto;"><table><thead><tr><th>Leistung</th><th>Menge</th><th>Einheit</th><th>Preis</th><th></th></tr></thead><tbody>${d.positionen.map((pos,i)=>projektLvReviewRow(pos,i,duplicates.has(i))).join("")||`<tr><td colspan="5"><div class="empty">Keine Positionen erkannt.</div></td></tr>`}</tbody></table></div>
+    <div class="modalFoot"><button class="btn" onclick="openProjektAngebotImport('${escAttr(d.pid)}')">← Zurück</button><button class="btn" onclick="confirmProjektLvImport(false)">Nur speichern</button><button class="btn primary" id="projektLvWeiterBtn" onclick="confirmProjektLvImport(true)" ${!d.positionen.length||duplicates.size?'disabled':''}>Speichern & weitergeben</button></div>
+  `,true);
+}
+function projektLvReviewRow(pos,i,isDuplicate){
+  return `<tr data-projekt-lv-pos="${i}" class="${isDuplicate?'positionDuplicate':''}"><td><input value="${escAttr(pos.bezeichnung)}" oninput="updateProjektLvPosition(${i},'bezeichnung',this.value)" style="min-width:180px;"></td><td><input type="number" step="0.01" value="${escAttr(pos.menge)}" oninput="updateProjektLvPosition(${i},'menge',this.value)" style="width:72px;"></td><td><input value="${escAttr(pos.einheit)}" oninput="updateProjektLvPosition(${i},'einheit',this.value)" style="width:64px;"></td><td><input type="number" step="0.01" value="${escAttr(pos.preis)}" oninput="updateProjektLvPosition(${i},'preis',this.value)" style="width:94px;"></td><td><button class="iconBtn" onclick="removeProjektLvPosition(${i})">×</button></td></tr>`;
+}
+function updateProjektLvAbzug(value){
+  const d=window._projektLvDraft;
+  d.abzug=Math.max(0,Math.min(100,Number(value)||0));
+  const summe=d.positionen.reduce((s,pos)=>s+(Number(pos.preis)||0),0)||d.angebotssumme;
+  document.getElementById("projektLvAbzugLabel").textContent=d.abzug;
+  document.getElementById("projektLvZielSumme").textContent=fmtCurrency(summe*(1-d.abzug/100));
+}
+function updateProjektLvPosition(i,field,value){
+  const d=window._projektLvDraft;
+  if(!d||!d.positionen[i]) return;
+  d.positionen[i][field]=(field==="menge"||field==="preis")?Number(value)||0:value;
+  const summe=d.positionen.reduce((s,pos)=>s+(Number(pos.preis)||0),0)||d.angebotssumme;
+  const sumEl=document.getElementById("projektLvOriginalSumme");
+  const zielEl=document.getElementById("projektLvZielSumme");
+  if(sumEl) sumEl.textContent=fmtCurrency(summe);
+  if(zielEl) zielEl.textContent=fmtCurrency(summe*(1-d.abzug/100));
+  const duplicates=duplicatePositionIndexes(d.positionen,"bezeichnung");
+  document.querySelectorAll("[data-projekt-lv-pos]").forEach(row=>row.classList.toggle("positionDuplicate",duplicates.has(Number(row.dataset.projektLvPos))));
+  const notice=document.getElementById("projektLvDuplicateNotice");
+  if(notice) notice.classList.toggle("hidden",duplicates.size===0);
+  const btn=document.getElementById("projektLvWeiterBtn");
+  if(btn) btn.disabled=duplicates.size>0||!d.positionen.length;
+}
+function removeProjektLvPosition(i){ window._projektLvDraft.positionen.splice(i,1); renderProjektLvReview(); }
+function confirmProjektLvImport(weitergeben){
+  const d=window._projektLvDraft;
+  const p=d&&S.projekte.find(x=>x.id===d.pid);
+  if(!p||!d.positionen.length){ toast("Keine Positionen zum Speichern.","warn"); return; }
+  if(duplicatePositionIndexes(d.positionen,"bezeichnung").size){ toast("Doppelte Positionen bitte umbenennen.","warn"); return; }
+  p.lvPositionen=d.positionen.map(pos=>({...pos}));
+  p.standardSubLvAbzug=d.abzug;
+  const summe=projektLvSumme(p)||d.angebotssumme;
+  if(!Number(p.budget)) p.budget=summe;
+  if(d.originalFile&&d.originalFile.dataURL){
+    p.dokumente.push({id:uid(),name:d.originalFile.name||"Angebot_Original.pdf",dataURL:d.originalFile.dataURL,datum:new Date().toISOString(),typ:"Angebot/LV"});
+  }
+  saveState(); closeModal(); window._projektLvDraft=null;
+  if(weitergeben){ openAusschreibungForm(p.id); }
+  else { route(location.hash); toast("Angebot im Projekt gespeichert.","success"); }
+}
+
+/* =========================================================
    PROJEKT AUS PDF (LV/ANGEBOT) ERSTELLEN — KI-gestützt
 ========================================================= */
 function openLvImportForm(){
@@ -6047,8 +6221,10 @@ function confirmLvImport(){
   const budget = summe || d.budgetSchaetzung || 0;
   const p = {
     id:uid(), name, kundeId, adresse, status:"In Planung", budget, deadline:"", fortschritt:0,
+    personalkosten:0, fremdkosten:0, abnahmeDatum:"", abnahmeBemerkung:"", standardSubLvAbzug:20,
     team:[], subunternehmer:[], fotos:[], dokumente:[], grundrisse:[],
-    material: d.positionen.map(pos=>({id:uid(), titel:pos.titel||"", bezeichnung:pos.bezeichnung||"Position", beschreibung:pos.beschreibung||"", menge:pos.menge||0, einheit:pos.einheit||"", preis:pos.preis||0, datum:todayISO()})),
+    material: [],
+    lvPositionen: d.positionen.map(pos=>({id:uid(), titel:pos.titel||"", bezeichnung:pos.bezeichnung||"Position", beschreibung:pos.beschreibung||"", menge:pos.menge||0, einheit:pos.einheit||"", preis:pos.preis||0, datum:todayISO()})),
     ausschreibung:[], bautagebuch:[], zugaenge:[], checkliste:[], aufmasse:[], bauzeitenplan:[], chat:[],
   };
   if(d.originalFile && d.originalFile.dataURL){
