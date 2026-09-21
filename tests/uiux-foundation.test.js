@@ -14,10 +14,10 @@ assert(pure.relationsFor('Aufgaben').join('|')==='Projekte|Mitarbeiter|Kalender'
 assert(pure.relationsFor('Projekte').includes('Stundenzettel'),'Projekt-Kontext verweist auf den tatsächlich vorhandenen Zeitbereich');
 assert(pure.relationsFor('Unbekannt').length===0,'unbekannte Bereiche erzeugen keine geratenen Links');
 assert(pure.SECTION_CLASSES.includes('uiux-section-dashboard'),'Section-Klassen sind explizit und begrenzt');
-assert(pure.PRIMARY_NAV_KEYS.has('dashboard')&&pure.PRIMARY_NAV_KEYS.has('projekte')&&pure.PRIMARY_NAV_KEYS.has('rechnungen'),'Hauptnavigation konzentriert sich auf den Kernprozess');
+assert(pure.PRIMARY_NAV_KEYS.has('dashboard')&&pure.PRIMARY_NAV_KEYS.has('projekte')&&!pure.PRIMARY_NAV_KEYS.has('rechnungen'),'Hauptnavigation konzentriert sich auf den Tagesablauf ohne Rechnungen');
 assert(!pure.PRIMARY_NAV_KEYS.has('fuhrpark')&&!pure.PRIMARY_NAV_KEYS.has('passwoerter'),'Spezialbereiche bleiben außerhalb der Hauptnavigation ohne funktional entfernt zu werden');
-assert(pure.WORKFLOW_KEYS.join('|')==='kunden|projekte|aufgaben|stundenzettel|rechnungen','Arbeitsfluss bildet Kunde bis Rechnung in einer festen Reihenfolge ab');
-assert(pure.MOBILE_NAV_KEYS.join('|')==='dashboard|projekte|aufgaben|kalender','mobile Schnellnavigation bleibt bewusst auf vier Kernbereiche begrenzt');
+assert(pure.WORKFLOW_KEYS.join('|')==='projekte|aufgaben|kalender|stundenzettel','Tagesablauf bildet Projekt bis Zeit in einer festen Reihenfolge ab');
+assert(pure.MOBILE_NAV_KEYS.join('|')==='dashboard|projekte|aufgaben|stundenzettel','mobile Schnellnavigation bleibt bewusst auf vier tägliche Kernbereiche begrenzt');
 
 const dom=new JSDOM(`<!doctype html><html><head></head><body>
   <aside id="sidebar">
@@ -68,13 +68,13 @@ assert(document.getElementById('newAction').classList.contains('uiuxPrimaryActio
 assert(!document.getElementById('deleteAction').classList.contains('uiuxPrimaryAction'),'Löschen wird niemals versehentlich als Hauptaktion hervorgehoben');
 assert(document.getElementById('deleteAction').classList.contains('uiuxDangerAction'),'destruktive Aktion wird separat und zurückhaltend markiert');
 assert(document.querySelector('.tableWrap').getAttribute('tabindex')==='0','breite Tabellen bleiben per Tastatur/Touch erreichbar');
-assert(!!context && context.getAttribute('aria-label')==='Arbeitsfluss','Kernbereiche erhalten einen verständlichen Arbeitsfluss statt beliebiger Zusatznavigation');
+assert(!!context && context.getAttribute('aria-label')==='Tagesablauf','Kernbereiche erhalten einen verständlichen Tagesablauf statt beliebiger Zusatznavigation');
 assert(context.classList.contains('uiuxWorkflowLinks'),'Arbeitsfluss ist als eigener UI-Modus gekennzeichnet');
-assert(Array.from(context.querySelectorAll('.uiuxContextChip')).map(x=>x.textContent).join('|')==='1. Kunden|2. Projekte|3. Aufgaben|4. Stundenzettel|5. Rechnungen','Arbeitsfluss zeigt Kunde → Projekt → Aufgabe → Zeit → Rechnung vollständig');
-assert(context.querySelector('.uiuxWorkflowStep.active').textContent==='3. Aufgaben','aktuelle Arbeitsfluss-Stufe ist eindeutig markiert');
+assert(Array.from(context.querySelectorAll('.uiuxContextChip')).map(x=>x.textContent).join('|')==='1. Projekte|2. Aufgaben|3. Kalender|4. Stundenzettel','Tagesablauf zeigt Projekt → Aufgabe → Kalender → Zeit vollständig');
+assert(context.querySelector('.uiuxWorkflowStep.active').textContent==='2. Aufgaben','aktuelle Tagesablauf-Stufe ist eindeutig markiert');
 assert(document.getElementById('existing').textContent==='Inhalt','bestehender View-Inhalt bleibt unangetastet');
-assert(document.querySelectorAll('.uiuxNavPrimary').length===8,'Kernbereiche werden als Hauptnavigation markiert');
-assert(document.querySelectorAll('.uiuxNavSecondary').length===2,'Spezialbereiche werden als erweiterte Navigation markiert');
+assert(document.querySelectorAll('.uiuxNavPrimary').length===7,'Kernbereiche werden als Hauptnavigation markiert');
+assert(document.querySelectorAll('.uiuxNavSecondary').length===3,'Spezialbereiche einschließlich Alt-Rechnungen werden als erweiterte Navigation markiert');
 assert(!!moreToggle&&moreToggle.getAttribute('aria-expanded')==='false','erweiterte Navigation startet kompakt und zugänglich');
 assert(moreToggle.textContent==='Weitere Bereiche (2)','Mehr-Schalter zeigt die Anzahl der ausgeblendeten Spezialbereiche');
 moreToggle.click();
