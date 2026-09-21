@@ -1051,7 +1051,7 @@ function globalSearchOpenResult(typ, id){
 function openGlobalSearch(){
   openModal(`
     <div class="modalHead"><div class="modalTitle">🔍 Suche</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
-    <input id="gsInput" type="text" placeholder="Mitarbeiter, Kunden, Projekte, Rechnungen …" autocomplete="off"
+    <input id="gsInput" type="text" placeholder="Mitarbeiter, Kunden, Projekte, Aufgaben …" autocomplete="off"
       style="width:100%; padding:12px 14px; font-size:15px; border-radius:var(--radius-sm); border:1px solid var(--border); background:var(--card2); color:var(--text);"
       oninput="renderGlobalSearchResults(this.value)"
       onkeydown="if(event.key==='Enter'){ const first=document.querySelector('#gsResults .gsResultItem'); if(first) first.click(); }">
@@ -1470,7 +1470,6 @@ function renderDashboard(view){
       <button class="quickTile" onclick="goTo('#stempeluhr')"><div class="qIcon">⏱️</div><div class="qLabel">Stempeln</div></button>
       <button class="quickTile" onclick="goTo('#mitarbeiter')"><div class="qIcon">➕</div><div class="qLabel">Mitarbeiter</div></button>
       <button class="quickTile" onclick="goTo('#projekte')"><div class="qIcon">🏢</div><div class="qLabel">Neues Projekt</div></button>
-      ${admin?`<button class="quickTile" onclick="goTo('#rechnungen')"><div class="qIcon">🧾</div><div class="qLabel">Rechnung</div></button>`:""}
       <button class="quickTile" onclick="goTo('#aufgaben')"><div class="qIcon">📝</div><div class="qLabel">Aufgabe</div></button>
       <button class="quickTile" onclick="goTo('#schluessel')"><div class="qIcon">🔑</div><div class="qLabel">Schlüssel</div></button>
       <button class="quickTile" onclick="goTo('#dokumente')"><div class="qIcon">📁</div><div class="qLabel">Dokument</div></button>
@@ -1853,7 +1852,6 @@ function renderMitarbeiterLohnTab(m){
         <div class="formRow"><label>Stundenlohn (€)</label><input type="number" step="0.01" value="${escAttr(m.stundenlohn||0)}" onchange="quickUpdateMitarbeiterField('${escAttr(m.id)}','stundenlohn',this.value)"></div>
       </div>
       <div class="kpi" style="margin-bottom:14px;"><div class="kpiIcon">💶</div><div class="kpiVal">${fmtCurrency(stundenlohnSumme)}</div><div class="kpiLabel">Geschätzter Stundenlohn-Verdienst (${monat})</div></div>
-      <button class="btn sm" onclick="closeModal(); goTo('#datev')">💾 Zum DATEV/Lohn-Export</button>
     </div>
   `;
 }
@@ -3021,14 +3019,13 @@ const PROJEKT_TABS = [
   {id:"uebersicht", label:"Übersicht", icon:"📋", group:"Planung"},
   {id:"team", label:"Team", icon:"👷", group:"Planung"},
   {id:"bauzeitenplan", label:"Bauzeitenplan", icon:"📊", group:"Planung"},
-  {id:"material", label:"Material / LV", icon:"📦", group:"Kalkulation & Vergabe"},
+  {id:"material", label:"Material", icon:"📦", group:"Kalkulation & Vergabe"},
   {id:"ausschreibung", label:"Ausschreibung", icon:"🏗️", group:"Kalkulation & Vergabe"},
   {id:"dokumente", label:"Dokumente", icon:"📁", group:"Kalkulation & Vergabe"},
   {id:"fotos", label:"Fotos", icon:"📷", group:"Baustelle"},
   {id:"bautagebuch", label:"Bautagebuch", icon:"📔", group:"Baustelle"},
   {id:"aufmass", label:"Aufmaß", icon:"📐", group:"Baustelle"},
   {id:"zugaenge", label:"Zugänge", icon:"🔐", group:"Baustelle"},
-  {id:"checkliste", label:"WISO/Checkliste", icon:"✅", group:"Abschluss"},
   {id:"chat", label:"Chat", icon:"💬", group:"Abschluss"},
 ];
 function renderProjektDetail(view, id, tab){
@@ -5382,7 +5379,6 @@ function exportVorlagePDF(id){
 }
 
 reg("dokumente","Dokumente","📁","Verwaltung",renderDokumente);
-reg("rechnungen","Rechnungen","🧾","Verwaltung",renderRechnungen);
 reg("vertraege","Arbeitsverträge","📜","Verwaltung",renderVertraege);
 reg("schluessel","Schlüsselprotokoll","🔑","Baustelle & Zugänge",renderSchluessel);
 reg("vorlagen","Vorlagen","📄","Verwaltung",renderVorlagen);
@@ -5692,7 +5688,6 @@ reg("passwoerter","Passwörter","🔐","Passwörter & Zugänge",renderPasswoerte
 reg("fuhrpark","Fuhrpark","🚐","Fuhrpark",renderFuhrpark);
 reg("berichte","Berichte & KPIs","📊","Analyse",renderBerichte);
 reg("kundenportal","Kundenportal","🌐","Analyse",renderKundenportal);
-reg("datev","WISO/DATEV Export","💾","Analyse",renderDatev);
 
 /* =========================================================
    KI-ASSISTENT (Gemini)
@@ -6536,7 +6531,7 @@ function renderSetBackup(body){
       </div>
       <div class="card">
         <b>📊 CSV-Export</b>
-        <div class="pageSub" style="margin:8px 0 14px;">Mitarbeiter, Kunden, Projekte, Rechnungen als CSV.</div>
+        <div class="pageSub" style="margin:8px 0 14px;">Mitarbeiter, Kunden und Projekte als CSV.</div>
         <button class="btn primary" onclick="exportAllCSV()">⬇ CSV-Dateien exportieren</button>
       </div>
       <div class="card" style="border-color:var(--red);">
