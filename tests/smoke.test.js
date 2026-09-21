@@ -315,7 +315,7 @@ async function main() {
   assert(sidebarHtml.includes('data-route="projekte"'), "Sidebar zeigt weiterhin nicht eingeschränkte Module wie Projekte");
 
   window.route("#rechnungen");
-  assert(window.document.getElementById("view").innerHTML.includes("nur für Geschäftsführung"), "Direkter Aufruf von #rechnungen wird für normalen Mitarbeiter blockiert");
+  assert(window.document.getElementById("view").innerHTML.includes("nicht gefunden") || window.document.getElementById("view").innerHTML.includes("nicht verfügbar"), "Entfernte Rechnungsroute ist nicht mehr als sichtbares ERM-Modul erreichbar");
 
   const gsIndexWorker = window.globalSearchIndex();
   assert(!gsIndexWorker.some((it) => it.typ === "rechnung"), "Suchindex enthält für normalen Mitarbeiter keine Rechnungen");
@@ -350,9 +350,7 @@ async function main() {
   assert(acctBlockHtml.includes("Passwort zurücksetzen") && !acctBlockHtml.includes("Konto erstellen"), "Konto-Block zeigt 'Passwort zurücksetzen', sobald ein Konto existiert");
   window.buildSidebar();
   const sidebarBossHtml = window.document.getElementById("sidebar").innerHTML;
-  assert(sidebarBossHtml.includes('data-route="rechnungen"'), "Sidebar zeigt 'Rechnungen' für Geschäftsführer");
-  window.route("#rechnungen");
-  assert(!window.document.getElementById("view").innerHTML.includes("nur für Geschäftsführung"), "Geschäftsführer kann #rechnungen normal aufrufen");
+  assert(!sidebarBossHtml.includes('data-route="rechnungen"'), "Sidebar blendet das entfernte Rechnungsmodul auch für Geschäftsführer aus");
 
   window.S.currentUserId = "m1";
   window.S.mitarbeiter = window.S.mitarbeiter.filter((m) => !["roleWorker", "roleBoss"].includes(m.id));
