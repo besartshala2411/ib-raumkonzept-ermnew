@@ -480,28 +480,47 @@ async function main() {
   window.deleteBauphase("p1", bzPhaseId);
   assert(window.S.projekte.find((p) => p.id === "p1").bauzeitenplan.length === 0, "Bauphase kann wieder gelöscht werden");
 
-  console.log("\n== Projekt-Übersicht: minimaler Baustellen-Kern ==");
+  console.log("\n== Projekt-Übersicht: vereinfachtes Baustellen-Cockpit ==");
   window.S.aufgaben.push({ id: "ag-ueb1", titel: "Fenster bestellen", beschreibung: "", faellig: "", prioritaet: "mittel", projektId: "p1", zugeordnet: null, status: "offen" });
   window.S.rechnungen.push({ id: "re-ueb1", nr: "RE-UEB-0001", kundeId: "", projektId: "p1", datum: "2026-01-01", faellig: "2099-01-01", status: "offen", positionen: [{ beschreibung: "Trockenbau", menge: 5, einheit: "m²", preis: 40 }], notiz: "" });
   window.document.getElementById("view").innerHTML = "";
   window.renderProjekte(window.document.getElementById("view"), "p1", "uebersicht");
   let uebHtml = window.document.getElementById("view").innerHTML;
-  assert(!uebHtml.includes("Fenster bestellen"), "Projekt-Übersicht bleibt frei von zusätzlichen Aufgabenlisten");
-  assert(uebHtml.includes("Fertig") && uebHtml.includes("Auftrag") && uebHtml.includes("Material") && uebHtml.includes("Marge"), "Übersicht zeigt nur die entscheidenden Baustellen-Kennzahlen");
-  assert(uebHtml.includes(">Material<") && uebHtml.includes(">Fotos<") && uebHtml.includes(">Dateien<") && uebHtml.includes(">Abnahme<"), "Vier große Projektaktionen sind direkt erreichbar");
+  assert(uebHtml.includes("Fenster bestellen"), "Offene Projektaufgaben sind direkt im Projekt sichtbar");
+  assert(uebHtml.includes("Heute wichtig") && uebHtml.includes("Schnell hinzufügen"), "Projekt-Cockpit zeigt Prioritäten und Schnellaktionen");
+  assert(uebHtml.includes("Beginn") && uebHtml.includes("Fertigstellung"), "Beginn und Fertigstellung sind im Projekt sichtbar");
+  assert(uebHtml.includes("LV &amp; Subunternehmer") && uebHtml.includes("Dateien &amp; Fotos") && uebHtml.includes(">Abnahme<"), "Zentrale Projektbereiche sind direkt erreichbar");
+  assert(uebHtml.includes("Bautagebuch") && uebHtml.includes("Projektchronik"), "Bautagebuch und Projektchronik sind direkt im Überblick sichtbar");
 
   window.S.mitarbeiter.push({ id: "uebWorker", name: "Übersicht Arbeiter", position: "Maler", rolle: "Mitarbeiter", tel: "", email: "uebworker@example.com", adresse: "", eintritt: "2024-01-01", status: "aktiv", urlaubstageJahr: 30, stundenlohn: 20, dokumente: [] });
   window.S.currentUserId = "uebWorker";
   window.document.getElementById("view").innerHTML = "";
   window.renderProjekte(window.document.getElementById("view"), "p1", "uebersicht");
   uebHtml = window.document.getElementById("view").innerHTML;
-  assert(!uebHtml.includes("Fenster bestellen"), "Reduzierte Übersicht bleibt auch für Mitarbeiter gleich einfach");
+  assert(uebHtml.includes("Fenster bestellen"), "Projektaufgaben bleiben auch für Mitarbeiter direkt sichtbar");
   assert(!uebHtml.includes("RE-UEB-0001"), "Übersicht blendet Rechnungen für normale Mitarbeiter aus");
   window.S.currentUserId = "m1";
 
   window.S.aufgaben = window.S.aufgaben.filter((a) => a.id !== "ag-ueb1");
   window.S.rechnungen = window.S.rechnungen.filter((r) => r.id !== "re-ueb1");
   window.S.mitarbeiter = window.S.mitarbeiter.filter((m) => m.id !== "uebWorker");
+
+  console.log("\n== Projekte: Status, Archiv und Duplizieren ==");
+  const p1Workflow = window.S.projekte.find((p) => p.id === "p1");
+  p1Workflow.beginn = "2099-01-01";
+  p1Workflow.status = "Aktiv";
+  assert(window.projektEffectiveStatus(p1Workflow) === "In Planung", "Zukünftiger Beginn ergibt automatisch 'In Planung'");
+  p1Workflow.beginn = "2020-01-01";
+  assert(window.projektEffectiveStatus(p1Workflow) === "Aktiv", "Begonnenes Projekt ergibt automatisch 'Aktiv'");
+  const countBeforeDuplicate = window.S.projekte.length;
+  window.duplicateProjekt("p1");
+  assert(window.S.projekte.length === countBeforeDuplicate + 1, "Projekt kann dupliziert werden");
+  const duplicate = window.S.projekte[window.S.projekte.length - 1];
+  assert(duplicate.fotos.length === 0 && duplicate.dokumente.length === 0 && duplicate.adresse === "", "Projektkopie übernimmt keine alten Fotos, Dateien oder Baustellenadresse");
+  window.setProjektArchiviert(duplicate.id, true);
+  assert(duplicate.archiviert === true, "Projekt kann archiviert werden");
+  window.S.projekte = window.S.projekte.filter((p) => p.id !== duplicate.id);
+  p1Workflow.beginn = "";
 
   console.log("\n== Briefkopf Live-Vorschau (Split-Layout) ==");
   window.S.firma.name = "Ma\"ler & <Söhne> GmbH";
