@@ -1130,13 +1130,13 @@ function buildManifest(iconURL, name){
 ========================================================= */
 var MODULES = [];
 function reg(id,label,icon,group,render){ MODULES.push({id,label,icon,group,render}); }
-const PRIMARY_NAV_IDS = ["dashboard","projekte","aufgaben","kunden","mitarbeiter","stempeluhr","rechnungen","einstellungen"];
+const PRIMARY_NAV_IDS = ["dashboard","projekte","aufgaben","kunden","subunternehmer","mitarbeiter","stempeluhr","rechnungen","einstellungen"];
 
 function buildSidebar(){
   const groups = [];
   const admin = hasAdminAccess();
   MODULES.filter(m=>PRIMARY_NAV_IDS.includes(m.id) && (admin || !RESTRICTED_MODULES.includes(m.id))).forEach(m=>{
-    const simpleGroup = ["dashboard","projekte","aufgaben"].includes(m.id) ? "" : (["kunden","mitarbeiter","stempeluhr"].includes(m.id) ? "Betrieb" : "Verwaltung");
+    const simpleGroup = ["dashboard","projekte","aufgaben"].includes(m.id) ? "" : (["kunden","subunternehmer","mitarbeiter","stempeluhr"].includes(m.id) ? "Betrieb" : "Verwaltung");
     let g = groups.find(g=>g.name===simpleGroup);
     if(!g){ g={name:simpleGroup, items:[]}; groups.push(g); }
     g.items.push(m);
