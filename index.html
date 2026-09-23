@@ -353,6 +353,30 @@ tr:hover td{background:var(--card2);}
 .projectCreateAdvanced{margin-top:4px;border:1px solid var(--border);border-radius:10px;background:var(--card2);padding:0 12px;}
 .projectCreateAdvanced summary{cursor:pointer;padding:11px 0;font-size:12px;font-weight:600;color:var(--text-dim);}
 .projectCreateAdvanced[open] summary{margin-bottom:8px;border-bottom:1px solid var(--border);}
+.projectTaskList{display:flex;flex-direction:column;gap:6px;margin-bottom:14px;}
+.projectTaskRow{display:flex;align-items:center;gap:9px;padding:9px 11px;border:1px solid var(--border);border-radius:9px;background:var(--card);}
+.projectTaskRow input{width:17px;height:17px;flex-shrink:0;}
+.projectTaskMain{min-width:0;flex:1;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.projectTaskDue{font-size:10.5px;color:var(--text-dim);white-space:nowrap;}
+.projectTaskDue.late{color:var(--red);font-weight:600;}
+.projectDiaryCard,.projectTimelineCard{margin-top:14px;padding:13px 14px;}
+.projectSectionHead{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:9px;}
+.projectSectionHead b{font-weight:600;font-size:13.5px;}
+.projectDiaryLatest{font-size:12.5px;line-height:1.45;color:var(--text-dim);}
+.projectDiaryLatest strong{color:var(--text);font-weight:600;}
+.projectTimeline{display:flex;flex-direction:column;gap:0;}
+.projectTimelineItem{display:grid;grid-template-columns:16px 1fr;gap:8px;padding:7px 0;border-bottom:1px solid var(--border);}
+.projectTimelineItem:last-child{border-bottom:0;}
+.projectTimelineDot{width:7px;height:7px;border-radius:50%;background:var(--primary);margin-top:5px;}
+.projectTimelineText{font-size:11.5px;line-height:1.4;}
+.projectTimelineMeta{font-size:10px;color:var(--text-dim);margin-top:2px;}
+.projectMediaGrid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+.projectMediaSection{min-width:0;}
+.projectMediaTitle{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px;}
+.projectMediaTitle b{font-size:13.5px;font-weight:600;}
+.projectArchiveSelect{min-width:125px;}
+@media(max-width:760px){.projectMediaGrid{grid-template-columns:1fr;}}
+
 @media(max-width:900px){.projectAttention{grid-template-columns:1fr 1fr}.projectAreas{grid-template-columns:1fr 1fr}.projectOverviewInfo{grid-template-columns:1fr 1fr}}
 @media(max-width:600px){.projectCockpitHead{display:block}.projectCockpitHead .projectHeroActions{margin-top:10px}.projectAttention{grid-template-columns:1fr}.projectQuickActions{grid-template-columns:1fr 1fr}.projectAreas{grid-template-columns:1fr}.projectOverviewInfo{grid-template-columns:1fr 1fr}}
 
@@ -761,7 +785,12 @@ function ensureShape(s){
     if(!p.chat) p.chat=[];
     if(!p.status) p.status="In Planung";
     if(p.beginn==null) p.beginn="";
+    if(p.archiviert==null) p.archiviert=false;
+    if(!p.chronik) p.chronik=[];
     if(p.fortschritt==null) p.fortschritt=0;
+    if(!p.archiviert && p.status!=="Abgeschlossen" && !p.abnahmeDatum && !p.checklisteUnterschrift && p.beginn){
+      p.status = p.beginn>todayISO() ? "In Planung" : "Aktiv";
+    }
     if(p.personalkosten==null) p.personalkosten=0;
     if(p.fremdkosten==null) p.fremdkosten=0;
     if(p.abnahmeDatum==null) p.abnahmeDatum="";
@@ -1189,7 +1218,7 @@ function renderTicker(activeModule){
   const t = document.getElementById("ticker");
   const admin = hasAdminAccess();
   const activeMitarbeiter = S.mitarbeiter.filter(m=>m.status==="aktiv").length;
-  const aktiveProjekte = S.projekte.filter(p=>p.status==="Aktiv").length;
+  const aktiveProjekte = S.projekte.filter(p=>!p.archiviert&&projektEffectiveStatus(p)==="Aktiv").length;
   const offen = S.rechnungen.filter(r=>r.status!=="bezahlt").reduce((sum,r)=>sum + rechnungSumme(r), 0);
   const heute = todayISO();
   const gestempelt = S.zeiterfassung.filter(z=>z.datum===heute && z.kommen).length;
@@ -3059,6 +3088,27 @@ function projektStatusBadge(s){
   const map = {"In Planung":"amber","Aktiv":"blue","Abgeschlossen":"green"};
   return `<span class="badge ${map[s]||"gray"}">${escHtml(s)}</span>`;
 }
+function projektEffectiveStatus(p){
+  if(!p) return "In Planung";
+  if(p.archiviert) return "Archiviert";
+  if(p.status==="Abgeschlossen" || p.abnahmeDatum || p.checklisteUnterschrift) return "Abgeschlossen";
+  if(p.beginn) return p.beginn>todayISO() ? "In Planung" : "Aktiv";
+  return p.status||"In Planung";
+}
+function addProjektChronik(pid, typ, textValue){
+  const p=S.projekte.find(x=>x.id===pid);
+  if(!p) return;
+  if(!p.chronik) p.chronik=[];
+  p.chronik.unshift({
+    id:uid(),
+    zeit:new Date().toISOString(),
+    typ:typ||"info",
+    text:String(textValue||"").trim(),
+    autor:S.currentUserId||null
+  });
+  if(p.chronik.length>100) p.chronik=p.chronik.slice(0,100);
+}
+
 function projektMaterialkosten(p){
   return (p.material||[]).reduce((sum,m)=>sum+(Number(m.preis)||0),0);
 }
@@ -3078,6 +3128,7 @@ function projektAbnahmeStatus(p){
   return {label:"Offen",color:"gray"};
 }
 let _projektStatusFilter = "";
+let _projektArchiveFilter = "active";
 function projektCardCode(p){
   return String(p.projektNr||p.projektnummer||p.nr||p.id||"Projekt").toUpperCase();
 }
@@ -3104,6 +3155,11 @@ function setProjektStatusFilter(value){
   _projektStatusFilter=value||"";
   renderProjekte(document.getElementById("view"));
 }
+function setProjektArchiveFilter(value){
+  _projektArchiveFilter=value||"active";
+  renderProjekte(document.getElementById("view"));
+}
+
 function toggleProjektFavorit(id, ev){
   if(ev){ ev.preventDefault(); ev.stopPropagation(); }
   const p=S.projekte.find(x=>x.id===id);
@@ -3128,11 +3184,20 @@ function renderProjekte(view, id, tab){
       <select id="pjStatusFilter" onchange="setProjektStatusFilter(this.value)">
         <option value="">Alle Status</option>${PROJEKT_STATI.map(s=>`<option value="${escAttr(s)}" ${_projektStatusFilter===s?"selected":""}>${escHtml(s)}</option>`).join("")}
       </select>
+      <select class="projectArchiveSelect" id="pjArchiveFilter" onchange="setProjektArchiveFilter(this.value)">
+        <option value="active" ${_projektArchiveFilter==="active"?"selected":""}>Aktuelle</option>
+        <option value="archived" ${_projektArchiveFilter==="archived"?"selected":""}>Archiv</option>
+        <option value="all" ${_projektArchiveFilter==="all"?"selected":""}>Alle</option>
+      </select>
       <div class="projectListCount" id="pjCount"></div>
     </div>
     <div class="projectGrid" id="pjGrid"></div>
   `;
-  const list = S.projekte.filter(p=>!_projektStatusFilter || p.status===_projektStatusFilter).sort((a,b)=>{
+  const list = S.projekte.filter(p=>{
+    const status=projektEffectiveStatus(p);
+    const archiveOk=_projektArchiveFilter==="all" || (_projektArchiveFilter==="archived"?!!p.archiviert:!p.archiviert);
+    return archiveOk && (!_projektStatusFilter || status===_projektStatusFilter);
+  }).sort((a,b)=>{
     if(Boolean(a.favorit)!==Boolean(b.favorit)) return a.favorit?-1:1;
     if(a.status==="Abgeschlossen"&&b.status!=="Abgeschlossen") return 1;
     if(b.status==="Abgeschlossen"&&a.status!=="Abgeschlossen") return -1;
@@ -3140,9 +3205,10 @@ function renderProjekte(view, id, tab){
   });
   document.getElementById("pjGrid").innerHTML = list.map(p=>{
     const mapUrl=projektMapTileUrl(p);
-    const overdue=p.deadline&&p.deadline<todayISO()&&p.status!=="Abgeschlossen";
+    const effectiveStatus=projektEffectiveStatus(p);
+    const overdue=p.deadline&&p.deadline<todayISO()&&effectiveStatus!=="Abgeschlossen"&&!p.archiviert;
     const kunde=kundeName(p.kundeId)||"Kein Kunde zugeordnet";
-    const search=(projektCardCode(p)+" "+p.name+" "+(p.adresse||"")+" "+kunde+" "+(p.status||"")).toLowerCase();
+    const search=(projektCardCode(p)+" "+p.name+" "+(p.adresse||"")+" "+kunde+" "+effectiveStatus).toLowerCase();
     return `
     <article class="card projectCard" data-search="${escAttr(search)}" onclick="goTo('#projekte/${escAttr(p.id)}')">
       <div class="projectCardMap" ${mapUrl?`style="background-image:url('${escAttr(mapUrl)}')"`:""}>
@@ -3154,7 +3220,7 @@ function renderProjekte(view, id, tab){
         <div class="projectCardCode">${escHtml(projektCardCode(p))}</div>
         <div class="projectCardName" title="${escAttr(p.name)}">${escHtml(p.name)}</div>
         <div class="projectCardAddress" title="${escAttr(p.adresse||"")}">${escHtml(p.adresse||"Keine Adresse hinterlegt")}</div>
-        <div class="projectCardMeta">${escHtml(p.status||"–")}${Number(p.fortschritt)>0?" · "+Math.round(Number(p.fortschritt))+"%":""}</div>
+        <div class="projectCardMeta">${escHtml(effectiveStatus)}${Number(p.fortschritt)>0?" · "+Math.round(Number(p.fortschritt))+"%":""}</div>
         <div class="projectCardClient" title="${escAttr(kunde)}">${escHtml(kunde)}</div>
       </div>
       <div class="projectCardFoot">
@@ -3227,7 +3293,7 @@ async function renderProjekteKarte(list){
   if(statusEl) statusEl.textContent = markers.length ? "" : (withAdresse.length ? "Keine Adresse konnte auf der Karte gefunden werden." : "");
 }
 function openProjektForm(id){
-  const p = id ? S.projekte.find(x=>x.id===id) : {id:uid(), name:"", kundeId:"", adresse:"", status:"In Planung", budget:0, beginn:"", deadline:"", fortschritt:0, personalkosten:0, fremdkosten:0, abnahmeDatum:"", abnahmeBemerkung:"", standardSubLvAbzug:20, team:[], subunternehmer:[], fotos:[], dokumente:[], grundrisse:[], material:[], lvPositionen:[], ausschreibung:[], bautagebuch:[], zugaenge:[], checkliste:[], aufmasse:[], bauzeitenplan:[], chat:[]};
+  const p = id ? S.projekte.find(x=>x.id===id) : {id:uid(), name:"", kundeId:"", adresse:"", status:"In Planung", budget:0, beginn:"", deadline:"", fortschritt:0, personalkosten:0, fremdkosten:0, abnahmeDatum:"", abnahmeBemerkung:"", archiviert:false, chronik:[], standardSubLvAbzug:20, team:[], subunternehmer:[], fotos:[], dokumente:[], grundrisse:[], material:[], lvPositionen:[], ausschreibung:[], bautagebuch:[], zugaenge:[], checkliste:[], aufmasse:[], bauzeitenplan:[], chat:[]};
   openModal(`
     <div class="modalHead"><div class="modalTitle">${id?"Projekt bearbeiten":"Neues Projekt"}</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
     <div class="compactFormNote">Für den Start reichen Projekt, Kunde, Adresse, Beginn und Fertigstellung. Weitere Angaben können später ergänzt werden.</div>
@@ -3267,17 +3333,73 @@ function saveProjekt(id, isEdit){
   p.personalkosten=Number(document.getElementById("pPersonalkosten").value)||0;
   p.fremdkosten=Number(document.getElementById("pFremdkosten").value)||0;
   p.fortschritt=Math.max(0,Math.min(100,Number(document.getElementById("pFortschritt").value)||0));
-  if(!isEdit){ S.projekte.push(p); window._newProjektDraft=null; }
+  if(!p.archiviert && p.status!=="Abgeschlossen" && !p.abnahmeDatum && !p.checklisteUnterschrift){
+    if(p.beginn) p.status=p.beginn>todayISO()?"In Planung":"Aktiv";
+  }
+  if(!isEdit){
+    S.projekte.push(p);
+    window._newProjektDraft=null;
+    addProjektChronik(p.id,"projekt","Projekt angelegt");
+  }else{
+    addProjektChronik(p.id,"projekt","Projektdaten aktualisiert");
+  }
   saveState(); closeModal();
   goTo("#projekte/"+p.id);
   toast("Projekt gespeichert.", "success");
 }
-function deleteProjekt(id){
-  confirmDelete("Projekt „"+projektName(id)+"“ inkl. aller Fotos/Dokumente wirklich löschen?", ()=>{
-    deleteItemWithUndo(S.projekte, id, "Projekt gelöscht.", ()=>goTo("#projekte"));
-  });
+function setProjektArchiviert(id, archiviert){
+  const p=S.projekte.find(x=>x.id===id);
+  if(!p) return;
+  p.archiviert=!!archiviert;
+  addProjektChronik(id,"archiv",archiviert?"Projekt archiviert":"Projekt aus Archiv zurückgeholt");
+  saveState();
+  goTo(archiviert?"#projekte":"#projekte/"+id);
+  toast(archiviert?"Projekt archiviert.":"Projekt wieder aktiviert.","success");
 }
-
+function deleteProjekt(id){
+  setProjektArchiviert(id,true);
+}
+function duplicateProjekt(id){
+  const p=S.projekte.find(x=>x.id===id);
+  if(!p) return;
+  const clone={
+    id:uid(),
+    name:p.name+" – Kopie",
+    kundeId:p.kundeId||"",
+    adresse:"",
+    status:"In Planung",
+    beginn:"",
+    deadline:"",
+    budget:0,
+    fortschritt:0,
+    personalkosten:0,
+    fremdkosten:0,
+    abnahmeDatum:"",
+    abnahmeBemerkung:"",
+    archiviert:false,
+    chronik:[],
+    standardSubLvAbzug:Number(p.standardSubLvAbzug==null?20:p.standardSubLvAbzug),
+    team:[],
+    subunternehmer:[],
+    fotos:[],
+    dokumente:[],
+    grundrisse:[],
+    material:[],
+    lvPositionen:[],
+    ausschreibung:[],
+    bautagebuch:[],
+    zugaenge:[],
+    checkliste:(p.checkliste||[]).map(x=>({...x,id:uid(),done:false})),
+    aufmasse:[],
+    bauzeitenplan:(p.bauzeitenplan||[]).map(ph=>({id:uid(),bezeichnung:ph.bezeichnung||"",von:"",bis:"",status:"geplant",fortschritt:0})),
+    chat:[]
+  };
+  S.projekte.push(clone);
+  addProjektChronik(clone.id,"projekt","Projekt aus „"+p.name+"“ dupliziert");
+  saveState();
+  goTo("#projekte/"+clone.id);
+  toast("Projektkopie angelegt. Adresse und Termine bitte ergänzen.","success");
+}
 const PROJEKT_TABS = [
   {id:"uebersicht", label:"Überblick", icon:"▦"},
   {id:"lv", label:"LV / Subunternehmer", icon:"%"},
@@ -3305,11 +3427,15 @@ function renderProjektDetail(view, id, tab){
           <span>${escHtml(p.adresse||"Keine Adresse")}</span>
           <span>${escHtml(kundeName(p.kundeId)||"Kein Kunde")}</span>
           <span>${escHtml(period)}</span>
-          <span>${escHtml(p.status||"–")}</span>
+          <span>${escHtml(projektEffectiveStatus(p))}</span>
         </div>
       </div>
       <div class="projectHeroActions">
-        ${isOverview?`<button class="btn sm" onclick="openProjektForm('${escAttr(p.id)}')">Bearbeiten</button>`:""}
+        ${isOverview?`
+          <button class="btn sm" onclick="duplicateProjekt('${escAttr(p.id)}')">Duplizieren</button>
+          <button class="btn sm" onclick="setProjektArchiviert('${escAttr(p.id)}',${p.archiviert?"false":"true"})">${p.archiviert?"Aktivieren":"Archivieren"}</button>
+          <button class="btn sm primary" onclick="openProjektForm('${escAttr(p.id)}')">Bearbeiten</button>
+        `:""}
       </div>
     </div>
     <div id="projektTabBody"></div>
@@ -3452,26 +3578,30 @@ function openProjektAufgabe(pid){
   if(sel) sel.value=pid;
 }
 function renderTabUebersicht(body, p){
-  const material=projektMaterialkosten(p);
-  const marge=projektMarge(p);
   const abnahme=projektAbnahmeStatus(p);
   const offeneAufgaben=S.aufgaben.filter(a=>a.projektId===p.id&&a.status!=="erledigt");
   const ueberfaelligeAufgaben=offeneAufgaben.filter(a=>a.faellig&&a.faellig<todayISO());
-  const deadlineLate=p.deadline&&p.deadline<todayISO()&&p.status!=="Abgeschlossen";
-  const fehlendeDokumente=(p.dokumente||[]).length===0;
+  const effectiveStatus=projektEffectiveStatus(p);
+  const deadlineLate=p.deadline&&p.deadline<todayISO()&&effectiveStatus!=="Abgeschlossen"&&!p.archiviert;
   const zeitraum=projektBauzeitraum(p);
   const aktuellePhase=(p.bauzeitenplan||[]).slice().sort((a,b)=>(a.von||"").localeCompare(b.von||"")).find(ph=>bauphaseEffectiveStatus(ph)!=="fertig");
+  const letzteDiary=(p.bautagebuch||[]).slice().sort((a,b)=>(b.datum||"").localeCompare(a.datum||""))[0]||null;
+  const missing=[];
+  if(!p.kundeId) missing.push("Kunde");
+  if(!p.adresse) missing.push("Adresse");
+  if(!p.beginn) missing.push("Beginn");
+  if(!p.deadline) missing.push("Fertigstellung");
 
   const attention=[];
-  if(ueberfaelligeAufgaben.length) attention.push({cls:"danger",icon:"⚠",html:`<b>${ueberfaelligeAufgaben.length} Aufgabe${ueberfaelligeAufgaben.length===1?"":"n"} überfällig</b><br>Bitte prüfen`});
+  if(ueberfaelligeAufgaben.length) attention.push({cls:"danger",icon:"⚠",html:`<b>${ueberfaelligeAufgaben.length} Aufgabe${ueberfaelligeAufgaben.length===1?"":"n"} überfällig</b><br>Direkt unten erledigen`});
   else if(offeneAufgaben.length) attention.push({cls:"",icon:"📝",html:`<b>${offeneAufgaben.length} Aufgabe${offeneAufgaben.length===1?"":"n"} offen</b><br>Im Projekt zu erledigen`});
   else attention.push({cls:"",icon:"✓",html:`<b>Keine offenen Aufgaben</b><br>Aktuell nichts fällig`});
 
   if(deadlineLate) attention.push({cls:"danger",icon:"⏱",html:`<b>Termin überschritten</b><br>${fmtDate(p.deadline)}`});
   else attention.push({cls:"",icon:"📅",html:`<b>${p.deadline?fmtDate(p.deadline):"Kein Endtermin"}</b><br>Fertigstellung`});
 
-  if(fehlendeDokumente) attention.push({cls:"warn",icon:"📄",html:`<b>Noch keine Dateien</b><br>Unterlagen ablegen`});
-  else attention.push({cls:"",icon:"📄",html:`<b>${p.dokumente.length} Datei${p.dokumente.length===1?"":"en"}</b><br>Im Projekt gespeichert`});
+  if(missing.length) attention.push({cls:"warn",icon:"!",html:`<b>${missing.length} Angabe${missing.length===1?" fehlt":"n fehlen"}</b><br>${escHtml(missing.join(", "))}`});
+  else attention.push({cls:"",icon:"✓",html:`<b>Stammdaten vollständig</b><br>Beginn und Ende gepflegt`});
 
   body.innerHTML=`
     <div class="compactSectionTitle">Heute wichtig</div>
@@ -3481,25 +3611,55 @@ function renderTabUebersicht(body, p){
 
     <div class="compactSectionTitle">Schnell hinzufügen</div>
     <div class="projectQuickActions">
-      <button class="projectQuickAction" onclick="goTo('#projekte/${escAttr(p.id)}/fotos')"><span>📷</span><span>Foto</span></button>
-      <button class="projectQuickAction" onclick="goTo('#projekte/${escAttr(p.id)}/dokumente')"><span>📄</span><span>Datei</span></button>
+      <button class="projectQuickAction" onclick="goTo('#projekte/${escAttr(p.id)}/dokumente')"><span>📷</span><span>Foto / Datei</span></button>
       <button class="projectQuickAction" onclick="openProjektAufgabe('${escAttr(p.id)}')"><span>📝</span><span>Aufgabe</span></button>
-      <button class="projectQuickAction" onclick="openBautagebuchForm('${escAttr(p.id)}')"><span>✎</span><span>Bautagebuch</span></button>
+      <button class="projectQuickAction" onclick="openBautagebuchForm('${escAttr(p.id)}')"><span>✎</span><span>Heute dokumentieren</span></button>
+      <button class="projectQuickAction" onclick="goTo('#projekte/${escAttr(p.id)}/lv')"><span>％</span><span>LV öffnen</span></button>
     </div>
 
     <div class="projectOverviewInfo">
       <div class="projectOverviewInfoItem"><span>Beginn</span><b>${zeitraum.beginn?fmtDate(zeitraum.beginn):"Nicht festgelegt"}</b></div>
       <div class="projectOverviewInfoItem"><span>Fertigstellung</span><b class="${deadlineLate?'deadlineLate':''}">${zeitraum.ende?fmtDate(zeitraum.ende):"Nicht festgelegt"}</b></div>
       <div class="projectOverviewInfoItem"><span>Aktuelle Phase</span><b>${aktuellePhase?escHtml(aktuellePhase.bezeichnung):"Keine Phase"}</b></div>
-      <div class="projectOverviewInfoItem"><span>Fortschritt</span><b>${Math.round(Number(p.fortschritt)||0)} %</b></div>
+      <div class="projectOverviewInfoItem"><span>Status</span><b>${escHtml(effectiveStatus)}</b></div>
+    </div>
+
+    <div class="compactSectionTitle">Offene Aufgaben</div>
+    <div class="projectTaskList">
+      ${offeneAufgaben.slice().sort((a,b)=>(a.faellig||"9999").localeCompare(b.faellig||"9999")).slice(0,6).map(a=>`
+        <label class="projectTaskRow">
+          <input type="checkbox" onchange="setAufgabeStatus('${escAttr(a.id)}','erledigt')">
+          <span class="projectTaskMain" title="${escAttr(a.titel)}">${escHtml(a.titel)}</span>
+          <span class="projectTaskDue ${a.faellig&&a.faellig<todayISO()?'late':''}">${a.faellig?fmtDate(a.faellig):"ohne Termin"}</span>
+        </label>
+      `).join("") || `<div class="empty" style="padding:14px;">Keine offenen Aufgaben.</div>`}
+      <div><button class="btn sm" onclick="openProjektAufgabe('${escAttr(p.id)}')">＋ Aufgabe</button></div>
     </div>
 
     <div class="compactSectionTitle">Bereiche</div>
     <div class="projectAreas">
       <button class="projectArea" onclick="goTo('#projekte/${escAttr(p.id)}/lv')"><span><div class="projectAreaTitle">LV & Subunternehmer</div><div class="projectAreaSub">${(p.lvPositionen||[]).length} Positionen</div></span><span>›</span></button>
       <button class="projectArea" onclick="goTo('#projekte/${escAttr(p.id)}/bauzeitenplan')"><span><div class="projectAreaTitle">Bauablauf</div><div class="projectAreaSub">${p.bauzeitenplan.length} Phasen</div></span><span>›</span></button>
-      <button class="projectArea" onclick="goTo('#projekte/${escAttr(p.id)}/dokumente')"><span><div class="projectAreaTitle">Dateien</div><div class="projectAreaSub">${p.dokumente.length} Dateien · ${p.fotos.length} Fotos</div></span><span>›</span></button>
+      <button class="projectArea" onclick="goTo('#projekte/${escAttr(p.id)}/dokumente')"><span><div class="projectAreaTitle">Dateien & Fotos</div><div class="projectAreaSub">${p.dokumente.length} Dateien · ${p.fotos.length} Fotos</div></span><span>›</span></button>
       <button class="projectArea" onclick="goTo('#projekte/${escAttr(p.id)}/checkliste')"><span><div class="projectAreaTitle">Abnahme</div><div class="projectAreaSub">${escHtml(abnahme.label)}</div></span><span>›</span></button>
+    </div>
+
+    <div class="card projectDiaryCard">
+      <div class="projectSectionHead"><b>Bautagebuch</b><button class="btn sm primary" onclick="openBautagebuchForm('${escAttr(p.id)}')">Heute dokumentieren</button></div>
+      <div class="projectDiaryLatest">
+        ${letzteDiary?`<strong>${fmtDate(letzteDiary.datum)}</strong>${letzteDiary.wetter?" · "+escHtml(letzteDiary.wetter):""}<br>${escHtml(letzteDiary.text).slice(0,240)}${String(letzteDiary.text||"").length>240?"…":""}`:"Noch kein Bautagebuch-Eintrag vorhanden."}
+      </div>
+    </div>
+
+    <div class="card projectTimelineCard">
+      <div class="projectSectionHead"><b>Projektchronik</b><span class="pageSub">Letzte Änderungen</span></div>
+      <div class="projectTimeline">
+        ${(p.chronik||[]).slice(0,6).map(e=>`
+          <div class="projectTimelineItem">
+            <span class="projectTimelineDot"></span>
+            <div><div class="projectTimelineText">${escHtml(e.text||"Änderung")}</div><div class="projectTimelineMeta">${fmtDateTime(e.zeit)}${e.autor?" · "+escHtml(mitarbeiterName(e.autor)||"Benutzer"):""}</div></div>
+          </div>`).join("") || `<div class="pageSub">Noch keine Änderungen protokolliert.</div>`}
+      </div>
     </div>
 
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;">
@@ -3758,6 +3918,7 @@ function saveBauphase(pid, phaseId, isEdit){
   ph.status = document.getElementById("bpStatus").value;
   ph.fortschritt = Math.max(0, Math.min(100, Number(document.getElementById("bpFortschritt").value)||0));
   if(!isEdit){ p.bauzeitenplan.push(ph); window._newBauphaseDraft=null; }
+  addProjektChronik(pid,"bauablauf",(isEdit?"Bauphase aktualisiert: ":"Bauphase angelegt: ")+bezeichnung);
   saveState(); closeModal(); route(location.hash);
   toast("Phase gespeichert.", "success");
 }
@@ -3783,24 +3944,7 @@ function exportBauzeitenplanPDF(pid){
 }
 
 function renderTabFotos(body, p){
-  body.innerHTML = `
-    <div class="card">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
-        <b>Fotos (${p.fotos.length})</b>
-        <label class="btn primary sm" style="margin:0;">📷 Fotos hinzufügen<input type="file" accept="image/*" multiple style="display:none;" onchange="addProjektFotos('${escAttr(p.id)}', this)"></label>
-      </div>
-      <div class="thumbGrid">
-        ${p.fotos.map(f=>`
-          <div class="thumb">
-            <img src="${escAttr(f.dataURL)}" loading="lazy">
-            ${f.markiert?`<span class="thumbMarkedBadge">✏️ markiert</span>`:""}
-            <button class="thumbEdit" onclick="openFotoMarkierung('${escAttr(p.id)}','${escAttr(f.id)}')">✏️ Markieren</button>
-            <button class="thumbDel" onclick="deleteProjektFoto('${escAttr(p.id)}','${escAttr(f.id)}')">✖</button>
-          </div>
-        `).join("") || `<div class="empty" style="grid-column:1/-1;">Noch keine Fotos.</div>`}
-      </div>
-    </div>
-  `;
+  renderTabProjektDateien(body,p);
 }
 async function addProjektFotos(pid, input){
   const p = S.projekte.find(x=>x.id===pid);
@@ -3812,6 +3956,7 @@ async function addProjektFotos(pid, input){
       ok++;
     }catch(e){ fail++; }
   }
+  if(ok) addProjektChronik(pid,"foto",ok+(ok===1?" Foto hinzugefügt":" Fotos hinzugefügt"));
   saveState(); route(location.hash);
   if(fail) toast(fail+" Foto(s) konnten nicht verarbeitet werden.", "error");
   else toast(ok+" Foto(s) hinzugefügt.", "success");
@@ -3925,48 +4070,54 @@ function saveFotoMarkierung(){
 }
 
 function renderTabProjektDokumente(body, p){
+  renderTabProjektDateien(body,p);
+}
+function renderTabProjektDateien(body,p){
   body.innerHTML = `
     <div class="card">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px;">
-        <div>
-          <div style="font-size:15px;font-weight:600;">Dokumente</div>
-          <div class="pageSub">${p.dokumente.length} ${p.dokumente.length===1?"Datei":"Dateien"} im Projekt</div>
-        </div>
-        <label class="btn primary sm" style="margin:0;">Dateien auswählen
-          <input type="file" multiple style="display:none;" onchange="addProjektDokument('${escAttr(p.id)}', this)">
-        </label>
+      <div class="projectSectionHead">
+        <div><b>Dateien & Fotos</b><div class="pageSub">${p.dokumente.length} Dateien · ${p.fotos.length} Fotos</div></div>
       </div>
-
-      <div class="projectDropzone" id="projectDocDropzone"
-        onclick="document.getElementById('projectDocFileInput').click()"
-        ondragenter="projektDokDrag(event,true)"
-        ondragover="projektDokDrag(event,true)"
-        ondragleave="projektDokDrag(event,false)"
-        ondrop="dropProjektDokumente('${escAttr(p.id)}',event)">
-        <div class="projectDropzoneIcon">↧</div>
-        <div class="projectDropzoneTitle">Dokumente hier hineinziehen</div>
-        <div class="projectDropzoneHint">oder klicken und Dateien vom Gerät auswählen</div>
-        <input id="projectDocFileInput" type="file" multiple style="display:none;" onchange="addProjektDokument('${escAttr(p.id)}', this)">
-      </div>
-
-      <div style="display:flex;flex-direction:column;gap:7px;">
-        ${p.dokumente.map(d=>`
-          <div class="projectDocRow">
-            <div style="font-size:18px;" aria-hidden="true">📄</div>
-            <div class="projectDocMain">
-              <div class="projectDocName" title="${escAttr(d.name)}">${escHtml(d.name)}</div>
-              <div class="projectDocMeta">${d.datum?fmtDate(String(d.datum).slice(0,10)):""}</div>
-            </div>
-            <div class="projectDocActions">
-              <button class="iconBtn" title="Öffnen" data-docurl="${escAttr(d.dataURL)}" data-docname="${escAttr(d.name)}" onclick="openDataUrlDoc(this.dataset.docurl,this.dataset.docname)">↗</button>
-              <button class="iconBtn" title="Teilen" data-docurl="${escAttr(d.dataURL)}" data-docname="${escAttr(d.name)}" onclick="shareDataUrlDoc(this.dataset.docurl,this.dataset.docname)">📤</button>
-              <button class="iconBtn" title="Löschen" onclick="deleteProjektDokument('${escAttr(p.id)}','${escAttr(d.id)}')">🗑️</button>
-            </div>
+      <div class="projectMediaGrid">
+        <div class="projectMediaSection">
+          <div class="projectMediaTitle"><b>Dokumente</b><label class="btn sm">Dateien auswählen<input type="file" multiple style="display:none;" onchange="addProjektDokument('${escAttr(p.id)}',this)"></label></div>
+          <div class="projectDropzone" id="projectDocDropzone"
+            onclick="document.getElementById('projectDocFileInput').click()"
+            ondragenter="projektDokDrag(event,true)" ondragover="projektDokDrag(event,true)"
+            ondragleave="projektDokDrag(event,false)" ondrop="dropProjektDokumente('${escAttr(p.id)}',event)">
+            <div class="projectDropzoneIcon">↧</div>
+            <div class="projectDropzoneTitle">Dokumente hier hineinziehen</div>
+            <div class="projectDropzoneHint">oder klicken und vom Gerät auswählen</div>
+            <input id="projectDocFileInput" type="file" multiple style="display:none;" onchange="addProjektDokument('${escAttr(p.id)}',this)">
           </div>
-        `).join("") || `<div class="empty" style="padding:24px 16px;">Noch keine Dokumente.</div>`}
+          <div style="display:flex;flex-direction:column;gap:7px;">
+            ${p.dokumente.map(d=>`
+              <div class="projectDocRow">
+                <div style="font-size:18px;">📄</div>
+                <div class="projectDocMain"><div class="projectDocName" title="${escAttr(d.name)}">${escHtml(d.name)}</div><div class="projectDocMeta">${d.datum?fmtDate(String(d.datum).slice(0,10)):""}</div></div>
+                <div class="projectDocActions">
+                  <button class="iconBtn" title="Öffnen" data-docurl="${escAttr(d.dataURL)}" data-docname="${escAttr(d.name)}" onclick="openDataUrlDoc(this.dataset.docurl,this.dataset.docname)">↗</button>
+                  <button class="iconBtn" title="Teilen" data-docurl="${escAttr(d.dataURL)}" data-docname="${escAttr(d.name)}" onclick="shareDataUrlDoc(this.dataset.docurl,this.dataset.docname)">📤</button>
+                  <button class="iconBtn" title="Löschen" onclick="deleteProjektDokument('${escAttr(p.id)}','${escAttr(d.id)}')">🗑️</button>
+                </div>
+              </div>`).join("") || `<div class="empty" style="padding:18px;">Noch keine Dokumente.</div>`}
+          </div>
+        </div>
+
+        <div class="projectMediaSection">
+          <div class="projectMediaTitle"><b>Fotos</b><label class="btn sm primary">Fotos hinzufügen<input type="file" accept="image/*" multiple style="display:none;" onchange="addProjektFotos('${escAttr(p.id)}',this)"></label></div>
+          <div class="thumbGrid">
+            ${p.fotos.map(f=>`
+              <div class="thumb">
+                <img src="${escAttr(f.dataURL)}" loading="lazy">
+                ${f.markiert?`<span class="thumbMarkedBadge">markiert</span>`:""}
+                <button class="thumbEdit" onclick="openFotoMarkierung('${escAttr(p.id)}','${escAttr(f.id)}')">Markieren</button>
+                <button class="thumbDel" onclick="deleteProjektFoto('${escAttr(p.id)}','${escAttr(f.id)}')">×</button>
+              </div>`).join("") || `<div class="empty" style="grid-column:1/-1;padding:18px;">Noch keine Fotos.</div>`}
+          </div>
+        </div>
       </div>
-    </div>
-  `;
+    </div>`;
 }
 function projektDokDrag(event, active){
   event.preventDefault();
@@ -3988,6 +4139,7 @@ async function addProjektDokumentFiles(pid, files){
     }
   }
   if(added){
+    addProjektChronik(pid,"datei",added+(added===1?" Dokument hochgeladen":" Dokumente hochgeladen"));
     saveState();
     route(location.hash);
     toast(added===1?"Dokument hochgeladen.":added+" Dokumente hochgeladen.", "success");
@@ -4483,6 +4635,7 @@ function saveBautagebuch(pid){
   if(!text){ toast("Text erforderlich.", "warn"); return; }
   const p = S.projekte.find(x=>x.id===pid);
   p.bautagebuch.push({id:uid(), datum:document.getElementById("btDatum").value, wetter:document.getElementById("btWetter").value.trim(), text, unterschrift:window._btSigDraft||""});
+  addProjektChronik(pid,"bautagebuch","Bautagebuch-Eintrag hinzugefügt");
   saveState(); closeModal(); route(location.hash);
 }
 function deleteBautagebuch(pid, eid){
@@ -5085,16 +5238,21 @@ function openAufgabeForm(){
 function saveAufgabe(){
   const titel = document.getElementById("agTitel").value.trim();
   if(!titel){ toast("Titel erforderlich.", "warn"); return; }
-  S.aufgaben.push({
+  const neueAufgabe={
     id:uid(), titel, beschreibung:document.getElementById("agBeschreibung").value.trim(),
     faellig:document.getElementById("agFaellig").value, prioritaet:document.getElementById("agPrio").value,
     projektId:document.getElementById("agProjekt").value||null, zugeordnet:document.getElementById("agZuge").value||null,
     status:"offen"
-  });
+  };
+  S.aufgaben.push(neueAufgabe);
+  if(neueAufgabe.projektId) addProjektChronik(neueAufgabe.projektId,"aufgabe","Aufgabe angelegt: "+titel);
   saveState(); closeModal(); route(location.hash);
 }
 function setAufgabeStatus(id, status){
-  S.aufgaben.find(a=>a.id===id).status = status;
+  const a=S.aufgaben.find(x=>x.id===id);
+  if(!a) return;
+  a.status=status;
+  if(a.projektId) addProjektChronik(a.projektId,"aufgabe",(status==="erledigt"?"Aufgabe erledigt: ":"Aufgabenstatus geändert: ")+a.titel);
   saveState(); route(location.hash);
 }
 function deleteAufgabe(id){
