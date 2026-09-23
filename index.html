@@ -776,6 +776,8 @@ function ensureShape(s){
   s.subunternehmer.forEach(sub=>{
     if(!sub.dokumente) sub.dokumente=[];
     if(sub.notizen==null) sub.notizen="";
+    if(sub.status==null) sub.status="aktiv";
+    if(sub.adresse==null) sub.adresse="";
   });
   s.projekte.forEach(p=>{
     if(!p.team) p.team=[];
@@ -2888,6 +2890,36 @@ function importKundenCSV(input){
 /* =========================================================
    MODULE: SUBUNTERNEHMER
 ========================================================= */
+function subDokumentStatus(s){
+  const defs=(S.einstellungen.pflichtdokumenteDefs&&S.einstellungen.pflichtdokumenteDefs.subunternehmer)||[];
+  const docs=s.dokumente||[];
+  let missing=0,expired=0,expiring=0,ok=0;
+  defs.forEach(def=>{
+    const doc=docs.find(d=>d.pflichttyp===def.name);
+    const st=pflichtDocStatus(doc);
+    if(st==="missing") missing++;
+    else if(st==="expired") expired++;
+    else if(st==="expiring") expiring++;
+    else ok++;
+  });
+  const complete=defs.length>0 && missing===0 && expired===0;
+  return {missing,expired,expiring,ok,total:defs.length,complete};
+}
+function subDokumentBadge(s){
+  const st=subDokumentStatus(s);
+  if(st.expired) return `<span class="badge red">${st.expired} abgelaufen</span>`;
+  if(st.missing) return `<span class="badge amber">${st.missing} fehlen</span>`;
+  if(st.expiring) return `<span class="badge amber">${st.expiring} bald fällig</span>`;
+  return `<span class="badge green">Unterlagen vollständig</span>`;
+}
+let _subSearch="";
+function setSubSearch(v){
+  _subSearch=String(v||"").trim().toLowerCase();
+  renderSubunternehmer(document.getElementById("view"));
+}
+function subSearchText(s){
+  return [s.firma,s.ansprechpartner,s.gewerk,s.tel,s.email,s.adresse].filter(Boolean).join(" ").toLowerCase();
+}
 const SUB_TABS = [
   {id:"dokumente", label:"Dokumente", icon:"📁"},
   {id:"stammdaten", label:"Stammdaten", icon:"🧾"},
@@ -2896,36 +2928,40 @@ const SUB_TABS = [
 ];
 function renderSubunternehmer(view, id, tab){
   if(id) return renderSubDetail(view, id, tab||"dokumente");
+  const filtered=S.subunternehmer.filter(s=>!_subSearch||subSearchText(s).includes(_subSearch));
   view.innerHTML = `
     <div class="pageHead">
-      <div><div class="pageTitle">Subunternehmer</div><div class="pageSub">${S.subunternehmer.length} Fremdfirmen</div></div>
-      <button class="btn primary" onclick="openSubForm()">➕ Subunternehmer anlegen</button>
+      <div><div class="pageTitle">Subunternehmer</div><div class="pageSub">${S.subunternehmer.length} Fremdfirmen · operative Partnerverwaltung</div></div>
+      <button class="btn primary" onclick="openSubForm()">＋ Subunternehmer</button>
+    </div>
+    <div class="filterBar" style="margin-bottom:12px;">
+      <input type="search" placeholder="Firma, Gewerk, Ansprechpartner, Telefon oder Adresse suchen …" value="${escAttr(_subSearch)}"
+        oninput="_subSearch=this.value.trim().toLowerCase(); filterSubRows()">
+      <select id="subStatusFilter" onchange="filterSubRows()">
+        <option value="">Alle Status</option>
+        <option value="aktiv">Aktiv</option>
+        <option value="gesperrt">Gesperrt</option>
+        <option value="inaktiv">Nicht mehr eingesetzt</option>
+      </select>
     </div>
     <div class="card"><div class="tableWrap"><table>
-      <thead><tr><th>Firma</th><th>Ansprechpartner</th><th>Gewerk</th><th>Telefon</th><th>E-Mail</th><th></th></tr></thead>
-      <tbody>
-      ${S.subunternehmer.map(s=>`
-        <tr style="cursor:pointer;" onclick="goTo('#subunternehmer/${escAttr(s.id)}')">
-          <td><b>${escHtml(s.firma)}</b></td><td>${escHtml(s.ansprechpartner||"–")}</td><td>${escHtml(s.gewerk||"–")}</td>
-          <td>${escHtml(s.tel||"–")}</td><td>${escHtml(s.email||"–")}</td>
-          <td style="text-align:right; white-space:nowrap;" onclick="event.stopPropagation()">
-            <button class="iconBtn" onclick="goTo('#subunternehmer/${escAttr(s.id)}')">📋</button>
-            <button class="iconBtn" onclick="deleteSub('${escAttr(s.id)}')">🗑️</button>
-          </td>
-        </tr>
-      `).join("") || `<tr><td colspan="6"><div class="empty">Noch keine Subunternehmer.</div></td></tr>`}
-      </tbody>
-    </table></div></div>
-  `;
-}
-function renderSubStammdatenFields(s){
+      <thead><tr><th>Firma</th><th>Gewerk</th><th>Status</th><th>Unterlagen</th><th>Kontakt</th><th>Projekte</th><th></th></tr></thead>
+      <tbody id="subTableBody">
+      ${filtered.map(s=>{
+        const assigned=S.projekte.filter(p=>(p.function renderSubStammdatenFields(s){
   return `
     <div class="grid cols-2">
       <div class="formRow"><label>Firma</label><div class="micWrap"><input id="sFirma" type="text" value="${escAttr(s.firma)}">${fieldMic("sFirma")}</div></div>
-      <div class="formRow"><label>Gewerk</label><input id="sGewerk" type="text" value="${escAttr(s.gewerk||"")}"></div>
+      <div class="formRow"><label>Gewerk</label><input id="sGewerk" type="text" value="${escAttr(s.gewerk||"")}" placeholder="z. B. Trockenbau, Maler, Elektro"></div>
       <div class="formRow"><label>Ansprechpartner</label><input id="sAnsprech" type="text" value="${escAttr(s.ansprechpartner||"")}"></div>
+      <div class="formRow"><label>Status</label><select id="sStatus">
+        <option value="aktiv" ${(s.status||"aktiv")==="aktiv"?"selected":""}>Aktiv</option>
+        <option value="gesperrt" ${s.status==="gesperrt"?"selected":""}>Gesperrt</option>
+        <option value="inaktiv" ${s.status==="inaktiv"?"selected":""}>Nicht mehr eingesetzt</option>
+      </select></div>
       <div class="formRow"><label>Telefon</label><input id="sTel" type="tel" value="${escAttr(s.tel||"")}"></div>
-      <div class="formRow" style="grid-column:1/-1;"><label>E-Mail</label><input id="sEmail" type="email" value="${escAttr(s.email||"")}"></div>
+      <div class="formRow"><label>E-Mail</label><input id="sEmail" type="email" value="${escAttr(s.email||"")}"></div>
+      <div class="formRow" style="grid-column:1/-1;"><label>Adresse</label><input id="sAdresse" type="text" value="${escAttr(s.adresse||"")}"></div>
     </div>
     ${sigPadHTML("sSig", "Unterschrift Subunternehmer")}
   `;
@@ -2935,7 +2971,7 @@ function initSubSigPad(s){
   initSigPad("sSig", s.unterschrift || "", v=>window._subSigDraft=v);
 }
 function openSubForm(){
-  const s = {id:uid(), firma:"", ansprechpartner:"", tel:"", email:"", gewerk:"", notizen:"", dokumente:[]};
+  const s = {id:uid(), firma:"", ansprechpartner:"", tel:"", email:"", adresse:"", gewerk:"", status:"aktiv", notizen:"", dokumente:[]};
   window._newSubDraft = s;
   openModal(`
     <div class="modalHead"><div class="modalTitle">Subunternehmer anlegen</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
@@ -2951,6 +2987,7 @@ function saveSubNew(){
   s.firma=firma; s.gewerk=document.getElementById("sGewerk").value.trim();
   s.ansprechpartner=document.getElementById("sAnsprech").value.trim();
   s.tel=document.getElementById("sTel").value.trim(); s.email=document.getElementById("sEmail").value.trim();
+  s.adresse=document.getElementById("sAdresse").value.trim(); s.status=document.getElementById("sStatus").value;
   s.unterschrift = window._subSigDraft || "";
   S.subunternehmer.push(s); window._newSubDraft=null;
   saveState(); closeModal();
@@ -2964,6 +3001,7 @@ function saveSubEdit(id){
   s.firma=firma; s.gewerk=document.getElementById("sGewerk").value.trim();
   s.ansprechpartner=document.getElementById("sAnsprech").value.trim();
   s.tel=document.getElementById("sTel").value.trim(); s.email=document.getElementById("sEmail").value.trim();
+  s.adresse=document.getElementById("sAdresse").value.trim(); s.status=document.getElementById("sStatus").value;
   s.unterschrift = window._subSigDraft || s.unterschrift || "";
   saveState(); route(location.hash);
   toast("Gespeichert.", "success");
@@ -2975,7 +3013,7 @@ function exportSubStammdatenPDF(id){
   doc.setFontSize(10.5);
   const rows = [
     ["Firma", s.firma], ["Gewerk", s.gewerk||"–"], ["Ansprechpartner", s.ansprechpartner||"–"],
-    ["Telefon", s.tel||"–"], ["E-Mail", s.email||"–"],
+    ["Telefon", s.tel||"–"], ["E-Mail", s.email||"–"], ["Adresse", s.adresse||"–"], ["Status", s.status||"aktiv"],
   ];
   rows.forEach(([label,val])=>{ doc.setFont(undefined,"bold"); doc.text(label+":", 15, y); doc.setFont(undefined,"normal"); doc.text(String(val), 75, y); y+=8; });
   if(s.unterschrift){
@@ -3014,94 +3052,169 @@ function deleteSub(id){
   });
 }
 function renderSubDetail(view, id, tab){
-  const s = S.subunternehmer.find(x=>x.id===id);
-  if(!s){ view.innerHTML = `<div class="empty">Subunternehmer nicht gefunden. <button class="btn" onclick="goTo('#subunternehmer')">Zurück</button></div>`; return; }
-  view.innerHTML = `
+  const s=S.subunternehmer.find(x=>x.id===id);
+  if(!s){ view.innerHTML=`<div class="empty">Subunternehmer nicht gefunden. <button class="btn" onclick="goTo('#subunternehmer')">Zurück</button></div>`; return; }
+  const ds=subDokumentStatus(s);
+  const activeProjects=S.projekte.filter(p=>(p.subunternehmer||[]).includes(s.id)&&!p.archiviert).length;
+  view.innerHTML=`
     <div class="pageHead">
       <div>
         <button class="btn sm" onclick="goTo('#subunternehmer')" style="margin-bottom:8px;">← Alle Subunternehmer</button>
         <div class="pageTitle">${escHtml(s.firma)}</div>
-        <div class="pageSub">${escHtml(s.gewerk||"–")}${s.ansprechpartner?" · "+escHtml(s.ansprechpartner):""}</div>
+        <div class="pageSub">${escHtml(s.gewerk||"Kein Gewerk")}${s.ansprechpartner?" · "+escHtml(s.ansprechpartner):""}</div>
       </div>
-      <button class="btn danger" onclick="deleteSub('${escAttr(s.id)}')">🗑️ Löschen</button>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <span class="badge ${s.status==="gesperrt"?"red":s.status==="inaktiv"?"gray":"green"}">${escHtml(s.status==="inaktiv"?"nicht mehr eingesetzt":s.status||"aktiv")}</span>
+        ${subDokumentBadge(s)}
+      </div>
+    </div>
+    <div class="grid cols-3" style="margin-bottom:14px;">
+      <div class="kpi"><div class="kpiVal">${activeProjects}</div><div class="kpiLabel">Aktive Projekte</div></div>
+      <div class="kpi"><div class="kpiVal">${ds.total-ds.missing}/${ds.total}</div><div class="kpiLabel">Bescheinigungen vorhanden</div></div>
+      <div class="kpi"><div class="kpiVal">${ds.expired+ds.expiring}</div><div class="kpiLabel">Ablauf prüfen</div></div>
     </div>
     <div class="tabs">${SUB_TABS.map(t=>`<button class="tabBtn ${tab===t.id?"active":""}" onclick="goTo('#subunternehmer/${escAttr(s.id)}/${t.id}')">${t.icon} ${t.label}</button>`).join("")}</div>
     <div id="subTabBody"></div>
   `;
-  const body = document.getElementById("subTabBody");
+  const body=document.getElementById("subTabBody");
   if(tab==="stammdaten"){
-    body.innerHTML = `<div class="card">${renderSubStammdatenFields(s)}
-      <div style="display:flex; gap:8px; margin-top:14px;">
-        <button class="btn" onclick="exportSubStammdatenPDF('${escAttr(s.id)}')">📄 Stammdaten-PDF</button>
+    body.innerHTML=`<div class="card">${renderSubStammdatenFields(s)}
+      <div style="display:flex;gap:8px;margin-top:14px;">
+        <button class="btn" onclick="exportSubStammdatenPDF('${escAttr(s.id)}')">Stammdaten-PDF</button>
         <button class="btn primary" onclick="saveSubEdit('${escAttr(s.id)}')">Speichern</button>
-      </div>
-    </div>`;
+      </div></div>`;
     initSubSigPad(s);
+  }else if(tab==="projekte"){
+    body.innerHTML=renderSubProjekteTab(s);
+  }else if(tab==="notizen"){
+    body.innerHTML=`<div class="card"><div class="formRow"><label>Interne Notizen</label><div class="micWrap"><textarea id="subNotizen" style="min-height:220px;" onchange="quickUpdateSubField('${escAttr(s.id)}','notizen',this.value)">${escHtml(s.notizen||"")}</textarea>${fieldMic("subNotizen")}</div></div></div>`;
+  }else{
+    body.innerHTML=`
+      <div style="display:flex;justify-content:flex-end;margin-bottom:10px;">
+        <button class="btn primary sm" onclick="openSubBescheinigungForm('${escAttr(s.id)}')">＋ Bescheinigung hinzufügen</button>
+      </div>
+      ${renderPflichtChecklist("subunternehmer",id)}
+      ${renderSubFreieDokumente(s)}
+    `;
   }
-  else if(tab==="projekte") body.innerHTML = renderSubProjekteTab(s);
-  else if(tab==="notizen") body.innerHTML = `<div class="card"><div class="formRow"><label>Notizen</label><div class="micWrap"><textarea id="subNotizen" style="min-height:200px;" onchange="quickUpdateSubField('${escAttr(s.id)}','notizen',this.value)">${escHtml(s.notizen||"")}</textarea>${fieldMic("subNotizen")}</div></div></div>`;
-  else body.innerHTML = renderPflichtChecklist("subunternehmer", id) + renderSubFreieDokumente(s);
+}
+function openSubBescheinigungForm(id){
+  const s=S.subunternehmer.find(x=>x.id===id);
+  const defs=(S.einstellungen.pflichtdokumenteDefs&&S.einstellungen.pflichtdokumenteDefs.subunternehmer)||[];
+  openModal(`
+    <div class="modalHead"><div class="modalTitle">Bescheinigung hinzufügen</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
+    <div class="formRow"><label>Dokumenttyp</label><select id="subDocType">
+      ${defs.map(d=>`<option value="${escAttr(d.name)}">${escHtml(d.name)}</option>`).join("")}
+      <option value="">Sonstiges Dokument</option>
+    </select></div>
+    <div class="formRow"><label>Datei</label><input id="subDocFile" type="file"></div>
+    <div class="formRow"><label>Gültig bis</label><input id="subDocValid" type="date"><div class="pageSub">Leer lassen, wenn das Dokument kein Ablaufdatum hat.</div></div>
+    <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="saveSubBescheinigung('${escAttr(id)}')">Hochladen</button></div>
+  `);
+}
+async function saveSubBescheinigung(id){
+  const s=S.subunternehmer.find(x=>x.id===id);
+  const file=document.getElementById("subDocFile").files[0];
+  if(!file){ toast("Bitte eine Datei auswählen.","warn"); return; }
+  const typ=document.getElementById("subDocType").value;
+  const valid=document.getElementById("subDocValid").value;
+  try{
+    const dataURL=await fileToDataURL(file);
+    if(typ){
+      s.dokumente=s.dokumente.filter(d=>d.pflichttyp!==typ);
+      s.dokumente.push({id:uid(),name:file.name,dataURL,pflichttyp:typ,gueltigBis:valid,datum:new Date().toISOString()});
+    }else{
+      s.dokumente.push({id:uid(),name:file.name,dataURL,gueltigBis:valid,datum:new Date().toISOString()});
+    }
+    saveState(); closeModal(); route(location.hash); toast("Bescheinigung gespeichert.","success");
+  }catch(e){ toast("Datei konnte nicht gelesen werden: "+e.message,"error"); }
 }
 function renderSubFreieDokumente(s){
-  const freie = (s.dokumente||[]).filter(d=>!d.pflichttyp);
+  const freie=(s.dokumente||[]).filter(d=>!d.pflichttyp);
   return `
     <div class="card">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-        <b>Weitere Dokumente</b>
-        <label class="btn sm" style="margin:0;">⬆ Hochladen<input type="file" multiple style="display:none;" onchange="addSubDoc('${escAttr(s.id)}', this)"></label>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <div><b>Weitere Dokumente</b><div class="pageSub">Verträge, Vereinbarungen oder sonstige Unterlagen</div></div>
+        <label class="btn sm">Dateien auswählen<input type="file" multiple style="display:none;" onchange="addSubDoc('${escAttr(s.id)}',this)"></label>
       </div>
-      <div style="display:flex; flex-direction:column; gap:6px;">
-        ${freie.map(d=>`<div style="display:flex; justify-content:space-between; align-items:center; background:var(--card2); padding:8px 12px; border-radius:8px; font-size:12.5px;"><a href="javascript:void(0)" data-docurl="${escAttr(d.dataURL)}" data-docname="${escAttr(d.name)}" onclick="openDataUrlDoc(this.dataset.docurl,this.dataset.docname)" style="cursor:pointer;">📄 ${escHtml(d.name)}</a><button class="iconBtn" title="Teilen" data-docurl="${escAttr(d.dataURL)}" data-docname="${escAttr(d.name)}" onclick="shareDataUrlDoc(this.dataset.docurl,this.dataset.docname)">📤</button><button class="iconBtn" onclick="removeSubDoc('${escAttr(s.id)}','${escAttr(d.id)}')">🗑️</button></div>`).join("") || `<div class="empty" style="padding:10px;">Keine weiteren Dokumente.</div>`}
+      <div class="projectDropzone" id="subDocDropzone" onclick="document.getElementById('subDocDropInput').click()"
+        ondragenter="subDocDrag(event,true)" ondragover="subDocDrag(event,true)" ondragleave="subDocDrag(event,false)" ondrop="dropSubDocs('${escAttr(s.id)}',event)">
+        <div class="projectDropzoneIcon">↧</div>
+        <div class="projectDropzoneTitle">Dokumente hier hineinziehen</div>
+        <div class="projectDropzoneHint">oder klicken und Dateien auswählen</div>
+        <input id="subDocDropInput" type="file" multiple style="display:none;" onchange="addSubDoc('${escAttr(s.id)}',this)">
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px;">
+        ${freie.map(d=>`<div class="projectDocRow">
+          <div style="font-size:18px;">📄</div>
+          <div class="projectDocMain"><div class="projectDocName">${escHtml(d.name)}</div><div class="projectDocMeta">${d.gueltigBis?"Gültig bis "+fmtDate(d.gueltigBis):(d.datum?fmtDate(String(d.datum).slice(0,10)):"")}</div></div>
+          <div class="projectDocActions"><button class="iconBtn" data-docurl="${escAttr(d.dataURL)}" data-docname="${escAttr(d.name)}" onclick="openDataUrlDoc(this.dataset.docurl,this.dataset.docname)">↗</button><button class="iconBtn" onclick="removeSubDoc('${escAttr(s.id)}','${escAttr(d.id)}')">🗑️</button></div>
+        </div>`).join("") || `<div class="empty" style="padding:12px;">Keine weiteren Dokumente.</div>`}
       </div>
     </div>
   `;
 }
-async function addSubDoc(id, input){
-  const s = S.subunternehmer.find(x=>x.id===id);
-  for(const file of input.files){
-    try{ const dataURL = await fileToDataURL(file); s.dokumente.push({id:uid(), name:file.name, dataURL, datum:new Date().toISOString()}); }
-    catch(e){ toast("Datei konnte nicht geladen werden: "+e.message, "error"); }
-  }
-  saveState(); route(location.hash);
+function subDocDrag(event,active){
+  event.preventDefault(); event.stopPropagation();
+  document.getElementById("subDocDropzone")?.classList.toggle("dragover",!!active);
 }
-function removeSubDoc(id, docId){
-  const s = S.subunternehmer.find(x=>x.id===id);
-  s.dokumente = s.dokumente.filter(d=>d.id!==docId);
+async function addSubDocFiles(id,files){
+  const s=S.subunternehmer.find(x=>x.id===id);
+  if(!s||!files||!files.length) return;
+  let count=0;
+  for(const file of Array.from(files)){
+    try{ const dataURL=await fileToDataURL(file); s.dokumente.push({id:uid(),name:file.name,dataURL,datum:new Date().toISOString()}); count++; }
+    catch(e){ toast("Datei konnte nicht geladen werden: "+e.message,"error"); }
+  }
+  if(count){ saveState(); route(location.hash); toast(count+" Dokument(e) hochgeladen.","success"); }
+}
+async function addSubDoc(id,input){ await addSubDocFiles(id,input&&input.files); }
+async function dropSubDocs(id,event){
+  event.preventDefault(); event.stopPropagation();
+  document.getElementById("subDocDropzone")?.classList.remove("dragover");
+  await addSubDocFiles(id,event.dataTransfer&&event.dataTransfer.files);
+}
+function removeSubDoc(id,docId){
+  const s=S.subunternehmer.find(x=>x.id===id);
+  s.dokumente=s.dokumente.filter(d=>d.id!==docId);
   saveState(); route(location.hash);
 }
 function renderSubProjekteTab(s){
-  const zugeordnet = S.projekte.filter(p=>(p.subunternehmer||[]).includes(s.id));
-  const verfuegbar = S.projekte.filter(p=>!(p.subunternehmer||[]).includes(s.id));
+  const zugeordnet=S.projekte.filter(p=>(p.subunternehmer||[]).includes(s.id));
+  const verfuegbar=S.projekte.filter(p=>!(p.subunternehmer||[]).includes(s.id)&&!p.archiviert);
   return `
     <div class="card">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
-        <b>Zugeordnete Projekte (${zugeordnet.length})</b>
-        <select onchange="addSubToProjekt('${escAttr(s.id)}', this.value); this.value='';">
-          <option value="">+ Projekt zuordnen</option>
-          ${verfuegbar.map(p=>`<option value="${escAttr(p.id)}">${escHtml(p.name)}</option>`).join("")}
-        </select>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
+        <div><b>Zugeordnete Projekte (${zugeordnet.length})</b><div class="pageSub">Subunternehmer zentral Projekten zuordnen.</div></div>
+        <select onchange="addSubToProjekt('${escAttr(s.id)}',this.value);this.value='';"><option value="">＋ Projekt zuordnen</option>${verfuegbar.map(p=>`<option value="${escAttr(p.id)}">${escHtml(p.name)}</option>`).join("")}</select>
       </div>
-      <div style="display:flex; flex-direction:column; gap:8px;">
-        ${zugeordnet.map(p=>`
-          <div style="display:flex; justify-content:space-between; align-items:center; background:var(--card2); padding:10px 14px; border-radius:10px;">
-            <a href="#projekte/${escAttr(p.id)}">${escHtml(p.name)}</a> ${projektStatusBadge(p.status)}
-            <button class="iconBtn" onclick="removeSubFromProjekt('${escAttr(s.id)}','${escAttr(p.id)}')">🗑️</button>
-          </div>
-        `).join("") || `<div class="empty">Noch keine Projekte zugeordnet.</div>`}
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        ${zugeordnet.map(p=>`<div class="projectDocRow">
+          <div class="projectDocMain"><div class="projectDocName"><a href="#projekte/${escAttr(p.id)}">${escHtml(p.name)}</a></div><div class="projectDocMeta">${escHtml(p.adresse||"Keine Adresse")} · ${escHtml(projektEffectiveStatus(p))}</div></div>
+          <button class="iconBtn" onclick="removeSubFromProjekt('${escAttr(s.id)}','${escAttr(p.id)}')">×</button>
+        </div>`).join("") || `<div class="empty">Noch keine Projekte zugeordnet.</div>`}
       </div>
     </div>
   `;
 }
-function addSubToProjekt(subId, projektId){
+function addSubToProjekt(subId,projektId){
   if(!projektId) return;
-  const p = S.projekte.find(x=>x.id===projektId);
+  const p=S.projekte.find(x=>x.id===projektId);
+  if(!p) return;
   if(!p.subunternehmer) p.subunternehmer=[];
-  if(!p.subunternehmer.includes(subId)) p.subunternehmer.push(subId);
+  if(!p.subunternehmer.includes(subId)){
+    p.subunternehmer.push(subId);
+    const s=S.subunternehmer.find(x=>x.id===subId);
+    addProjektChronik(projektId,"subunternehmer","Subunternehmer hinzugefügt: "+(s?s.firma:""));
+  }
   saveState(); route(location.hash);
 }
-function removeSubFromProjekt(subId, projektId){
-  const p = S.projekte.find(x=>x.id===projektId);
-  p.subunternehmer = (p.subunternehmer||[]).filter(x=>x!==subId);
+function removeSubFromProjekt(subId,projektId){
+  const p=S.projekte.find(x=>x.id===projektId);
+  if(!p) return;
+  const s=S.subunternehmer.find(x=>x.id===subId);
+  p.subunternehmer=(p.subunternehmer||[]).filter(x=>x!==subId);
+  addProjektChronik(projektId,"subunternehmer","Subunternehmer entfernt: "+(s?s.firma:""));
   saveState(); route(location.hash);
 }
 
@@ -3831,46 +3944,41 @@ function mapsLinksHTML(adresse){
   </div>`;
 }
 
-function renderTabTeam(body, p){
+function renderTabTeam(body,p){
   if(!p.subunternehmer) p.subunternehmer=[];
-  body.innerHTML = `
+  body.innerHTML=`
     <div class="card" style="margin-bottom:16px;">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
         <b>Team (${p.team.length})</b>
-        <select onchange="addTeamMember('${escAttr(p.id)}', this.value); this.value='';">
-          <option value="">+ Mitarbeiter hinzufügen</option>
-          ${S.mitarbeiter.filter(m=>!p.team.includes(m.id)).map(m=>`<option value="${escAttr(m.id)}">${escHtml(m.name)}</option>`).join("")}
-        </select>
+        <select onchange="addTeamMember('${escAttr(p.id)}',this.value);this.value='';"><option value="">＋ Mitarbeiter hinzufügen</option>${S.mitarbeiter.filter(m=>!p.team.includes(m.id)).map(m=>`<option value="${escAttr(m.id)}">${escHtml(m.name)}</option>`).join("")}</select>
       </div>
-      <div class="grid cols-4">
-        ${p.team.map(mid=>`
-          <div class="card" style="text-align:center;">
-            <div class="userPickAvatar" style="margin:0 auto 8px;">${escHtml(initialsOf(mitarbeiterName(mid)))}</div>
-            <div style="font-size:13px; font-weight:600;">${escHtml(mitarbeiterName(mid))}</div>
-            <button class="iconBtn" onclick="removeTeamMember('${escAttr(p.id)}','${escAttr(mid)}')">🗑️ Entfernen</button>
-          </div>
-        `).join("") || `<div class="empty" style="grid-column:1/-1;">Noch kein Team zugeordnet.</div>`}
-      </div>
+      <div class="grid cols-4">${p.team.map(mid=>`<div class="card" style="text-align:center;"><div class="userPickAvatar" style="margin:0 auto 8px;">${escHtml(initialsOf(mitarbeiterName(mid)))}</div><div style="font-size:13px;font-weight:600;">${escHtml(mitarbeiterName(mid))}</div><button class="iconBtn" onclick="removeTeamMember('${escAttr(p.id)}','${escAttr(mid)}')">×</button></div>`).join("")||`<div class="empty" style="grid-column:1/-1;">Noch kein Team zugeordnet.</div>`}</div>
     </div>
     <div class="card">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
-        <b>Subunternehmer (${p.subunternehmer.length})</b>
-        <select onchange="addSubToProjekt(this.value, '${escAttr(p.id)}'); this.value='';">
-          <option value="">+ Subunternehmer hinzufügen</option>
-          ${S.subunternehmer.filter(s=>!p.subunternehmer.includes(s.id)).map(s=>`<option value="${escAttr(s.id)}">${escHtml(s.firma)}</option>`).join("")}
-        </select>
+      <div style="margin-bottom:12px;"><b>Subunternehmer (${p.subunternehmer.length})</b><div class="pageSub">Firma suchen und direkt der Baustelle zuordnen.</div></div>
+      <div style="position:relative;margin-bottom:14px;">
+        <input id="projectSubSearch" type="search" placeholder="Subunternehmer nach Firma oder Gewerk suchen …" oninput="renderProjectSubSearch('${escAttr(p.id)}',this.value)" onfocus="renderProjectSubSearch('${escAttr(p.id)}',this.value)">
+        <div id="projectSubResults" class="kundeSearchResults hidden"></div>
       </div>
-      <div class="grid cols-4">
-        ${p.subunternehmer.map(sid=>`
-          <div class="card" style="text-align:center;">
-            <div class="userPickAvatar" style="margin:0 auto 8px;">🏗️</div>
-            <div style="font-size:13px; font-weight:600;">${escHtml((S.subunternehmer.find(s=>s.id===sid)||{}).firma||"–")}</div>
-            <button class="iconBtn" onclick="removeSubFromProjekt('${escAttr(sid)}','${escAttr(p.id)}')">🗑️ Entfernen</button>
-          </div>
-        `).join("") || `<div class="empty" style="grid-column:1/-1;">Kein Subunternehmer zugeordnet.</div>`}
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        ${p.subunternehmer.map(sid=>{
+          const s=S.subunternehmer.find(x=>x.id===sid);
+          if(!s) return "";
+          return `<div class="projectDocRow"><div class="projectDocMain"><div class="projectDocName"><a href="#subunternehmer/${escAttr(s.id)}">${escHtml(s.firma)}</a> · ${escHtml(s.gewerk||"")}</div><div class="projectDocMeta">${subDokumentBadge(s)} ${s.status!=="aktiv"?" · "+escHtml(s.status):""}</div></div><button class="iconBtn" onclick="removeSubFromProjekt('${escAttr(s.id)}','${escAttr(p.id)}')">×</button></div>`;
+        }).join("") || `<div class="empty">Kein Subunternehmer zugeordnet.</div>`}
       </div>
     </div>
   `;
+}
+function renderProjectSubSearch(pid,value){
+  const p=S.projekte.find(x=>x.id===pid);
+  const out=document.getElementById("projectSubResults");
+  if(!p||!out) return;
+  const q=String(value||"").trim().toLowerCase();
+  if(!q){ out.innerHTML='<div class="kundeSearchHint">Firma oder Gewerk eingeben.</div>';out.classList.remove("hidden");return; }
+  const matches=S.subunternehmer.filter(s=>!p.subunternehmer.includes(s.id)&&s.status!=="inaktiv"&&subSearchText(s).includes(q)).slice(0,15);
+  out.innerHTML=matches.map(s=>`<div class="kundeSearchItem" onmousedown="addSubToProjekt('${escAttr(s.id)}','${escAttr(pid)}')"><div class="kundeSearchName">${escHtml(s.firma)}</div><div class="kundeSearchMeta">${escHtml(s.gewerk||"Kein Gewerk")} · ${subDokumentStatus(s).complete?"Unterlagen vollständig":"Unterlagen prüfen"}</div></div>`).join("")||'<div class="kundeSearchHint">Kein passender Subunternehmer.</div>';
+  out.classList.remove("hidden");
 }
 function addTeamMember(pid, mid){
   if(!mid) return;
