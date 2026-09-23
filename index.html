@@ -232,9 +232,19 @@ tr:hover td{background:var(--card2);}
 .gsResultItem:hover{background:var(--card2); border-color:var(--border);}
 .gsResultType{font-size:11px; color:var(--text-dim2);}
 
-.kundeSearchResults{position:absolute; top:100%; left:0; right:0; background:var(--card); border:1px solid var(--border); border-radius:var(--radius-sm); box-shadow:var(--shadow-lg); max-height:220px; overflow-y:auto; z-index:50; margin-top:4px;}
-.kundeSearchItem{padding:8px 12px; font-size:13px; cursor:pointer;}
+.kundeSearchWrap{position:relative;}
+.kundeSearchBox{position:relative;display:flex;align-items:center;}
+.kundeSearchBox::before{content:"⌕";position:absolute;left:11px;color:var(--text-dim);font-size:16px;pointer-events:none;}
+.kundeSearchBox input[type=text]{width:100%;padding-left:34px;padding-right:36px;}
+.kundeSearchClear{position:absolute;right:7px;border:0;background:transparent;color:var(--text-dim);font-size:17px;line-height:1;padding:5px 7px;border-radius:6px;}
+.kundeSearchClear:hover{background:var(--card2);color:var(--text);}
+.kundeSearchResults{position:absolute;top:calc(100% + 5px);left:0;right:0;background:var(--card);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow-lg);max-height:280px;overflow-y:auto;z-index:80;}
+.kundeSearchItem{padding:10px 12px;font-size:13px;cursor:pointer;border-bottom:1px solid var(--border);}
+.kundeSearchItem:last-child{border-bottom:0;}
 .kundeSearchItem:hover{background:var(--card2);}
+.kundeSearchName{font-size:13px;font-weight:600;}
+.kundeSearchMeta{font-size:11px;color:var(--text-dim);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.kundeSearchHint{padding:10px 12px;font-size:11.5px;color:var(--text-dim);}
 
 .progressBar{height:8px; background:var(--bg2); border-radius:20px; overflow:hidden;}
 .progressBar > div{height:100%; background:var(--primary); border-radius:20px;}
@@ -1507,32 +1517,103 @@ function kundeName(id){ const k=S.kunden.find(x=>x.id===id); return k?k.name:"�
 function projektName(id){ const p=S.projekte.find(x=>x.id===id); return p?p.name:"–"; }
 function kundeSearchHTML(fieldId, selectedKundeId, placeholder){
   const k = S.kunden.find(x=>x.id===selectedKundeId);
-  return `<div style="position:relative;">
-    <input type="text" id="${escAttr(fieldId)}_q" placeholder="${escAttr(placeholder||"Kunde suchen…")}" autocomplete="off" value="${escAttr(k?k.name:"")}"
-      oninput="kundeSearchInput('${escAttr(fieldId)}')" onfocus="kundeSearchInput('${escAttr(fieldId)}')"
-      onblur="setTimeout(()=>{const r=document.getElementById('${escAttr(fieldId)}_results'); if(r) r.classList.add('hidden');},150)">
+  return `<div class="kundeSearchWrap">
+    <div class="kundeSearchBox">
+      <input type="text" id="${escAttr(fieldId)}_q"
+        placeholder="${escAttr(placeholder||"Firmenname, Ansprechpartner, Straße, Ort, E-Mail …")}"
+        autocomplete="off" value="${escAttr(k?k.name:"")}"
+        oninput="kundeSearchInput('${escAttr(fieldId)}')"
+        onfocus="kundeSearchFocus('${escAttr(fieldId)}')"
+        onkeydown="kundeSearchKeydown(event,'${escAttr(fieldId)}')"
+        onblur="setTimeout(()=>{const r=document.getElementById('${escAttr(fieldId)}_results'); if(r) r.classList.add('hidden');},180)">
+      <button type="button" class="kundeSearchClear" title="Auswahl löschen" onclick="kundeSearchClear('${escAttr(fieldId)}',event)">×</button>
+    </div>
     <input type="hidden" id="${escAttr(fieldId)}" value="${escAttr(selectedKundeId||"")}">
     <div id="${escAttr(fieldId)}_results" class="kundeSearchResults hidden"></div>
   </div>`;
 }
+function kundeSearchText(k){
+  return [
+    k.name,k.ansprechpartner,k.adresse,k.strasse,k.ort,k.plz,k.email,k.tel,k.telefon,k.kundennr,k.kundennummer
+  ].filter(Boolean).join(" ").toLowerCase();
+}
+function kundeSearchFocus(fieldId){
+  const input=document.getElementById(fieldId+"_q");
+  if(!input) return;
+  if(input.value.trim().length) kundeSearchInput(fieldId);
+}
 function kundeSearchInput(fieldId){
-  const q = document.getElementById(fieldId+"_q").value.trim().toLowerCase();
-  const results = document.getElementById(fieldId+"_results");
-  const matches = S.kunden.filter(k=>!q || k.name.toLowerCase().includes(q)).slice(0,30);
-  const emptyOption = `<div class="kundeSearchItem" style="color:var(--text-dim);" onmousedown="kundeSearchPick('${fieldId}','')">– Kein Kunde –</div>`;
-  results.innerHTML = (q?"":emptyOption) + (matches.map(k=>`<div class="kundeSearchItem" onmousedown="kundeSearchPick('${fieldId}','${escAttr(k.id)}')">${escHtml(k.name)}${k.ansprechpartner?` <span class="pageSub">· ${escHtml(k.ansprechpartner)}</span>`:""}</div>`).join("") || `<div class="kundeSearchItem" style="color:var(--text-dim); cursor:default;">Kein Treffer</div>`);
+  const input=document.getElementById(fieldId+"_q");
+  const hidden=document.getElementById(fieldId);
+  const results=document.getElementById(fieldId+"_results");
+  if(!input||!hidden||!results) return;
+  const q=input.value.trim().toLowerCase();
+
+  const selected=S.kunden.find(k=>k.id===hidden.value);
+  if(selected && input.value.trim()!==selected.name) hidden.value="";
+
+  if(q.length<1){
+    results.innerHTML='<div class="kundeSearchHint">Tippen, um Kunden zu suchen.</div>';
+    results.classList.remove("hidden");
+    return;
+  }
+
+  const matches=S.kunden
+    .filter(k=>kundeSearchText(k).includes(q))
+    .sort((a,b)=>{
+      const an=(a.name||"").toLowerCase(), bn=(b.name||"").toLowerCase();
+      const ap=an.startsWith(q)?0:1, bp=bn.startsWith(q)?0:1;
+      return ap-bp || an.localeCompare(bn,"de");
+    })
+    .slice(0,20);
+
+  results.innerHTML=matches.map(k=>{
+    const meta=[
+      k.ansprechpartner,
+      k.adresse,
+      k.email,
+      k.tel||k.telefon
+    ].filter(Boolean).join(" · ");
+    return `<div class="kundeSearchItem" role="option" onmousedown="kundeSearchPick('${escAttr(fieldId)}','${escAttr(k.id)}')">
+      <div class="kundeSearchName">${escHtml(k.name||"Unbenannter Kunde")}</div>
+      ${meta?`<div class="kundeSearchMeta">${escHtml(meta)}</div>`:""}
+    </div>`;
+  }).join("") || '<div class="kundeSearchHint">Kein Kunde gefunden.</div>';
+
   results.classList.remove("hidden");
 }
 function kundeSearchPick(fieldId, id){
-  const k = S.kunden.find(x=>x.id===id);
-  document.getElementById(fieldId).value = id;
-  document.getElementById(fieldId+"_q").value = k ? k.name : "";
-  document.getElementById(fieldId+"_results").classList.add("hidden");
+  const k=S.kunden.find(x=>x.id===id);
+  const hidden=document.getElementById(fieldId);
+  const input=document.getElementById(fieldId+"_q");
+  const results=document.getElementById(fieldId+"_results");
+  if(hidden) hidden.value=id||"";
+  if(input) input.value=k?k.name:"";
+  if(results) results.classList.add("hidden");
   if(fieldId==="pKunde"){
-    const adresseEl = document.getElementById("pAdresse");
-    if(adresseEl && k && k.adresse && !adresseEl.value.trim()) adresseEl.value = k.adresse;
+    const adresseEl=document.getElementById("pAdresse");
+    if(adresseEl && k && k.adresse && !adresseEl.value.trim()) adresseEl.value=k.adresse;
   }
-  if(fieldId==="rKunde" && window._rechnungDraft){ window._rechnungDraft.kundeId = id; }
+  if(fieldId==="rKunde" && window._rechnungDraft) window._rechnungDraft.kundeId=id;
+}
+function kundeSearchClear(fieldId,event){
+  if(event){ event.preventDefault(); event.stopPropagation(); }
+  const hidden=document.getElementById(fieldId);
+  const input=document.getElementById(fieldId+"_q");
+  const results=document.getElementById(fieldId+"_results");
+  if(hidden) hidden.value="";
+  if(input){ input.value=""; input.focus(); }
+  if(results){
+    results.innerHTML='<div class="kundeSearchHint">Tippen, um Kunden zu suchen.</div>';
+    results.classList.remove("hidden");
+  }
+  if(fieldId==="rKunde" && window._rechnungDraft) window._rechnungDraft.kundeId="";
+}
+function kundeSearchKeydown(event,fieldId){
+  if(event.key==="Escape"){
+    const r=document.getElementById(fieldId+"_results");
+    if(r) r.classList.add("hidden");
+  }
 }
 function rechnungNetto(r){ return (r.positionen||[]).reduce((s,p)=>s+(Number(p.menge)||0)*(Number(p.preis)||0),0); }
 function rechnungMwst(r){ return rechnungNetto(r) * 0.19; }
@@ -3298,7 +3379,7 @@ function openProjektForm(id){
     <div class="modalHead"><div class="modalTitle">${id?"Projekt bearbeiten":"Neues Projekt"}</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
     <div class="compactFormNote">Für den Start reichen Projekt, Kunde, Adresse, Beginn und Fertigstellung. Weitere Angaben können später ergänzt werden.</div>
     <div class="formRow"><label>Projektname</label><div class="micWrap"><input id="pName" type="text" value="${escAttr(p.name)}">${fieldMic("pName")}</div></div>
-    <div class="formRow"><label>Kunde</label>${kundeSearchHTML("pKunde", p.kundeId)}</div>
+    <div class="formRow"><label>Kunde</label>${kundeSearchHTML("pKunde", p.kundeId, "Kunde suchen: Firma, Straße, Ort, Ansprechpartner …")}</div>
     <div class="formRow"><label>Adresse der Baustelle</label><input id="pAdresse" type="text" value="${escAttr(p.adresse||"")}"></div>
     <div class="grid cols-2">
       <div class="formRow"><label>Beginn</label><input id="pBeginn" type="date" value="${escAttr(p.beginn||"")}"></div>
