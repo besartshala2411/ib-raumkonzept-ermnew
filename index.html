@@ -3776,7 +3776,9 @@ function setProjektArchiviert(id, archiviert){
   const p=S.projekte.find(x=>x.id===id);
   if(!p) return;
   p.archiviert=!!archiviert;
-  addProjektChronik(id,"archiv",archiviert?"Projekt archiviert":"Projekt aus Archiv zurückgeholt");
+  if(!archiviert && p.status==="Abgeschlossen") p.status="Aktiv";
+  if(archiviert && p.status!=="Abgeschlossen") addProjektChronik(id,"archiv","Projekt manuell archiviert");
+  else addProjektChronik(id,"archiv",archiviert?"Projekt archiviert":"Projekt aus Archiv zurückgeholt");
   saveState();
   goTo(archiviert?"#projekte":"#projekte/"+id);
   toast(archiviert?"Projekt archiviert.":"Projekt wieder aktiviert.","success");
@@ -4071,6 +4073,7 @@ function renderTabUebersicht(body, p){
     <div class="projectAreas">
       <button class="projectArea" onclick="goTo('#projekte/${escAttr(p.id)}/lv')"><span><div class="projectAreaTitle">Leistungsverzeichnis</div><div class="projectAreaSub">${(p.lvPositionen||[]).length} Positionen</div></span><span>›</span></button>
       <button class="projectArea" onclick="goTo('#projekte/${escAttr(p.id)}/bauzeitenplan')"><span><div class="projectAreaTitle">Bauablauf</div><div class="projectAreaSub">${p.bauzeitenplan.length} Phasen</div></span><span>›</span></button>
+      <button class="projectArea" onclick="goTo('#projekte/${escAttr(p.id)}/team')"><span><div class="projectAreaTitle">Team & Einsatz</div><div class="projectAreaSub">${p.team.length} Mitarbeiter · Wochenplanung</div></span><span>›</span></button>
       <button class="projectArea" onclick="goTo('#projekte/${escAttr(p.id)}/dokumente')"><span><div class="projectAreaTitle">Dateien & Fotos</div><div class="projectAreaSub">${p.dokumente.length} Dateien · ${p.fotos.length} Fotos</div></span><span>›</span></button>
       <button class="projectArea" onclick="goTo('#projekte/${escAttr(p.id)}/maengel')"><span><div class="projectAreaTitle">Mängel</div><div class="projectAreaSub">${offeneMaengel.length} offen</div></span><span>›</span></button>
       <button class="projectArea" onclick="goTo('#projekte/${escAttr(p.id)}/kontakte')"><span><div class="projectAreaTitle">Baustellenkontakte</div><div class="projectAreaSub">${(p.kontakte||[]).length} Kontakte</div></span><span>›</span></button>
