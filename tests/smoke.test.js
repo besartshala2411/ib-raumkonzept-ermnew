@@ -270,8 +270,9 @@ async function main() {
 
   window.renderDashboard(window.document.getElementById("view"));
   const dashboardHtml = window.document.getElementById("view").innerHTML;
-  assert(dashboardHtml.includes('onclick="openProjektForm()"') && dashboardHtml.includes('onclick="openAufgabeForm()"'), "Dashboard öffnet Projekt- und Aufgabenformular direkt ohne Zwischenschritt");
-  assert(dashboardHtml.includes("Auftragssumme") && dashboardHtml.includes("Materialkosten") && dashboardHtml.includes("Voraussichtliche Marge"), "Dashboard zeigt die entscheidenden Baustellen-Kennzahlen");
+  assert(dashboardHtml.includes('onclick="openProjektForm()"'), "Dashboard öffnet das Projektformular direkt");
+  assert(dashboardHtml.includes("Aufgaben überfällig") && dashboardHtml.includes("Offene Mängel") && dashboardHtml.includes("Sub-Unterlagen prüfen"), "Dashboard zeigt operative Tageskennzahlen statt Finanzkennzahlen");
+  assert(dashboardHtml.includes("Baustellen ohne heutigen Bericht") && dashboardHtml.includes("Nächste Fertigstellungen"), "Dashboard bündelt Tagesdokumentation und Projekttermine");
 
   console.log("\n== Storage Layer: sichtbare Fehlerbehandlung bei Speicherfehler ==");
   let toastMsgs = [];
@@ -299,7 +300,7 @@ async function main() {
   const fakeState = window.defaultState();
   fakeState.projekte.push(oldSavedProject);
   const shaped = window.ensureShape(fakeState);
-  assert(Array.isArray(shaped.projekte[0].team) && Array.isArray(shaped.projekte[0].fotos) && Array.isArray(shaped.projekte[0].aufmasse) && Array.isArray(shaped.projekte[0].lvPositionen), "Alte Projekt-Datensätze bekommen fehlende Arrays inklusive LV via ensureShape()");
+  assert(Array.isArray(shaped.projekte[0].team) && Array.isArray(shaped.projekte[0].fotos) && Array.isArray(shaped.projekte[0].aufmasse) && Array.isArray(shaped.projekte[0].lvPositionen) && Array.isArray(shaped.projekte[0].maengel) && Array.isArray(shaped.projekte[0].kontakte), "Alte Projekt-Datensätze bekommen fehlende Arrays inklusive Mängel und Baustellenkontakte via ensureShape()");
   assert(shaped.projekte[0].standardSubLvAbzug === 20, "Alte Projekte erhalten 20 % als verständlichen Standardabzug");
 
   console.log("\n== Router / Alle Module rendern ohne Exception ==");
@@ -490,7 +491,21 @@ async function main() {
   assert(uebHtml.includes("Heute wichtig") && uebHtml.includes("Schnell hinzufügen"), "Projekt-Cockpit zeigt Prioritäten und Schnellaktionen");
   assert(uebHtml.includes("Beginn") && uebHtml.includes("Fertigstellung"), "Beginn und Fertigstellung sind im Projekt sichtbar");
   assert(uebHtml.includes("LV &amp; Subunternehmer") && uebHtml.includes("Dateien &amp; Fotos") && uebHtml.includes(">Abnahme<"), "Zentrale Projektbereiche sind direkt erreichbar");
+  assert(uebHtml.includes(">Mängel<") && uebHtml.includes("Baustellenkontakte"), "Mängel und Baustellenkontakte sind aus der Projektübersicht erreichbar");
   assert(uebHtml.includes("Bautagebuch") && uebHtml.includes("Projektchronik"), "Bautagebuch und Projektchronik sind direkt im Überblick sichtbar");
+
+  console.log("\n== Projekte: Mängel & Baustellenkontakte ==");
+  const p1Ops = window.S.projekte.find((p) => p.id === "p1");
+  p1Ops.maengel = [{ id:"mg-test", titel:"Riss Wand", bereich:"Flur", beschreibung:"Nacharbeiten", verantwortlich:"Maler", frist:"2099-01-01", status:"offen", foto:"" }];
+  p1Ops.kontakte = [{ id:"pk-test", name:"Anna Beispiel", rolle:"Architektin", firma:"Planbüro", tel:"040123456", email:"anna@example.com", notiz:"Bauleitung" }];
+  window.renderProjekte(window.document.getElementById("view"), "p1", "maengel");
+  let opsHtml = window.document.getElementById("view").innerHTML;
+  assert(opsHtml.includes("Riss Wand") && opsHtml.includes("Flur"), "Mängelansicht zeigt Mangel und Bereich");
+  window.renderProjekte(window.document.getElementById("view"), "p1", "kontakte");
+  opsHtml = window.document.getElementById("view").innerHTML;
+  assert(opsHtml.includes("Anna Beispiel") && opsHtml.includes("Architektin"), "Baustellenkontakte werden im Projekt angezeigt");
+  p1Ops.maengel = [];
+  p1Ops.kontakte = [];
 
   window.S.mitarbeiter.push({ id: "uebWorker", name: "Übersicht Arbeiter", position: "Maler", rolle: "Mitarbeiter", tel: "", email: "uebworker@example.com", adresse: "", eintritt: "2024-01-01", status: "aktiv", urlaubstageJahr: 30, stundenlohn: 20, dokumente: [] });
   window.S.currentUserId = "uebWorker";
