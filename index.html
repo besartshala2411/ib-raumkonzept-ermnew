@@ -2928,15 +2928,13 @@ const SUB_TABS = [
 ];
 function renderSubunternehmer(view, id, tab){
   if(id) return renderSubDetail(view, id, tab||"dokumente");
-  const filtered=S.subunternehmer.filter(s=>!_subSearch||subSearchText(s).includes(_subSearch));
   view.innerHTML = `
     <div class="pageHead">
       <div><div class="pageTitle">Subunternehmer</div><div class="pageSub">${S.subunternehmer.length} Fremdfirmen · operative Partnerverwaltung</div></div>
       <button class="btn primary" onclick="openSubForm()">＋ Subunternehmer</button>
     </div>
     <div class="filterBar" style="margin-bottom:12px;">
-      <input type="search" placeholder="Firma, Gewerk, Ansprechpartner, Telefon oder Adresse suchen …" value="${escAttr(_subSearch)}"
-        oninput="_subSearch=this.value.trim().toLowerCase(); filterSubRows()">
+      <input type="search" id="subSearchInput" placeholder="Firma, Gewerk, Ansprechpartner, Telefon oder Adresse suchen …" oninput="filterSubRows()">
       <select id="subStatusFilter" onchange="filterSubRows()">
         <option value="">Alle Status</option>
         <option value="aktiv">Aktiv</option>
@@ -2947,8 +2945,32 @@ function renderSubunternehmer(view, id, tab){
     <div class="card"><div class="tableWrap"><table>
       <thead><tr><th>Firma</th><th>Gewerk</th><th>Status</th><th>Unterlagen</th><th>Kontakt</th><th>Projekte</th><th></th></tr></thead>
       <tbody id="subTableBody">
-      ${filtered.map(s=>{
-        const assigned=S.projekte.filter(p=>(p.function renderSubStammdatenFields(s){
+      ${S.subunternehmer.map(s=>{
+        const assigned=S.projekte.filter(p=>(p.subunternehmer||[]).includes(s.id)&&!p.archiviert).length;
+        return `<tr data-sub-search="${escAttr(subSearchText(s))}" data-sub-status="${escAttr(s.status||"aktiv")}" style="cursor:pointer;" onclick="goTo('#subunternehmer/${escAttr(s.id)}')">
+          <td><b style="font-weight:600;">${escHtml(s.firma)}</b><div class="pageSub">${escHtml(s.ansprechpartner||s.adresse||"")}</div></td>
+          <td>${escHtml(s.gewerk||"–")}</td>
+          <td><span class="badge ${s.status==="gesperrt"?"red":s.status==="inaktiv"?"gray":"green"}">${escHtml(s.status==="inaktiv"?"nicht mehr eingesetzt":s.status||"aktiv")}</span></td>
+          <td>${subDokumentBadge(s)}</td>
+          <td><div>${escHtml(s.tel||"–")}</div><div class="pageSub">${escHtml(s.email||"")}</div></td>
+          <td>${assigned}</td>
+          <td style="text-align:right;white-space:nowrap;" onclick="event.stopPropagation()"><button class="iconBtn" onclick="goTo('#subunternehmer/${escAttr(s.id)}')">›</button></td>
+        </tr>`;
+      }).join("") || `<tr><td colspan="7"><div class="empty">Noch keine Subunternehmer.</div></td></tr>`}
+      </tbody>
+    </table></div></div>
+  `;
+}
+function filterSubRows(){
+  const q=(document.getElementById("subSearchInput")?.value||"").trim().toLowerCase();
+  const status=document.getElementById("subStatusFilter")?.value||"";
+  document.querySelectorAll("#subTableBody tr[data-sub-search]").forEach(row=>{
+    const okQ=!q||row.dataset.subSearch.includes(q);
+    const okStatus=!status||row.dataset.subStatus===status;
+    row.classList.toggle("hidden",!(okQ&&okStatus));
+  });
+}
+function renderSubStammdatenFields(s){
   return `
     <div class="grid cols-2">
       <div class="formRow"><label>Firma</label><div class="micWrap"><input id="sFirma" type="text" value="${escAttr(s.firma)}">${fieldMic("sFirma")}</div></div>
