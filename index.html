@@ -258,21 +258,31 @@ tr:hover td{background:var(--card2);}
 .thumb .thumbEdit{position:absolute; bottom:4px; left:4px; background:rgba(0,0,0,.6); color:#fff; border:none; border-radius:6px; padding:3px 8px; font-size:11px; display:flex; align-items:center; gap:3px;}
 .thumb .thumbMarkedBadge{position:absolute; top:4px; left:4px; background:var(--primary); color:#fff; font-size:9px; font-weight:700; border-radius:5px; padding:2px 5px;}
 
-/* ---- Bauleiter-Cockpit: reduzierte, mobile Projektansicht ---- */
-.projectGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;}
-.projectCard{padding:0;overflow:hidden;cursor:pointer;}
-.projectCardMain{padding:17px;}
-.projectCardHead{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;}
-.projectCardName{font-size:17px;font-weight:800;line-height:1.25;}
-.projectCardAddress{color:var(--text-dim);font-size:13px;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.projectNumbers{display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid var(--border);background:var(--card2);}
-.projectNumber{padding:11px 14px;border-right:1px solid var(--border);min-width:0;}
-.projectNumber:last-child{border-right:0;}
-.projectNumber span{display:block;color:var(--text-dim);font-size:11.5px;margin-bottom:3px;}
-.projectNumber b{display:block;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.projectNumber.marginPositive b{color:var(--green);}
-.projectNumber.marginNegative b{color:var(--red);}
-.deadlineLine{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:14px;font-size:13px;}
+/* ---- Projekte: kompakte Kartenansicht wie Baustellenliste ---- */
+.projectListToolbar{display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap;}
+.projectListToolbar .projectSearch{flex:1;min-width:260px;}
+.projectListCount{margin-left:auto;color:var(--text-dim);font-size:11px;font-weight:750;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap;}
+.projectGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px;align-items:start;}
+.projectCard{padding:0;overflow:hidden;cursor:pointer;min-width:0;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.16);}
+.projectCard:hover{transform:translateY(-1px);}
+.projectCardMap{height:82px;position:relative;background:linear-gradient(135deg,var(--card2),var(--bg2));background-size:cover;background-position:center;overflow:hidden;border-bottom:1px solid var(--border);}
+.projectCardMap::after{content:"";position:absolute;inset:0;background:linear-gradient(to bottom,transparent 55%,rgba(0,0,0,.22));pointer-events:none;}
+.projectMapPin{position:absolute;left:50%;top:43%;transform:translate(-50%,-50%);font-size:23px;filter:drop-shadow(0 2px 2px rgba(0,0,0,.35));z-index:2;}
+.projectMapAttribution{position:absolute;left:4px;top:3px;font-size:8px;color:rgba(255,255,255,.9);text-shadow:0 1px 2px rgba(0,0,0,.75);z-index:2;}
+.projectDateChip{position:absolute;right:5px;bottom:5px;z-index:3;background:rgba(255,255,255,.92);color:#111827;border-radius:4px;padding:2px 5px;font-size:10px;font-weight:750;box-shadow:0 1px 2px rgba(0,0,0,.2);}
+.projectWarn{position:absolute;right:5px;top:5px;z-index:3;background:var(--red);color:#fff;border-radius:5px;padding:3px 6px;font-size:11px;font-weight:800;}
+.projectCardMain{padding:10px 11px 8px;}
+.projectCardCode{color:var(--text-dim2);font-size:10px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.projectCardName{font-size:13.5px;font-weight:800;line-height:1.25;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.projectCardAddress{color:var(--text-dim);font-size:11.5px;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.projectCardMeta{font-size:11.5px;font-weight:700;margin-top:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.projectCardClient{color:var(--text-dim);font-size:10.5px;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.projectCardFoot{display:flex;align-items:center;gap:5px;padding:6px 8px;border-top:1px solid var(--border);background:var(--card2);min-height:31px;}
+.projectMiniStatus{font-size:9.5px;font-weight:750;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;}
+.projectCardFootSpacer{flex:1;}
+.projectIconBtn{appearance:none;border:0;background:transparent;padding:2px 3px;font-size:15px;line-height:1;color:var(--text-dim);border-radius:5px;}
+.projectIconBtn:hover{background:var(--primary-bg);color:var(--primary);}
+.projectIconBtn.isFavorite{color:#f59e0b;}
 .deadlineLate{color:var(--red);font-weight:700;}
 .cockpitMetrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:16px;}
 .cockpitMetric{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px;min-width:0;}
@@ -342,7 +352,7 @@ tr:hover td{background:var(--card2);}
   .positionGrid{grid-template-columns:1fr 1fr;}
   .positionGrid .positionDescription{grid-column:1/-1;}
   .grid.cols-2,.grid.cols-3,.grid.cols-4,.grid.cols-6{grid-template-columns:1fr 1fr;}
-  .projectGrid{grid-template-columns:1fr;}
+  .projectGrid{grid-template-columns:repeat(2,minmax(0,1fr));}
   .cockpitMetrics{grid-template-columns:1fr 1fr;}
   .projectActionGrid{grid-template-columns:1fr 1fr;}
   .projectSummaryBar{grid-template-columns:1fr 1fr;}
@@ -356,7 +366,7 @@ tr:hover td{background:var(--card2);}
   .projectNumber:nth-child(2){border-right:0;}
   .projectNumber:nth-child(3){grid-column:1/-1;border-top:1px solid var(--border);border-right:0;}
 }
-@media(max-width:480px){
+@media(max-width:520px){.projectGrid{grid-template-columns:1fr;}.projectCardMap{height:96px;}.projectListCount{width:100%;margin-left:0;}}\n@media(max-width:480px){
   .tickerUser{display:none;}
   #refreshBtn{display:none;}
   .mobileNavItem{font-size:10px;}
@@ -3025,48 +3035,105 @@ function projektAbnahmeStatus(p){
   if((p.checkliste||[]).some(c=>c.done)||p.abnahmeDatum) return {label:"In Vorbereitung",color:"amber"};
   return {label:"Offen",color:"gray"};
 }
+let _projektStatusFilter = "";
+function projektCardCode(p){
+  return String(p.projektNr||p.projektnummer||p.nr||p.id||"Projekt").toUpperCase();
+}
+function projektCardZeitraum(p){
+  const z = projektBauzeitraum(p);
+  const von = z.beginn || "";
+  const bis = z.ende || p.deadline || "";
+  if(von && bis) return fmtDate(von)+" – "+fmtDate(bis);
+  if(bis) return "bis "+fmtDate(bis);
+  if(von) return "ab "+fmtDate(von);
+  return "Ohne Zeitraum";
+}
+function projektMapTileUrl(p){
+  const geo=p&&p.geo;
+  const lat=Number(geo&&geo.lat), lng=Number(geo&&geo.lng);
+  if(!Number.isFinite(lat)||!Number.isFinite(lng)) return "";
+  const z=15, n=Math.pow(2,z);
+  const safeLat=Math.max(-85.0511,Math.min(85.0511,lat));
+  const x=Math.floor((lng+180)/360*n);
+  const y=Math.floor((1-Math.asinh(Math.tan(safeLat*Math.PI/180))/Math.PI)/2*n);
+  return "https://tile.openstreetmap.org/"+z+"/"+x+"/"+y+".png";
+}
+function setProjektStatusFilter(value){
+  _projektStatusFilter=value||"";
+  renderProjekte(document.getElementById("view"));
+}
+function toggleProjektFavorit(id, ev){
+  if(ev){ ev.preventDefault(); ev.stopPropagation(); }
+  const p=S.projekte.find(x=>x.id===id);
+  if(!p) return;
+  p.favorit=!p.favorit;
+  saveState();
+  renderProjekte(document.getElementById("view"));
+}
 function renderProjekte(view, id, tab){
   if(id) return renderProjektDetail(view, id, tab||"uebersicht");
+  const qBefore=(document.getElementById("pjFilter")?.value||"").trim();
   view.innerHTML = `
-    <div class="pageHead">
-      <div><div class="pageTitle">Projekte</div><div class="pageSub">Auftrag, Kosten, Termin und Marge auf einen Blick</div></div>
+    <div class="pageHead" style="margin-bottom:12px;">
+      <div><div class="pageTitle">Projekte</div><div class="pageSub">Kompakte Baustellenübersicht</div></div>
       <div style="display:flex; gap:8px;">
         <button class="btn" onclick="openLvImportForm()">Aus PDF</button>
         <button class="btn primary" onclick="openProjektForm()">＋ Neues Projekt</button>
       </div>
     </div>
-    <div class="filterBar">
-      <input type="search" id="pjFilter" placeholder="Projekt oder Adresse suchen" oninput="filterProjektCards()" style="min-width:260px;">
-      <select id="pjStatusFilter" onchange="renderProjekte(document.getElementById('view'))">
-        <option value="">Alle Status</option>${PROJEKT_STATI.map(s=>`<option value="${s}">${s}</option>`).join("")}
+    <div class="projectListToolbar">
+      <input class="projectSearch" type="search" id="pjFilter" placeholder="Suchen nach Projekt, Adresse, Kunde …" value="${escAttr(qBefore)}" oninput="filterProjektCards()">
+      <select id="pjStatusFilter" onchange="setProjektStatusFilter(this.value)">
+        <option value="">Alle Status</option>${PROJEKT_STATI.map(s=>`<option value="${escAttr(s)}" ${_projektStatusFilter===s?"selected":""}>${escHtml(s)}</option>`).join("")}
       </select>
+      <div class="projectListCount" id="pjCount"></div>
     </div>
     <div class="projectGrid" id="pjGrid"></div>
   `;
-  const stF = document.getElementById("pjStatusFilter")?.value||"";
-  const list = S.projekte.filter(p=>!stF || p.status===stF).sort((a,b)=>{
+  const list = S.projekte.filter(p=>!_projektStatusFilter || p.status===_projektStatusFilter).sort((a,b)=>{
+    if(Boolean(a.favorit)!==Boolean(b.favorit)) return a.favorit?-1:1;
     if(a.status==="Abgeschlossen"&&b.status!=="Abgeschlossen") return 1;
     if(b.status==="Abgeschlossen"&&a.status!=="Abgeschlossen") return -1;
     return (a.deadline||"9999").localeCompare(b.deadline||"9999");
   });
-  document.getElementById("pjGrid").innerHTML = list.map(p=>`
-    <article class="card projectCard" data-search="${escAttr((p.name+' '+(p.adresse||'')).toLowerCase())}" onclick="goTo('#projekte/${escAttr(p.id)}')">
+  document.getElementById("pjGrid").innerHTML = list.map(p=>{
+    const mapUrl=projektMapTileUrl(p);
+    const overdue=p.deadline&&p.deadline<todayISO()&&p.status!=="Abgeschlossen";
+    const kunde=kundeName(p.kundeId)||"Kein Kunde zugeordnet";
+    const search=(projektCardCode(p)+" "+p.name+" "+(p.adresse||"")+" "+kunde+" "+(p.status||"")).toLowerCase();
+    return `
+    <article class="card projectCard" data-search="${escAttr(search)}" onclick="goTo('#projekte/${escAttr(p.id)}')">
+      <div class="projectCardMap" ${mapUrl?`style="background-image:url('${escAttr(mapUrl)}')"`:""}>
+        ${mapUrl?`<span class="projectMapAttribution">© OSM</span><span class="projectMapPin" aria-hidden="true">📍</span>`:`<span class="projectMapPin" aria-hidden="true" style="opacity:.55;">📍</span>`}
+        <span class="projectDateChip">${escHtml(projektCardZeitraum(p))}</span>
+        ${overdue?`<span class="projectWarn" title="Termin überschritten">⚠</span>`:""}
+      </div>
       <div class="projectCardMain">
-        <div class="projectCardHead"><div style="min-width:0"><div class="projectCardName">${escHtml(p.name)}</div><div class="projectCardAddress">${escHtml(p.adresse||"Keine Adresse hinterlegt")}</div></div>${projektStatusBadge(p.status)}</div>
-        <div class="deadlineLine"><span>Fertig bis</span><b class="${p.deadline&&p.deadline<todayISO()&&p.status!=="Abgeschlossen"?'deadlineLate':''}">${p.deadline?fmtDate(p.deadline):"Termin fehlt"}</b></div>
-        <div class="progressBar" style="margin-top:10px"><div style="width:${p.fortschritt||0}%"></div></div>
+        <div class="projectCardCode">${escHtml(projektCardCode(p))}</div>
+        <div class="projectCardName" title="${escAttr(p.name)}">${escHtml(p.name)}</div>
+        <div class="projectCardAddress" title="${escAttr(p.adresse||"")}">${escHtml(p.adresse||"Keine Adresse hinterlegt")}</div>
+        <div class="projectCardMeta">${escHtml(p.status||"–")}${Number(p.fortschritt)>0?" · "+Math.round(Number(p.fortschritt))+"%":""}</div>
+        <div class="projectCardClient" title="${escAttr(kunde)}">${escHtml(kunde)}</div>
       </div>
-      <div class="projectNumbers">
-        <div class="projectNumber"><span>Auftrag</span><b>${fmtCurrency(p.budget)}</b></div>
-        <div class="projectNumber"><span>Material</span><b>${fmtCurrency(projektMaterialkosten(p))}</b></div>
-        <div class="projectNumber ${projektMarge(p)<0?'marginNegative':'marginPositive'}"><span>Marge</span><b>${fmtCurrency(projektMarge(p))}</b></div>
+      <div class="projectCardFoot">
+        <span class="projectMiniStatus ${overdue?"deadlineLate":""}">${overdue?"Termin überschritten":(p.deadline?"Termin "+fmtDate(p.deadline):"Kein Endtermin")}</span>
+        <span class="projectCardFootSpacer"></span>
+        <button class="projectIconBtn ${p.favorit?"isFavorite":""}" onclick="toggleProjektFavorit('${escAttr(p.id)}',event)" title="${p.favorit?"Favorit entfernen":"Als Favorit markieren"}" aria-label="Favorit">${p.favorit?"★":"☆"}</button>
       </div>
-    </article>
-  `).join("") || `<div class="empty" style="grid-column:1/-1;">Keine Projekte gefunden.</div>`;
+    </article>`;
+  }).join("") || `<div class="empty" style="grid-column:1/-1;">Keine Projekte gefunden.</div>`;
+  if(qBefore) filterProjektCards(); else updateProjektVisibleCount();
+}
+function updateProjektVisibleCount(){
+  const cards=[...document.querySelectorAll("#pjGrid [data-search]")];
+  const visible=cards.filter(card=>!card.classList.contains("hidden")).length;
+  const el=document.getElementById("pjCount");
+  if(el) el.textContent=visible+" "+(visible===1?"Projekt":"Projekte");
 }
 function filterProjektCards(){
   const q=(document.getElementById("pjFilter")?.value||"").trim().toLowerCase();
   document.querySelectorAll("#pjGrid [data-search]").forEach(card=>card.classList.toggle("hidden",q&&!card.dataset.search.includes(q)));
+  updateProjektVisibleCount();
 }
 async function geocodeAddress(address){
   if(!address || !address.trim()) return null;
