@@ -302,6 +302,10 @@ async function main() {
   const shaped = window.ensureShape(fakeState);
   assert(Array.isArray(shaped.projekte[0].team) && Array.isArray(shaped.projekte[0].fotos) && Array.isArray(shaped.projekte[0].aufmasse) && Array.isArray(shaped.projekte[0].lvPositionen) && Array.isArray(shaped.projekte[0].maengel) && Array.isArray(shaped.projekte[0].kontakte), "Alte Projekt-Datensätze bekommen fehlende Arrays inklusive Mängel und Baustellenkontakte via ensureShape()");
   assert(shaped.projekte[0].standardSubLvAbzug === 20, "Alte Projekte erhalten 20 % als verständlichen Standardabzug");
+  const legacyPlanState = window.defaultState();
+  legacyPlanState.planung.push({ id:"legacy-plan", mitarbeiterId:"m1", datum:"2026-09-01", projektId:"p1" });
+  const shapedPlan = window.ensureShape(legacyPlanState);
+  assert(shapedPlan.planung[0].slot === "ganztags" && shapedPlan.planung[0].notiz === "", "Alte Einsatzplanungen erhalten Slot und Notiz als Standard");
 
   console.log("\n== Router / Alle Module rendern ohne Exception ==");
   for (const mod of window.MODULES) {
@@ -490,7 +494,9 @@ async function main() {
   assert(uebHtml.includes("Fenster bestellen"), "Offene Projektaufgaben sind direkt im Projekt sichtbar");
   assert(uebHtml.includes("Heute wichtig") && uebHtml.includes("Schnell hinzufügen"), "Projekt-Cockpit zeigt Prioritäten und Schnellaktionen");
   assert(uebHtml.includes("Beginn") && uebHtml.includes("Fertigstellung"), "Beginn und Fertigstellung sind im Projekt sichtbar");
-  assert(uebHtml.includes("LV &amp; Subunternehmer") && uebHtml.includes("Dateien &amp; Fotos") && uebHtml.includes(">Abnahme<"), "Zentrale Projektbereiche sind direkt erreichbar");
+  assert(uebHtml.includes("Leistungsverzeichnis") && uebHtml.includes("Dateien &amp; Fotos") && uebHtml.includes(">Abnahme<"), "Zentrale Projektbereiche sind direkt erreichbar");
+  assert(!uebHtml.includes("LV öffnen"), "Leistungsverzeichnis wird in der Projektübersicht nicht doppelt angeboten");
+  assert(uebHtml.includes("Team &amp; Einsatz"), "Mitarbeiter-Einsatzplanung ist direkt aus dem Projekt erreichbar");
   assert(uebHtml.includes(">Mängel<") && uebHtml.includes("Baustellenkontakte"), "Mängel und Baustellenkontakte sind aus der Projektübersicht erreichbar");
   assert(uebHtml.includes("Bautagebuch") && uebHtml.includes("Projektchronik"), "Bautagebuch und Projektchronik sind direkt im Überblick sichtbar");
 
@@ -524,9 +530,10 @@ async function main() {
   const p1Workflow = window.S.projekte.find((p) => p.id === "p1");
   p1Workflow.beginn = "2099-01-01";
   p1Workflow.status = "Aktiv";
-  assert(window.projektEffectiveStatus(p1Workflow) === "In Planung", "Zukünftiger Beginn ergibt automatisch 'In Planung'");
-  p1Workflow.beginn = "2020-01-01";
-  assert(window.projektEffectiveStatus(p1Workflow) === "Aktiv", "Begonnenes Projekt ergibt automatisch 'Aktiv'");
+  p1Workflow.archiviert = false;
+  assert(window.projektEffectiveStatus(p1Workflow) === "Aktiv", "Manuell gewählter Projektstatus bleibt trotz zukünftigen Beginns erhalten");
+  p1Workflow.status = "In Planung";
+  assert(window.projektEffectiveStatus(p1Workflow) === "In Planung", "Projektstatus kann manuell auf 'In Planung' gesetzt werden");
   const countBeforeDuplicate = window.S.projekte.length;
   window.duplicateProjekt("p1");
   assert(window.S.projekte.length === countBeforeDuplicate + 1, "Projekt kann dupliziert werden");
@@ -534,6 +541,9 @@ async function main() {
   assert(duplicate.fotos.length === 0 && duplicate.dokumente.length === 0 && duplicate.adresse === "", "Projektkopie übernimmt keine alten Fotos, Dateien oder Baustellenadresse");
   window.setProjektArchiviert(duplicate.id, true);
   assert(duplicate.archiviert === true, "Projekt kann archiviert werden");
+  duplicate.status = "Abgeschlossen";
+  window.setProjektArchiviert(duplicate.id, false);
+  assert(duplicate.archiviert === false && duplicate.status === "Aktiv", "Archiviertes abgeschlossenes Projekt kann wieder als aktiv zurückgeholt werden");
   window.S.projekte = window.S.projekte.filter((p) => p.id !== duplicate.id);
   p1Workflow.beginn = "";
 
@@ -710,6 +720,16 @@ async function main() {
   window.document.getElementById("view").innerHTML = "";
   window.renderVorlagen(window.document.getElementById("view"));
   assert(window.document.getElementById("view").innerHTML.includes("exportVorlagePDF"), "Ausgefüllte Vorlage erscheint mit PDF-Export-Button in der Liste");
+
+  console.log("\n== Einsatzplanung: Wochenübersicht ==");
+  window.document.getElementById("view").innerHTML = "";
+  let ptOk = true, ptMsg = "";
+  try { window.renderPlantafel(window.document.getElementById("view")); } catch (e) { ptOk = false; ptMsg = e.message; }
+  assert(ptOk, "Einsatzplanung rendert ohne Exception" + (ptOk ? "" : " (" + ptMsg + ")"));
+  const ptHtml = window.document.getElementById("view").innerHTML;
+  assert(ptHtml.includes("Einsatzplanung") && ptHtml.includes("Heute – wer fährt wohin?"), "Plantafel zeigt Wochen- und Tagesübersicht");
+  assert(ptHtml.includes("Woche → nächste kopieren") && ptHtml.includes("Alle Gewerke"), "Plantafel bietet Wochenkopie und Gewerkefilter");
+  assert(window.PRIMARY_NAV_IDS.includes("plantafel"), "Plantafel ist in der linken Hauptnavigation sichtbar");
 
   console.log("\n== Kalenderansicht (Urlaub + Plantafel im Monatsraster) ==");
   window.document.getElementById("view").innerHTML = "";
