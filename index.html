@@ -2983,7 +2983,21 @@ function renderSubunternehmer(view, id, tab){
       ${S.subunternehmer.map(s=>{
         const assigned=S.projekte.filter(p=>(p.subunternehmer||[]).includes(s.id)&&!p.archiviert).length;
         const einsatz=subEinsatzStatus(s);
-        return `<tr data-sub-search="${escAttr(subSearchText(s))}" data-sub-status="${escfunction filterSubRows(){
+        return `<tr data-sub-search="${escAttr(subSearchText(s))}" data-sub-status="${escAttr(s.status||"aktiv")}" data-sub-doc="${escAttr(einsatz.key)}" style="cursor:pointer;" onclick="goTo('#subunternehmer/${escAttr(s.id)}')">
+          <td><b style="font-weight:600;">${escHtml(s.firma)}</b><div class="pageSub">${escHtml(s.ansprechpartner||s.adresse||"")}</div></td>
+          <td>${escHtml(s.gewerk||"–")}</td>
+          <td>${subEinsatzBadge(s)}</td>
+          <td>${subDokumentBadge(s)}</td>
+          <td><div>${escHtml(s.tel||"–")}</div><div class="pageSub">${escHtml(s.email||"")}</div></td>
+          <td>${assigned}</td>
+          <td style="text-align:right;white-space:nowrap;" onclick="event.stopPropagation()"><button class="iconBtn" onclick="goTo('#subunternehmer/${escAttr(s.id)}')">›</button></td>
+        </tr>`;
+      }).join("") || `<tr><td colspan="7"><div class="empty">Noch keine Subunternehmer.</div></td></tr>`}
+      </tbody>
+    </table></div></div>
+  `;
+}
+function filterSubRows(){
   const q=(document.getElementById("subSearchInput")?.value||"").trim().toLowerCase();
   const status=document.getElementById("subStatusFilter")?.value||"";
   const doc=document.getElementById("subDocFilter")?.value||"";
@@ -3251,7 +3265,22 @@ function renderSubProjekteTab(s){
   `;
 }
 function renderSubProjectSearch(subId,value){
-  const s=S.sfunction addSubToProjekt(subId,projektId){
+  const s=S.subunternehmer.find(x=>x.id===subId);
+  const out=document.getElementById("subProjectResults");
+  if(!s||!out) return;
+  const q=String(value||"").trim().toLowerCase();
+  if(!q){
+    out.innerHTML='<div class="kundeSearchHint">Projektname, Adresse oder Kunde eingeben.</div>';
+    out.classList.remove("hidden");
+    return;
+  }
+  const matches=S.projekte.filter(p=>!p.archiviert&&!(p.subunternehmer||[]).includes(subId)&&[
+    p.name,p.adresse,kundeName(p.kundeId)
+  ].filter(Boolean).join(" ").toLowerCase().includes(q)).slice(0,15);
+  out.innerHTML=matches.map(p=>`<div class="kundeSearchItem" onmousedown="addSubToProjekt('${escAttr(subId)}','${escAttr(p.id)}')"><div class="kundeSearchName">${escHtml(p.name)}</div><div class="kundeSearchMeta">${escHtml(p.adresse||"Keine Adresse")} · ${escHtml(kundeName(p.kundeId)||"Kein Kunde")}</div></div>`).join("")||'<div class="kundeSearchHint">Kein passendes Projekt.</div>';
+  out.classList.remove("hidden");
+}
+function addSubToProjekt(subId,projektId){
   if(!projektId) return;
   const p=S.projekte.find(x=>x.id===projektId);
   const s=S.subunternehmer.find(x=>x.id===subId);
