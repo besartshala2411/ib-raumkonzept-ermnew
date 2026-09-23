@@ -760,6 +760,7 @@ function ensureShape(s){
     if(!p.bauzeitenplan) p.bauzeitenplan=[];
     if(!p.chat) p.chat=[];
     if(!p.status) p.status="In Planung";
+    if(p.beginn==null) p.beginn="";
     if(p.fortschritt==null) p.fortschritt=0;
     if(p.personalkosten==null) p.personalkosten=0;
     if(p.fremdkosten==null) p.fremdkosten=0;
@@ -3226,14 +3227,17 @@ async function renderProjekteKarte(list){
   if(statusEl) statusEl.textContent = markers.length ? "" : (withAdresse.length ? "Keine Adresse konnte auf der Karte gefunden werden." : "");
 }
 function openProjektForm(id){
-  const p = id ? S.projekte.find(x=>x.id===id) : {id:uid(), name:"", kundeId:"", adresse:"", status:"In Planung", budget:0, deadline:"", fortschritt:0, personalkosten:0, fremdkosten:0, abnahmeDatum:"", abnahmeBemerkung:"", standardSubLvAbzug:20, team:[], subunternehmer:[], fotos:[], dokumente:[], grundrisse:[], material:[], lvPositionen:[], ausschreibung:[], bautagebuch:[], zugaenge:[], checkliste:[], aufmasse:[], bauzeitenplan:[], chat:[]};
+  const p = id ? S.projekte.find(x=>x.id===id) : {id:uid(), name:"", kundeId:"", adresse:"", status:"In Planung", budget:0, beginn:"", deadline:"", fortschritt:0, personalkosten:0, fremdkosten:0, abnahmeDatum:"", abnahmeBemerkung:"", standardSubLvAbzug:20, team:[], subunternehmer:[], fotos:[], dokumente:[], grundrisse:[], material:[], lvPositionen:[], ausschreibung:[], bautagebuch:[], zugaenge:[], checkliste:[], aufmasse:[], bauzeitenplan:[], chat:[]};
   openModal(`
     <div class="modalHead"><div class="modalTitle">${id?"Projekt bearbeiten":"Neues Projekt"}</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
-    <div class="compactFormNote">Für den Start reichen Projekt, Kunde, Adresse und Termin. Weitere Angaben können später ergänzt werden.</div>
+    <div class="compactFormNote">Für den Start reichen Projekt, Kunde, Adresse, Beginn und Fertigstellung. Weitere Angaben können später ergänzt werden.</div>
     <div class="formRow"><label>Projektname</label><div class="micWrap"><input id="pName" type="text" value="${escAttr(p.name)}">${fieldMic("pName")}</div></div>
     <div class="formRow"><label>Kunde</label>${kundeSearchHTML("pKunde", p.kundeId)}</div>
     <div class="formRow"><label>Adresse der Baustelle</label><input id="pAdresse" type="text" value="${escAttr(p.adresse||"")}"></div>
-    <div class="formRow"><label>Fertigstellung</label><input id="pDeadline" type="date" value="${escAttr(p.deadline||"")}"></div>
+    <div class="grid cols-2">
+      <div class="formRow"><label>Beginn</label><input id="pBeginn" type="date" value="${escAttr(p.beginn||"")}"></div>
+      <div class="formRow"><label>Fertigstellung</label><input id="pDeadline" type="date" value="${escAttr(p.deadline||"")}"></div>
+    </div>
 
     <details class="projectCreateAdvanced" ${id?"":" "}>
       <summary>Weitere Angaben</summary>
@@ -3255,7 +3259,11 @@ function saveProjekt(id, isEdit){
   let p = isEdit ? S.projekte.find(x=>x.id===id) : window._newProjektDraft;
   p.name=name; p.kundeId=document.getElementById("pKunde").value;
   p.status=document.getElementById("pStatus").value; p.adresse=document.getElementById("pAdresse").value.trim();
-  p.budget=Number(document.getElementById("pBudget").value)||0; p.deadline=document.getElementById("pDeadline").value;
+  const beginn=document.getElementById("pBeginn").value;
+  const deadline=document.getElementById("pDeadline").value;
+  if(beginn && deadline && beginn>deadline){ toast("Der Beginn darf nicht nach der Fertigstellung liegen.", "warn"); return; }
+  p.beginn=beginn;
+  p.budget=Number(document.getElementById("pBudget").value)||0; p.deadline=deadline;
   p.personalkosten=Number(document.getElementById("pPersonalkosten").value)||0;
   p.fremdkosten=Number(document.getElementById("pFremdkosten").value)||0;
   p.fortschritt=Math.max(0,Math.min(100,Number(document.getElementById("pFortschritt").value)||0));
@@ -3318,7 +3326,10 @@ function projektBauzeitraum(p){
   const phasen = p.bauzeitenplan||[];
   const vonListe = phasen.map(ph=>ph.von).filter(Boolean).sort();
   const bisListe = phasen.map(ph=>ph.bis).filter(Boolean).sort();
-  return { beginn: vonListe[0]||null, ende: bisListe.length?bisListe[bisListe.length-1]:null };
+  return {
+    beginn: p.beginn || vonListe[0] || null,
+    ende: p.deadline || (bisListe.length?bisListe[bisListe.length-1]:null)
+  };
 }
 function renderTabUebersichtLegacy(body, p){
   const admin = hasAdminAccess();
@@ -3477,10 +3488,10 @@ function renderTabUebersicht(body, p){
     </div>
 
     <div class="projectOverviewInfo">
+      <div class="projectOverviewInfoItem"><span>Beginn</span><b>${zeitraum.beginn?fmtDate(zeitraum.beginn):"Nicht festgelegt"}</b></div>
+      <div class="projectOverviewInfoItem"><span>Fertigstellung</span><b class="${deadlineLate?'deadlineLate':''}">${zeitraum.ende?fmtDate(zeitraum.ende):"Nicht festgelegt"}</b></div>
       <div class="projectOverviewInfoItem"><span>Aktuelle Phase</span><b>${aktuellePhase?escHtml(aktuellePhase.bezeichnung):"Keine Phase"}</b></div>
       <div class="projectOverviewInfoItem"><span>Fortschritt</span><b>${Math.round(Number(p.fortschritt)||0)} %</b></div>
-      <div class="projectOverviewInfoItem"><span>Auftrag</span><b>${fmtCurrency(p.budget)}</b></div>
-      <div class="projectOverviewInfoItem"><span>Marge</span><b style="color:${marge<0?'var(--red)':'var(--green)'}">${fmtCurrency(marge)}</b></div>
     </div>
 
     <div class="compactSectionTitle">Bereiche</div>
