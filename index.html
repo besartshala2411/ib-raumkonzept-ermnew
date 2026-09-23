@@ -804,13 +804,16 @@ function ensureShape(s){
     if(p.archiviert==null) p.archiviert=false;
     if(!p.chronik) p.chronik=[];
     if(p.fortschritt==null) p.fortschritt=0;
-    if(!p.archiviert && p.status!=="Abgeschlossen" && !p.abnahmeDatum && !p.checklisteUnterschrift && p.beginn){
-      p.status = p.beginn>todayISO() ? "In Planung" : "Aktiv";
-    }
+    if(p.status==="Abgeschlossen") p.archiviert=true;
     if(p.personalkosten==null) p.personalkosten=0;
     if(p.fremdkosten==null) p.fremdkosten=0;
     if(p.abnahmeDatum==null) p.abnahmeDatum="";
     if(p.abnahmeBemerkung==null) p.abnahmeBemerkung="";
+  });
+  s.planung.forEach(pl=>{
+    if(!pl.id) pl.id=uid();
+    if(!pl.slot) pl.slot="ganztags";
+    if(pl.notiz==null) pl.notiz="";
   });
   s.fuhrpark.forEach(f=>{
     if(!f.tankkosten) f.tankkosten=[];
@@ -1133,13 +1136,13 @@ function buildManifest(iconURL, name){
 ========================================================= */
 var MODULES = [];
 function reg(id,label,icon,group,render){ MODULES.push({id,label,icon,group,render}); }
-const PRIMARY_NAV_IDS = ["dashboard","projekte","aufgaben","kunden","subunternehmer","mitarbeiter","stempeluhr","rechnungen","einstellungen"];
+const PRIMARY_NAV_IDS = ["dashboard","projekte","aufgaben","plantafel","kunden","subunternehmer","mitarbeiter","stempeluhr","rechnungen","einstellungen"];
 
 function buildSidebar(){
   const groups = [];
   const admin = hasAdminAccess();
   MODULES.filter(m=>PRIMARY_NAV_IDS.includes(m.id) && (admin || !RESTRICTED_MODULES.includes(m.id))).forEach(m=>{
-    const simpleGroup = ["dashboard","projekte","aufgaben"].includes(m.id) ? "" : (["kunden","subunternehmer","mitarbeiter","stempeluhr"].includes(m.id) ? "Betrieb" : "Verwaltung");
+    const simpleGroup = ["dashboard","projekte","aufgaben"].includes(m.id) ? "" : (["plantafel","kunden","subunternehmer","mitarbeiter","stempeluhr"].includes(m.id) ? "Betrieb" : "Verwaltung");
     let g = groups.find(g=>g.name===simpleGroup);
     if(!g){ g={name:simpleGroup, items:[]}; groups.push(g); }
     g.items.push(m);
@@ -3334,55 +3337,174 @@ function removeSubFromProjekt(subId,projektId){
 /* =========================================================
    MODULE: PLANTAFEL
 ========================================================= */
+function ptDays(){
+  if(!window._ptWoche) window._ptWoche=mondayOfWeek(new Date());
+  const start=new Date(window._ptWoche);
+  return [...Array(5)].map((_,i)=>{const d=new Date(start);d.setDate(d.getDate()+i);return d.toISOString().slice(0,10);});
+}
+function ptAbwesenheit(m,datum){
+  const urlaub=S.urlaubsantraege.find(u=>u.mitarbeiterId===m.id&&u.status==="genehmigt"&&u.von<=datum&&u.bis>=datum);
+  if(urlaub) return "Urlaub";
+  if(m.status==="krank") return "Krank";
+  return "";
+}
+function ptProjectHue(pid){
+  let n=0; for(const ch of String(pid||"")) n=(n*31+ch.charCodeAt(0))%360;
+  return n;
+}
+function ptProjectStyle(pid){
+  const h=ptProjectHue(pid);
+  return "background:hsl("+h+" 55% 22%);border-color:hsl("+h+" 55% 38%);color:hsl("+h+" 70% 86%);";
+}
+function ptEntries(mid,datum){
+  return S.planung.filter(x=>x.mitarbeiterId===mid&&x.datum===datum);
+}
+function ptSlotLabel(slot){
+  return slot==="vormittags"?"VM":slot==="nachmittags"?"NM":"Tag";
+}
+function ptFilterRows(){
+  const q=(document.getElementById("ptTradeFilter")?.value||"").toLowerCase();
+  document.querySelectorAll("[data-pt-trade]").forEach(row=>row.classList.toggle("hidden",!!q&&!row.dataset.ptTrade.includes(q)));
+}
 function renderPlantafel(view){
-  if(!window._ptWoche) window._ptWoche = mondayOfWeek(new Date());
-  const start = new Date(window._ptWoche);
-  const days = [...Array(7)].map((_,i)=>{ const d=new Date(start); d.setDate(d.getDate()+i); return d.toISOString().slice(0,10); });
-  view.innerHTML = `
+  const days=ptDays();
+  const mitarbeiter=S.mitarbeiter.filter(m=>m.status!=="inaktiv");
+  const today=todayISO();
+  const weekEnd=days[days.length-1];
+  const weekLabel=fmtDate(days[0])+" – "+fmtDate(weekEnd);
+  const trades=[...new Set(mitarbeiter.map(m=>m.abteilung||m.position||"").filter(Boolean))].sort((a,b)=>a.localeCompare(b,"de"));
+
+  view.innerHTML=`
     <div class="pageHead">
-      <div><div class="pageTitle">Plantafel</div><div class="pageSub">Personal- &amp; Projekteinsatzplanung</div></div>
-      <div style="display:flex; gap:8px;">
-        <button class="btn" onclick="ptShiftWeek(-1)">◀</button>
-        <button class="btn" onclick="ptShiftWeek(1)">▶</button>
+      <div><div class="pageTitle">Einsatzplanung</div><div class="pageSub">Mitarbeiter, Abwesenheiten und Baustellen in einer Wochenansicht</div></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn" onclick="ptShiftWeek(-1)">←</button>
+        <button class="btn" onclick="ptGoToday()">Heute</button>
+        <button class="btn" onclick="ptShiftWeek(1)">→</button>
+        <button class="btn" onclick="copyPlantafelWeek()">Woche → nächste kopieren</button>
       </div>
     </div>
-    <div class="card"><div class="tableWrap"><table>
-      <thead><tr><th>Mitarbeiter</th>${days.map(d=>`<th>${new Date(d).toLocaleDateString("de-DE",{weekday:"short",day:"2-digit",month:"2-digit"})}</th>`).join("")}</tr></thead>
+
+    <div class="filterBar" style="margin-bottom:12px;">
+      <b style="font-size:13px;">${weekLabel}</b>
+      <select id="ptTradeFilter" onchange="ptFilterRows()"><option value="">Alle Gewerke</option>${trades.map(t=>`<option value="${escAttr(t.toLowerCase())}">${escHtml(t)}</option>`).join("")}</select>
+    </div>
+
+    <div class="grid cols-5" style="margin-bottom:12px;">
+      ${days.map(d=>{
+        const available=mitarbeiter.filter(m=>!ptAbwesenheit(m,d)).length;
+        const planned=new Set(S.planung.filter(x=>x.datum===d).map(x=>x.mitarbeiterId)).size;
+        return `<div class="kpi"><div class="kpiVal">${planned}/${available}</div><div class="kpiLabel">${new Date(d+"T12:00:00").toLocaleDateString("de-DE",{weekday:"short",day:"2-digit",month:"2-digit"})}</div><div class="kpiHint">${Math.max(0,available-planned)} verfügbar</div></div>`;
+      }).join("")}
+    </div>
+
+    <div class="card" style="margin-bottom:12px;">
+      <div class="projectSectionHead"><b>Projekte zum Ziehen</b><span class="pageSub">Projekt auf einen Mitarbeiter-Tag ziehen</span></div>
+      <div style="display:flex;gap:7px;flex-wrap:wrap;">
+        ${S.projekte.filter(p=>!p.archiviert&&projektEffectiveStatus(p)!=="Abgeschlossen").map(p=>`<div draggable="true" ondragstart="ptDragProject(event,'${escAttr(p.id)}')" style="border:1px solid;padding:6px 9px;border-radius:8px;font-size:11.5px;cursor:grab;${ptProjectStyle(p.id)}">${escHtml(p.name)}</div>`).join("")||'<span class="pageSub">Keine laufenden Projekte.</span>'}
+      </div>
+    </div>
+
+    <div class="card"><div class="tableWrap"><table class="ptTable">
+      <thead><tr><th style="min-width:180px;">Mitarbeiter</th>${days.map(d=>`<th style="min-width:145px;" class="${d===today?"today":""}">${new Date(d+"T12:00:00").toLocaleDateString("de-DE",{weekday:"short",day:"2-digit",month:"2-digit"})}</th>`).join("")}</tr></thead>
       <tbody>
-      ${S.mitarbeiter.filter(m=>m.status!=="inaktiv").map(m=>`
-        <tr><td><b>${escHtml(m.name)}</b></td>
-        ${days.map(d=>{
-          const p = S.planung.find(x=>x.mitarbeiterId===m.id && x.datum===d);
-          const proj = p ? S.projekte.find(x=>x.id===p.projektId) : null;
-          return `<td style="cursor:pointer; min-width:110px;" onclick="openPlantafelCell('${escAttr(m.id)}','${d}')">${proj?`<span class="badge blue">${escHtml(proj.name)}</span>`:'<span style="color:var(--text-dim2);">–</span>'}</td>`;
-        }).join("")}
-        </tr>
-      `).join("") || `<tr><td colspan="8"><div class="empty">Keine Mitarbeiter</div></td></tr>`}
+      ${mitarbeiter.map(m=>{
+        const trade=(m.abteilung||m.position||"");
+        return `<tr data-pt-trade="${escAttr(trade.toLowerCase())}">
+          <td><b>${escHtml(m.name)}</b><div class="pageSub">${escHtml(trade||"Kein Gewerk")}</div></td>
+          ${days.map(d=>{
+            const away=ptAbwesenheit(m,d);
+            const entries=ptEntries(m.id,d);
+            if(away) return `<td style="vertical-align:top;background:var(--amber-bg);"><div class="badge amber">${escHtml(away)}</div></td>`;
+            return `<td style="vertical-align:top;cursor:pointer;" onclick="openPlantafelCell('${escAttr(m.id)}','${d}')" ondragover="event.preventDefault()" ondrop="ptDropProject(event,'${escAttr(m.id)}','${d}')">
+              <div style="display:flex;flex-direction:column;gap:5px;min-height:46px;">
+                ${entries.map(e=>{const p=S.projekte.find(x=>x.id===e.projektId);return p?`<div style="border:1px solid;padding:5px 7px;border-radius:7px;font-size:10.5px;${ptProjectStyle(p.id)}"><b>${ptSlotLabel(e.slot)}</b> · ${escHtml(p.name)}${e.notiz?`<div style="opacity:.8;margin-top:2px;">${escHtml(e.notiz)}</div>`:""}</div>`:"";}).join("")}
+                ${entries.length?"":'<span style="color:var(--text-dim2);font-size:11px;">＋ einplanen</span>'}
+              </div>
+            </td>`;
+          }).join("")}
+        </tr>`;
+      }).join("")||`<tr><td colspan="6"><div class="empty">Keine Mitarbeiter.</div></td></tr>`}
       </tbody>
     </table></div></div>
+
+    <div class="card" style="margin-top:12px;">
+      <div class="projectSectionHead"><b>Heute – wer fährt wohin?</b><span class="pageSub">${fmtDate(today)}</span></div>
+      <div class="simpleList">
+        ${mitarbeiter.map(m=>{
+          const away=ptAbwesenheit(m,today);
+          const entries=ptEntries(m.id,today);
+          if(away) return `<div class="simpleRow"><div class="simpleRowMain"><b>${escHtml(m.name)}</b><div class="pageSub">${escHtml(m.abteilung||m.position||"")}</div></div><span class="badge amber">${escHtml(away)}</span></div>`;
+          return `<div class="simpleRow"><div class="simpleRowMain"><b>${escHtml(m.name)}</b><div class="pageSub">${entries.map(e=>{const p=S.projekte.find(x=>x.id===e.projektId);return p?ptSlotLabel(e.slot)+" "+p.name:"";}).filter(Boolean).join(" · ")||"Noch frei"}</div></div>${entries.length?'<span class="badge blue">geplant</span>':'<span class="badge green">frei</span>'}</div>`;
+        }).join("")}
+      </div>
+    </div>
   `;
 }
 function ptShiftWeek(dir){
-  const d = new Date(window._ptWoche); d.setDate(d.getDate()+dir*7);
-  window._ptWoche = d.toISOString().slice(0,10); route(location.hash);
+  const d=new Date(window._ptWoche||mondayOfWeek(new Date())); d.setDate(d.getDate()+dir*7);
+  window._ptWoche=d.toISOString().slice(0,10); route(location.hash);
 }
-function openPlantafelCell(mid, datum){
-  const existing = S.planung.find(x=>x.mitarbeiterId===mid && x.datum===datum);
+function ptGoToday(){
+  window._ptWoche=mondayOfWeek(new Date()); route(location.hash);
+}
+function ptDragProject(event,pid){
+  event.dataTransfer.setData("text/plain",pid);
+  event.dataTransfer.effectAllowed="copy";
+}
+function ptDropProject(event,mid,datum){
+  event.preventDefault(); event.stopPropagation();
+  const pid=event.dataTransfer.getData("text/plain");
+  if(pid) openPlantafelCell(mid,datum,pid);
+}
+function openPlantafelCell(mid,datum,dragProjektId){
+  const m=S.mitarbeiter.find(x=>x.id===mid);
+  const away=m?ptAbwesenheit(m,datum):"";
+  if(away){ toast(mitarbeiterName(mid)+" ist an diesem Tag abwesend: "+away,"warn"); return; }
+  const entries=ptEntries(mid,datum);
   openModal(`
     <div class="modalHead"><div class="modalTitle">${escHtml(mitarbeiterName(mid))} – ${fmtDate(datum)}</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
-    <div class="formRow"><label>Projekt</label>
-      <select id="ptProjekt"><option value="">– keine Zuordnung –</option>${S.projekte.map(p=>`<option value="${escAttr(p.id)}" ${existing&&existing.projektId===p.id?"selected":""}>${escHtml(p.name)}</option>`).join("")}</select>
+    ${entries.length?`<div style="margin-bottom:12px;"><b>Bereits geplant</b><div class="simpleList" style="margin-top:7px;">${entries.map(e=>{const p=S.projekte.find(x=>x.id===e.projektId);return `<div class="simpleRow"><div class="simpleRowMain"><b>${escHtml(p?p.name:"Projekt")}</b><div class="pageSub">${escHtml(ptSlotLabel(e.slot))}${e.notiz?" · "+escHtml(e.notiz):""}</div></div><button class="iconBtn" onclick="deletePlantafelEntry('${escAttr(e.id)}')">×</button></div>`;}).join("")}</div></div>`:""}
+    <div class="formRow"><label>Projekt</label><select id="ptProjekt"><option value="">– auswählen –</option>${S.projekte.filter(p=>!p.archiviert&&projektEffectiveStatus(p)!=="Abgeschlossen").map(p=>`<option value="${escAttr(p.id)}" ${dragProjektId===p.id?"selected":""}>${escHtml(p.name)}</option>`).join("")}</select></div>
+    <div class="grid cols-2">
+      <div class="formRow"><label>Einsatz</label><select id="ptSlot"><option value="ganztags">Ganztags</option><option value="vormittags">Vormittags</option><option value="nachmittags">Nachmittags</option></select></div>
+      <div class="formRow"><label>Notiz</label><input id="ptNotiz" type="text" placeholder="z. B. Material mitnehmen"></div>
     </div>
-    <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="savePlantafelCell('${escAttr(mid)}','${datum}')">Speichern</button></div>
+    <div class="modalFoot"><button class="btn" onclick="closeModal()">Schließen</button><button class="btn primary" onclick="savePlantafelCell('${escAttr(mid)}','${datum}')">Einplanen</button></div>
   `);
 }
-function savePlantafelCell(mid, datum){
-  const projektId = document.getElementById("ptProjekt").value;
-  S.planung = S.planung.filter(x=>!(x.mitarbeiterId===mid && x.datum===datum));
-  if(projektId) S.planung.push({id:uid(), mitarbeiterId:mid, datum, projektId});
+function savePlantafelCell(mid,datum){
+  const projektId=document.getElementById("ptProjekt").value;
+  const slot=document.getElementById("ptSlot").value;
+  const notiz=document.getElementById("ptNotiz").value.trim();
+  if(!projektId){ toast("Bitte ein Projekt auswählen.","warn"); return; }
+  const conflicts=ptEntries(mid,datum).filter(e=>e.slot==="ganztags"||slot==="ganztags"||e.slot===slot);
+  if(conflicts.length){ toast("Der Mitarbeiter ist für diesen Zeitraum bereits eingeplant.","warn"); return; }
+  S.planung.push({id:uid(),mitarbeiterId:mid,datum,projektId,slot,notiz});
   saveState(); closeModal(); route(location.hash);
 }
-
+function deletePlantafelEntry(id){
+  S.planung=S.planung.filter(x=>x.id!==id);
+  saveState(); closeModal(); route(location.hash);
+}
+function copyPlantafelWeek(){
+  const days=ptDays();
+  const from=new Set(days);
+  const source=S.planung.filter(x=>from.has(x.datum));
+  let copied=0;
+  source.forEach(e=>{
+    const d=new Date(e.datum+"T12:00:00"); d.setDate(d.getDate()+7);
+    const datum=d.toISOString().slice(0,10);
+    const exists=S.planung.some(x=>x.mitarbeiterId===e.mitarbeiterId&&x.datum===datum&&x.slot===e.slot);
+    const m=S.mitarbeiter.find(x=>x.id===e.mitarbeiterId);
+    if(!exists&&m&&!ptAbwesenheit(m,datum)){
+      S.planung.push({id:uid(),mitarbeiterId:e.mitarbeiterId,datum,projektId:e.projektId,slot:e.slot||"ganztags",notiz:e.notiz||""});
+      copied++;
+    }
+  });
+  saveState();
+  toast(copied+" Einsatz/Einsätze in die nächste Woche kopiert.","success");
+}
 reg("kunden","Kunden","🤝","Kunden & Projekte",renderKunden);
 reg("subunternehmer","Subunternehmer","🏗️","Kunden & Projekte",renderSubunternehmer);
 reg("plantafel","Plantafel","📅","Kunden & Projekte",renderPlantafel);
@@ -3398,8 +3520,6 @@ function projektStatusBadge(s){
 function projektEffectiveStatus(p){
   if(!p) return "In Planung";
   if(p.archiviert) return "Archiviert";
-  if(p.status==="Abgeschlossen" || p.abnahmeDatum || p.checklisteUnterschrift) return "Abgeschlossen";
-  if(p.beginn) return p.beginn>todayISO() ? "In Planung" : "Aktiv";
   return p.status||"In Planung";
 }
 function addProjektChronik(pid, typ, textValue){
@@ -3611,11 +3731,11 @@ function openProjektForm(id){
       <div class="formRow"><label>Beginn</label><input id="pBeginn" type="date" value="${escAttr(p.beginn||"")}"></div>
       <div class="formRow"><label>Fertigstellung</label><input id="pDeadline" type="date" value="${escAttr(p.deadline||"")}"></div>
     </div>
+    <div class="formRow"><label>Status</label><select id="pStatus">${PROJEKT_STATI.map(s=>`<option ${p.status===s?"selected":""}>${s}</option>`).join("")}</select><div class="pageSub">„Abgeschlossen“ verschiebt das Projekt automatisch ins Archiv.</div></div>
 
     <details class="projectCreateAdvanced" ${id?"":" "}>
       <summary>Weitere Angaben</summary>
       <div class="grid cols-2">
-        <div class="formRow"><label>Status</label><select id="pStatus">${PROJEKT_STATI.map(s=>`<option ${p.status===s?"selected":""}>${s}</option>`).join("")}</select></div>
         <div class="formRow"><label>Auftragssumme (€)</label><input id="pBudget" type="number" step="0.01" value="${escAttr(p.budget||0)}"></div>
         <div class="formRow"><label>Personalkosten (€)</label><input id="pPersonalkosten" type="number" step="0.01" value="${escAttr(p.personalkosten||0)}"></div>
         <div class="formRow"><label>Fremdleistungen (€)</label><input id="pFremdkosten" type="number" step="0.01" value="${escAttr(p.fremdkosten||0)}"></div>
@@ -3640,9 +3760,7 @@ function saveProjekt(id, isEdit){
   p.personalkosten=Number(document.getElementById("pPersonalkosten").value)||0;
   p.fremdkosten=Number(document.getElementById("pFremdkosten").value)||0;
   p.fortschritt=Math.max(0,Math.min(100,Number(document.getElementById("pFortschritt").value)||0));
-  if(!p.archiviert && p.status!=="Abgeschlossen" && !p.abnahmeDatum && !p.checklisteUnterschrift){
-    if(p.beginn) p.status=p.beginn>todayISO()?"In Planung":"Aktiv";
-  }
+  p.archiviert = p.status==="Abgeschlossen";
   if(!isEdit){
     S.projekte.push(p);
     window._newProjektDraft=null;
@@ -3651,8 +3769,8 @@ function saveProjekt(id, isEdit){
     addProjektChronik(p.id,"projekt","Projektdaten aktualisiert");
   }
   saveState(); closeModal();
-  goTo("#projekte/"+p.id);
-  toast("Projekt gespeichert.", "success");
+  goTo(p.archiviert?"#projekte":"#projekte/"+p.id);
+  toast(p.archiviert?"Projekt abgeschlossen und archiviert.":"Projekt gespeichert.", "success");
 }
 function setProjektArchiviert(id, archiviert){
   const p=S.projekte.find(x=>x.id===id);
@@ -3711,12 +3829,10 @@ function duplicateProjekt(id){
 }
 const PROJEKT_TABS = [
   {id:"uebersicht", label:"Überblick", icon:"▦"},
-  {id:"lv", label:"LV / Subunternehmer", icon:"%"},
-  {id:"bauzeitenplan", label:"Bauzeitenplan", icon:"◫"},
-  {id:"vorlagen", label:"Vorlagen", icon:"▱"},
+  {id:"lv", label:"Leistungsverzeichnis", icon:"%"},
+  {id:"bauzeitenplan", label:"Bauablauf", icon:"◫"},
+  {id:"dokumente", label:"Dateien & Fotos", icon:"▱"},
   {id:"material", label:"Material", icon:"▤"},
-  {id:"fotos", label:"Fotos", icon:"▧"},
-  {id:"dokumente", label:"Dateien", icon:"▱"},
   {id:"checkliste", label:"Abnahme", icon:"✓"},
 ];
 function renderProjektDetail(view, id, tab){
@@ -3930,7 +4046,6 @@ function renderTabUebersicht(body, p){
       <button class="projectQuickAction" onclick="openProjektAufgabe('${escAttr(p.id)}')"><span>📝</span><span>Aufgabe</span></button>
       <button class="projectQuickAction" onclick="openMangelForm('${escAttr(p.id)}')"><span>⚠</span><span>Mangel</span></button>
       <button class="projectQuickAction" onclick="openBautagebuchForm('${escAttr(p.id)}')"><span>✎</span><span>Heute dokumentieren</span></button>
-      <button class="projectQuickAction" onclick="goTo('#projekte/${escAttr(p.id)}/lv')"><span>％</span><span>LV öffnen</span></button>
     </div>
 
     <div class="projectOverviewInfo">
@@ -3954,7 +4069,7 @@ function renderTabUebersicht(body, p){
 
     <div class="compactSectionTitle">Bereiche</div>
     <div class="projectAreas">
-      <button class="projectArea" onclick="goTo('#projekte/${escAttr(p.id)}/lv')"><span><div class="projectAreaTitle">LV & Subunternehmer</div><div class="projectAreaSub">${(p.lvPositionen||[]).length} Positionen</div></span><span>›</span></button>
+      <button class="projectArea" onclick="goTo('#projekte/${escAttr(p.id)}/lv')"><span><div class="projectAreaTitle">Leistungsverzeichnis</div><div class="projectAreaSub">${(p.lvPositionen||[]).length} Positionen</div></span><span>›</span></button>
       <button class="projectArea" onclick="goTo('#projekte/${escAttr(p.id)}/bauzeitenplan')"><span><div class="projectAreaTitle">Bauablauf</div><div class="projectAreaSub">${p.bauzeitenplan.length} Phasen</div></span><span>›</span></button>
       <button class="projectArea" onclick="goTo('#projekte/${escAttr(p.id)}/dokumente')"><span><div class="projectAreaTitle">Dateien & Fotos</div><div class="projectAreaSub">${p.dokumente.length} Dateien · ${p.fotos.length} Fotos</div></span><span>›</span></button>
       <button class="projectArea" onclick="goTo('#projekte/${escAttr(p.id)}/maengel')"><span><div class="projectAreaTitle">Mängel</div><div class="projectAreaSub">${offeneMaengel.length} offen</div></span><span>›</span></button>
@@ -3996,7 +4111,7 @@ function renderTabProjektLv(body, p){
   body.innerHTML=`
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
-        <div><b>LV / Subunternehmer</b><div class="pageSub">Angebot einlesen, Preisabzug festlegen und weitergeben.</div></div>
+        <div><b>Leistungsverzeichnis</b><div class="pageSub">Positionen einlesen und bei Bedarf an Subunternehmer weitergeben.</div></div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <button class="btn sm" onclick="openProjektAngebotImport('${escAttr(p.id)}')">PDF einlesen</button>
           <button class="btn primary sm" onclick="openAusschreibungForm('${escAttr(p.id)}')" ${positionen.length?'':'disabled'}>An Subunternehmer</button>
@@ -4070,7 +4185,17 @@ function mapsLinksHTML(adresse){
 
 function renderTabTeam(body,p){
   if(!p.subunternehmer) p.subunternehmer=[];
+  const weekStart=mondayOfWeek(new Date());
+  const wd=new Date(weekStart);
+  const weekDays=[...Array(5)].map((_,i)=>{const d=new Date(wd);d.setDate(d.getDate()+i);return d.toISOString().slice(0,10);});
+  const weekSet=new Set(weekDays);
+  const projectPlan=S.planung.filter(x=>x.projektId===p.id&&weekSet.has(x.datum));
   body.innerHTML=`
+    <div class="card" style="margin-bottom:16px;">
+      <div class="projectSectionHead"><div><b>Einsatz diese Woche</b><div class="pageSub">${projectPlan.length} geplante Einsätze</div></div><button class="btn sm" onclick="goTo('#plantafel')">Plantafel öffnen</button></div>
+      <div class="simpleList">${projectPlan.sort((a,b)=>a.datum.localeCompare(b.datum)).map(e=>`<div class="simpleRow"><div class="simpleRowMain"><b>${escHtml(mitarbeiterName(e.mitarbeiterId))}</b><div class="pageSub">${fmtDate(e.datum)} · ${escHtml(ptSlotLabel(e.slot))}${e.notiz?" · "+escHtml(e.notiz):""}</div></div></div>`).join("")||'<div class="empty" style="padding:12px;">Diese Woche noch niemand eingeplant.</div>'}</div>
+    </div>
+
     <div class="card" style="margin-bottom:16px;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
         <b>Team (${p.team.length})</b>
@@ -5222,7 +5347,8 @@ function saveChecklisteUnterschrift(pid){
   p.checklisteUnterschrift = window._checklisteSigDraft || "";
   if(p.checklisteUnterschrift){
     p.status="Abgeschlossen";
-    addProjektChronik(pid,"abnahme","Abnahme unterschrieben – Projekt abgeschlossen");
+    p.archiviert=true;
+    addProjektChronik(pid,"abnahme","Abnahme unterschrieben – Projekt abgeschlossen und archiviert");
   }
   saveState();
   toast("Unterschrift gespeichert.", "success");
