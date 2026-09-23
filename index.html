@@ -698,8 +698,6 @@ function defaultState(){
           {name:"Sozialversicherungsnachweis", icon:"👥"},
           {name:"Eintragung Handwerksrolle", icon:"📋"},
           {name:"Steuerliche Unbedenklichkeitsbescheinigung", icon:"🏛️"},
-          {name:"Personalausweis / Reisepass", icon:"🪪"},
-          {name:"Aufenthalts-/Arbeitstitel", icon:"📜"},
         ],
         kunden: [
           {name:"Auftragsbestätigung / Vertrag", icon:"📄"},
@@ -754,6 +752,9 @@ function ensureShape(s){
   for(const k in d.einstellungen) if(s.einstellungen[k] === undefined) s.einstellungen[k] = d.einstellungen[k];
   if(!s.einstellungen.pflichtdokumenteDefs) s.einstellungen.pflichtdokumenteDefs = d.einstellungen.pflichtdokumenteDefs;
   else for(const k in d.einstellungen.pflichtdokumenteDefs) if(!s.einstellungen.pflichtdokumenteDefs[k]) s.einstellungen.pflichtdokumenteDefs[k] = d.einstellungen.pflichtdokumenteDefs[k];
+  if(s.einstellungen.pflichtdokumenteDefs && Array.isArray(s.einstellungen.pflichtdokumenteDefs.subunternehmer)){
+    s.einstellungen.pflichtdokumenteDefs.subunternehmer = s.einstellungen.pflichtdokumenteDefs.subunternehmer.filter(d=>!["Personalausweis / Reisepass","Aufenthalts-/Arbeitstitel"].includes(d.name));
+  }
   s.mitarbeiter.forEach(m=>{
     if(!m.dokumente) m.dokumente=[];
     if(!m.status) m.status="aktiv";
