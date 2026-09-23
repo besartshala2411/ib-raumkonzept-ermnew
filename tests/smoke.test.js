@@ -729,7 +729,8 @@ async function main() {
   const ptHtml = window.document.getElementById("view").innerHTML;
   assert(ptHtml.includes("Einsatzplanung") && ptHtml.includes("Heute – wer fährt wohin?"), "Plantafel zeigt Wochen- und Tagesübersicht");
   assert(ptHtml.includes("Woche → nächste kopieren") && ptHtml.includes("Alle Gewerke"), "Plantafel bietet Wochenkopie und Gewerkefilter");
-  assert(window.PRIMARY_NAV_IDS.includes("plantafel"), "Plantafel ist in der linken Hauptnavigation sichtbar");
+  window.buildSidebar();
+  assert(window.document.getElementById("sidebar").innerHTML.includes('data-route="plantafel"'), "Plantafel ist in der linken Hauptnavigation sichtbar");
 
   console.log("\n== Kalenderansicht (Urlaub + Plantafel im Monatsraster) ==");
   window.document.getElementById("view").innerHTML = "";
