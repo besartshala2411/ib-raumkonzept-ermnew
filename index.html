@@ -4747,13 +4747,20 @@ function renderTabChecklist(body, p){
 function saveAbnahmeMeta(pid,field,value){
   const p=S.projekte.find(x=>x.id===pid);
   if(!p) return;
-  if(field==="datum") p.abnahmeDatum=value;
+  if(field==="datum"){
+    p.abnahmeDatum=value;
+    if(value) addProjektChronik(pid,"abnahme","Abnahmedatum festgelegt: "+fmtDate(value));
+  }
   if(field==="bemerkung") p.abnahmeBemerkung=value.trim();
   saveState();
 }
 function saveChecklisteUnterschrift(pid){
   const p = S.projekte.find(x=>x.id===pid);
   p.checklisteUnterschrift = window._checklisteSigDraft || "";
+  if(p.checklisteUnterschrift){
+    p.status="Abgeschlossen";
+    addProjektChronik(pid,"abnahme","Abnahme unterschrieben – Projekt abgeschlossen");
+  }
   saveState();
   toast("Unterschrift gespeichert.", "success");
 }
@@ -4938,6 +4945,7 @@ function saveChecklistItem(pid){
   if(!text) return;
   const p = S.projekte.find(x=>x.id===pid);
   p.checkliste.push({text, done:false});
+  addProjektChronik(pid,"abnahme","Prüfpunkt ergänzt: "+text);
   saveState(); closeModal(); route(location.hash);
 }
 function toggleChecklistItem(pid, i){
