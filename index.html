@@ -797,6 +797,8 @@ function ensureShape(s){
     if(!p.aufmasse) p.aufmasse=[];
     if(!p.bauzeitenplan) p.bauzeitenplan=[];
     if(!p.chat) p.chat=[];
+    if(!p.maengel) p.maengel=[];
+    if(!p.kontakte) p.kontakte=[];
     if(!p.status) p.status="In Planung";
     if(p.beginn==null) p.beginn="";
     if(p.archiviert==null) p.archiviert=false;
@@ -1768,35 +1770,56 @@ function savePflichtDefs(type){
    MODULE: DASHBOARD
 ========================================================= */
 function renderDashboard(view){
-  const heute = todayISO();
-  const aktiveProjekte = S.projekte.filter(p=>p.status!=="Abgeschlossen").sort((a,b)=>(a.deadline||"9999").localeCompare(b.deadline||"9999"));
-  const offeneAufgaben = S.aufgaben.filter(a=>a.status!=="erledigt");
-  const ueberfaellig = offeneAufgaben.filter(a=>a.faellig && a.faellig<heute);
-  const auftragssumme = aktiveProjekte.reduce((sum,p)=>sum+(Number(p.budget)||0),0);
-  const material = aktiveProjekte.reduce((sum,p)=>sum+projektMaterialkosten(p),0);
-  const marge = aktiveProjekte.reduce((sum,p)=>sum+projektMarge(p),0);
-  view.innerHTML = `
+  const heute=todayISO();
+  const aktiveProjekte=S.projekte.filter(p=>!p.archiviert&&projektEffectiveStatus(p)!=="Abgeschlossen").sort((a,b)=>(a.deadline||"9999").localeCompare(b.deadline||"9999"));
+  const offeneAufgaben=S.aufgaben.filter(a=>a.status!=="erledigt");
+  const ueberfaelligeAufgaben=offeneAufgaben.filter(a=>a.faellig&&a.faellig<heute);
+  const alleMaengel=aktiveProjekte.flatMap(p=>(p.maengel||[]).map(m=>({projekt:p,mangel:m})));
+  const offeneMaengel=alleMaengel.filter(x=>x.mangel.status!=="erledigt");
+  const ueberfaelligeMaengel=offeneMaengel.filter(x=>x.mangel.frist&&x.mangel.frist<heute);
+  const subWarnungen=S.subunternehmer.filter(s=>subEinsatzStatus(s).key!=="freigegeben"&&(s.status||"aktiv")==="aktiv");
+  const ohneTagebuch=aktiveProjekte.filter(p=>{
+    const last=(p.bautagebuch||[]).slice().sort((a,b)=>(b.datum||"").localeCompare(a.datum||""))[0];
+    return !last || last.datum<heute;
+  });
+
+  view.innerHTML=`
     <div class="pageHead">
-      <div>
-        <div class="pageTitle">Heute im Blick</div>
-        <div class="pageSub">${new Date().toLocaleDateString("de-DE",{weekday:"long",day:"2-digit",month:"long",year:"numeric"})}</div>
-      </div>
-      <button class="btn primary" onclick="openProjektForm()">＋ Projekt anlegen</button>
+      <div><div class="pageTitle">Heute im Blick</div><div class="pageSub">${new Date().toLocaleDateString("de-DE",{weekday:"long",day:"2-digit",month:"long",year:"numeric"})}</div></div>
+      <button class="btn primary" onclick="openProjektForm()">＋ Projekt</button>
     </div>
     <div class="cockpitMetrics">
-      <div class="cockpitMetric"><div class="cockpitMetricLabel">Laufende Projekte</div><div class="cockpitMetricValue">${aktiveProjekte.length}</div><div class="cockpitMetricHint">${ueberfaellig.length} Aufgaben überfällig</div></div>
-      <div class="cockpitMetric"><div class="cockpitMetricLabel">Auftragssumme</div><div class="cockpitMetricValue">${fmtCurrency(auftragssumme)}</div><div class="cockpitMetricHint">laufende Baustellen</div></div>
-      <div class="cockpitMetric"><div class="cockpitMetricLabel">Materialkosten</div><div class="cockpitMetricValue">${fmtCurrency(material)}</div><div class="cockpitMetricHint">bereits erfasst</div></div>
-      <div class="cockpitMetric"><div class="cockpitMetricLabel">Voraussichtliche Marge</div><div class="cockpitMetricValue" style="color:${marge<0?'var(--red)':'var(--green)'}">${fmtCurrency(marge)}</div><div class="cockpitMetricHint">nach erfassten Kosten</div></div>
+      <div class="cockpitMetric"><div class="cockpitMetricLabel">Laufende Projekte</div><div class="cockpitMetricValue">${aktiveProjekte.length}</div><div class="cockpitMetricHint">${ohneTagebuch.length} ohne heutigen Tagesbericht</div></div>
+      <div class="cockpitMetric"><div class="cockpitMetricLabel">Aufgaben überfällig</div><div class="cockpitMetricValue">${ueberfaelligeAufgaben.length}</div><div class="cockpitMetricHint">${offeneAufgaben.length} Aufgaben offen</div></div>
+      <div class="cockpitMetric"><div class="cockpitMetricLabel">Offene Mängel</div><div class="cockpitMetricValue">${offeneMaengel.length}</div><div class="cockpitMetricHint">${ueberfaelligeMaengel.length} davon überfällig</div></div>
+      <div class="cockpitMetric"><div class="cockpitMetricLabel">Sub-Unterlagen prüfen</div><div class="cockpitMetricValue">${subWarnungen.length}</div><div class="cockpitMetricHint">aktive Partner mit Handlungsbedarf</div></div>
     </div>
+
     <div class="grid cols-2">
       <div class="card">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px;"><b>Nächste Fertigstellungen</b><button class="btn sm" onclick="goTo('#projekte')">Alle Projekte</button></div>
-        <div class="simpleList">${aktiveProjekte.slice(0,6).map(p=>`<div class="simpleRow" onclick="goTo('#projekte/${escAttr(p.id)}')" style="cursor:pointer"><div class="simpleRowMain"><b>${escHtml(p.name)}</b><div class="pageSub">${escHtml(p.adresse||'Keine Adresse')}</div></div><span class="${p.deadline&&p.deadline<heute?'deadlineLate':''}">${p.deadline?fmtDate(p.deadline):'Kein Termin'}</span></div>`).join('')||`<div class="empty" style="padding:24px">Keine laufenden Projekte.</div>`}</div>
+        <div class="projectSectionHead"><b>Heute fällig / überfällig</b><button class="btn sm" onclick="goTo('#aufgaben')">Aufgaben</button></div>
+        <div class="simpleList">
+          ${ueberfaelligeAufgaben.slice(0,5).map(a=>`<div class="simpleRow"><div class="simpleRowMain"><b>${escHtml(a.titel)}</b><div class="pageSub">${escHtml(projektName(a.projektId)||"Ohne Projekt")}</div></div><span class="deadlineLate">${fmtDate(a.faellig)}</span></div>`).join("")}
+          ${ueberfaelligeMaengel.slice(0,5).map(x=>`<div class="simpleRow" onclick="goTo('#projekte/${escAttr(x.projekt.id)}/maengel')" style="cursor:pointer;"><div class="simpleRowMain"><b>⚠ ${escHtml(x.mangel.titel)}</b><div class="pageSub">${escHtml(x.projekt.name)} · ${escHtml(x.mangel.bereich||"Kein Bereich")}</div></div><span class="deadlineLate">${fmtDate(x.mangel.frist)}</span></div>`).join("")}
+          ${!ueberfaelligeAufgaben.length&&!ueberfaelligeMaengel.length?`<div class="empty" style="padding:22px;">Nichts überfällig.</div>`:""}
+        </div>
       </div>
+
       <div class="card">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px;"><b>Offene Aufgaben</b><button class="btn sm primary" onclick="openAufgabeForm()">＋ Aufgabe</button></div>
-        <div class="simpleList">${offeneAufgaben.sort((a,b)=>(a.faellig||'9999').localeCompare(b.faellig||'9999')).slice(0,6).map(a=>`<div class="simpleRow"><span class="simpleRowMain">${escHtml(a.titel)}</span><span class="${a.faellig&&a.faellig<heute?'deadlineLate':''}">${a.faellig?fmtDate(a.faellig):'Ohne Termin'}</span></div>`).join('')||`<div class="empty" style="padding:24px">Alles erledigt.</div>`}</div>
+        <div class="projectSectionHead"><b>Baustellen ohne heutigen Bericht</b><span class="pageSub">${ohneTagebuch.length}</span></div>
+        <div class="simpleList">${ohneTagebuch.slice(0,7).map(p=>`<div class="simpleRow" onclick="openBautagebuchForm('${escAttr(p.id)}')" style="cursor:pointer;"><div class="simpleRowMain"><b>${escHtml(p.name)}</b><div class="pageSub">${escHtml(p.adresse||"Keine Adresse")}</div></div><span>Dokumentieren ›</span></div>`).join("")||`<div class="empty" style="padding:22px;">Alle laufenden Baustellen sind heute dokumentiert.</div>`}</div>
+      </div>
+    </div>
+
+    <div class="grid cols-2" style="margin-top:16px;">
+      <div class="card">
+        <div class="projectSectionHead"><b>Nächste Fertigstellungen</b><button class="btn sm" onclick="goTo('#projekte')">Alle Projekte</button></div>
+        <div class="simpleList">${aktiveProjekte.slice(0,6).map(p=>`<div class="simpleRow" onclick="goTo('#projekte/${escAttr(p.id)}')" style="cursor:pointer;"><div class="simpleRowMain"><b>${escHtml(p.name)}</b><div class="pageSub">${escHtml(p.adresse||"Keine Adresse")}</div></div><span class="${p.deadline&&p.deadline<heute?"deadlineLate":""}">${p.deadline?fmtDate(p.deadline):"Kein Termin"}</span></div>`).join("")||`<div class="empty" style="padding:22px;">Keine laufenden Projekte.</div>`}</div>
+      </div>
+
+      <div class="card">
+        <div class="projectSectionHead"><b>Subunternehmer-Unterlagen</b><button class="btn sm" onclick="goTo('#subunternehmer')">Subunternehmer</button></div>
+        <div class="simpleList">${subWarnungen.slice(0,7).map(s=>{const e=subEinsatzStatus(s);return `<div class="simpleRow" onclick="goTo('#subunternehmer/${escAttr(s.id)}/dokumente')" style="cursor:pointer;"><div class="simpleRowMain"><b>${escHtml(s.firma)}</b><div class="pageSub">${escHtml(s.gewerk||"Kein Gewerk")}</div></div><span class="badge ${e.color}">${escHtml(e.label)}</span></div>`;}).join("")||`<div class="empty" style="padding:22px;">Keine offenen Unterlagenhinweise.</div>`}</div>
       </div>
     </div>
   `;
@@ -1814,12 +1837,12 @@ async function runDailyOverview(){
   }
 }
 function buildDailyOverviewPrompt(){
-  const heute = todayISO();
-  const aktiveProjekte = S.projekte.filter(p=>p.status==="Aktiv").map(p=>`${p.name} (${p.fortschritt||0}%, Deadline ${p.deadline||"–"})`).join("; ");
-  const offeneRechnungen = S.rechnungen.filter(r=>r.status!=="bezahlt").length;
-  const ueberfaellig = S.rechnungen.filter(r=>r.status!=="bezahlt" && r.faellig && r.faellig<heute).length;
-  const offeneAufgaben = S.aufgaben.filter(a=>a.status!=="erledigt").length;
-  return `Du bist Assistent eines deutschen Handwerksbetriebs (Trockenbau/Maler/Fliesen/Sanitär). Erstelle einen kurzen, konkreten Tagesüberblick auf Deutsch (max 150 Wörter) mit: 1) Prioritäten heute, 2) Risikocheck, 3) Auslastung. Daten: Aktive Projekte: ${aktiveProjekte||"keine"}. Offene Rechnungen: ${offeneRechnungen}, davon überfällig: ${ueberfaellig}. Offene Aufgaben: ${offeneAufgaben}.`;
+  const heute=todayISO();
+  const aktiveProjekte=S.projekte.filter(p=>!p.archiviert&&projektEffectiveStatus(p)!=="Abgeschlossen").map(p=>`${p.name} (${p.fortschritt||0}%, Fertigstellung ${p.deadline||"–"})`).join("; ");
+  const offeneAufgaben=S.aufgaben.filter(a=>a.status!=="erledigt").length;
+  const ueberfaelligeAufgaben=S.aufgaben.filter(a=>a.status!=="erledigt"&&a.faellig&&a.faellig<heute).length;
+  const offeneMaengel=S.projekte.flatMap(p=>p.maengel||[]).filter(m=>m.status!=="erledigt").length;
+  return `Du bist Assistent eines deutschen Handwerksbetriebs. Erstelle einen kurzen operativen Tagesüberblick auf Deutsch (max. 150 Wörter) mit Prioritäten, Baustellenrisiken und offenen Punkten. Keine Buchhaltung oder Rechnungen. Aktive Projekte: ${aktiveProjekte||"keine"}. Offene Aufgaben: ${offeneAufgaben}, davon überfällig: ${ueberfaelligeAufgaben}. Offene Mängel: ${offeneMaengel}.`;
 }
 
 /* =========================================================
@@ -3577,7 +3600,7 @@ async function renderProjekteKarte(list){
   if(statusEl) statusEl.textContent = markers.length ? "" : (withAdresse.length ? "Keine Adresse konnte auf der Karte gefunden werden." : "");
 }
 function openProjektForm(id){
-  const p = id ? S.projekte.find(x=>x.id===id) : {id:uid(), name:"", kundeId:"", adresse:"", status:"In Planung", budget:0, beginn:"", deadline:"", fortschritt:0, personalkosten:0, fremdkosten:0, abnahmeDatum:"", abnahmeBemerkung:"", archiviert:false, chronik:[], standardSubLvAbzug:20, team:[], subunternehmer:[], fotos:[], dokumente:[], grundrisse:[], material:[], lvPositionen:[], ausschreibung:[], bautagebuch:[], zugaenge:[], checkliste:[], aufmasse:[], bauzeitenplan:[], chat:[]};
+  const p = id ? S.projekte.find(x=>x.id===id) : {id:uid(), name:"", kundeId:"", adresse:"", status:"In Planung", budget:0, beginn:"", deadline:"", fortschritt:0, personalkosten:0, fremdkosten:0, abnahmeDatum:"", abnahmeBemerkung:"", archiviert:false, chronik:[], standardSubLvAbzug:20, team:[], subunternehmer:[], fotos:[], dokumente:[], grundrisse:[], material:[], lvPositionen:[], ausschreibung:[], bautagebuch:[], zugaenge:[], checkliste:[], aufmasse:[], bauzeitenplan:[], chat:[], maengel:[], kontakte:[]};
   openModal(`
     <div class="modalHead"><div class="modalTitle">${id?"Projekt bearbeiten":"Neues Projekt"}</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
     <div class="compactFormNote">Für den Start reichen Projekt, Kunde, Adresse, Beginn und Fertigstellung. Weitere Angaben können später ergänzt werden.</div>
@@ -3676,7 +3699,9 @@ function duplicateProjekt(id){
     checkliste:(p.checkliste||[]).map(x=>({...x,id:uid(),done:false})),
     aufmasse:[],
     bauzeitenplan:(p.bauzeitenplan||[]).map(ph=>({id:uid(),bezeichnung:ph.bezeichnung||"",von:"",bis:"",status:"geplant",fortschritt:0})),
-    chat:[]
+    chat:[],
+    maengel:[],
+    kontakte:[]
   };
   S.projekte.push(clone);
   addProjektChronik(clone.id,"projekt","Projekt aus „"+p.name+"“ dupliziert");
@@ -3728,7 +3753,8 @@ function renderProjektDetail(view, id, tab){
   const renderers = {
     uebersicht: renderTabUebersicht, team: renderTabTeam, bauzeitenplan: renderTabBauzeitenplan, fotos: renderTabFotos, dokumente: renderTabProjektDokumente,
     material: renderTabMaterial, ausschreibung: renderTabAusschreibung, bautagebuch: renderTabBautagebuch, zugaenge: renderTabZugaenge,
-    checkliste: renderTabChecklist, aufmass: renderTabAufmass, chat: renderTabProjektChat, lv: renderTabProjektLv, vorlagen: renderTabProjektVorlagen
+    checkliste: renderTabChecklist, aufmass: renderTabAufmass, chat: renderTabProjektChat, lv: renderTabProjektLv, vorlagen: renderTabProjektVorlagen,
+    maengel: renderTabMaengel, kontakte: renderTabProjektKontakte
   };
   (renderers[tab]||renderTabUebersicht)(body, p);
 }
@@ -3865,6 +3891,8 @@ function renderTabUebersicht(body, p){
   const abnahme=projektAbnahmeStatus(p);
   const offeneAufgaben=S.aufgaben.filter(a=>a.projektId===p.id&&a.status!=="erledigt");
   const ueberfaelligeAufgaben=offeneAufgaben.filter(a=>a.faellig&&a.faellig<todayISO());
+  const offeneMaengel=(p.maengel||[]).filter(m=>m.status!=="erledigt");
+  const ueberfaelligeMaengel=offeneMaengel.filter(m=>m.frist&&m.frist<todayISO());
   const effectiveStatus=projektEffectiveStatus(p);
   const deadlineLate=p.deadline&&p.deadline<todayISO()&&effectiveStatus!=="Abgeschlossen"&&!p.archiviert;
   const zeitraum=projektBauzeitraum(p);
@@ -3880,6 +3908,9 @@ function renderTabUebersicht(body, p){
   if(ueberfaelligeAufgaben.length) attention.push({cls:"danger",icon:"⚠",html:`<b>${ueberfaelligeAufgaben.length} Aufgabe${ueberfaelligeAufgaben.length===1?"":"n"} überfällig</b><br>Direkt unten erledigen`});
   else if(offeneAufgaben.length) attention.push({cls:"",icon:"📝",html:`<b>${offeneAufgaben.length} Aufgabe${offeneAufgaben.length===1?"":"n"} offen</b><br>Im Projekt zu erledigen`});
   else attention.push({cls:"",icon:"✓",html:`<b>Keine offenen Aufgaben</b><br>Aktuell nichts fällig`});
+
+  if(ueberfaelligeMaengel.length) attention.push({cls:"danger",icon:"⚠",html:`<b>${ueberfaelligeMaengel.length} Mangel${ueberfaelligeMaengel.length===1?"":"mängel"} überfällig</b><br>Mängel prüfen`});
+  else if(offeneMaengel.length) attention.push({cls:"warn",icon:"!",html:`<b>${offeneMaengel.length} offene Mängel</b><br>Im Projekt bearbeiten`});
 
   if(deadlineLate) attention.push({cls:"danger",icon:"⏱",html:`<b>Termin überschritten</b><br>${fmtDate(p.deadline)}`});
   else attention.push({cls:"",icon:"📅",html:`<b>${p.deadline?fmtDate(p.deadline):"Kein Endtermin"}</b><br>Fertigstellung`});
@@ -3897,6 +3928,7 @@ function renderTabUebersicht(body, p){
     <div class="projectQuickActions">
       <button class="projectQuickAction" onclick="goTo('#projekte/${escAttr(p.id)}/dokumente')"><span>📷</span><span>Foto / Datei</span></button>
       <button class="projectQuickAction" onclick="openProjektAufgabe('${escAttr(p.id)}')"><span>📝</span><span>Aufgabe</span></button>
+      <button class="projectQuickAction" onclick="openMangelForm('${escAttr(p.id)}')"><span>⚠</span><span>Mangel</span></button>
       <button class="projectQuickAction" onclick="openBautagebuchForm('${escAttr(p.id)}')"><span>✎</span><span>Heute dokumentieren</span></button>
       <button class="projectQuickAction" onclick="goTo('#projekte/${escAttr(p.id)}/lv')"><span>％</span><span>LV öffnen</span></button>
     </div>
@@ -3925,6 +3957,8 @@ function renderTabUebersicht(body, p){
       <button class="projectArea" onclick="goTo('#projekte/${escAttr(p.id)}/lv')"><span><div class="projectAreaTitle">LV & Subunternehmer</div><div class="projectAreaSub">${(p.lvPositionen||[]).length} Positionen</div></span><span>›</span></button>
       <button class="projectArea" onclick="goTo('#projekte/${escAttr(p.id)}/bauzeitenplan')"><span><div class="projectAreaTitle">Bauablauf</div><div class="projectAreaSub">${p.bauzeitenplan.length} Phasen</div></span><span>›</span></button>
       <button class="projectArea" onclick="goTo('#projekte/${escAttr(p.id)}/dokumente')"><span><div class="projectAreaTitle">Dateien & Fotos</div><div class="projectAreaSub">${p.dokumente.length} Dateien · ${p.fotos.length} Fotos</div></span><span>›</span></button>
+      <button class="projectArea" onclick="goTo('#projekte/${escAttr(p.id)}/maengel')"><span><div class="projectAreaTitle">Mängel</div><div class="projectAreaSub">${offeneMaengel.length} offen</div></span><span>›</span></button>
+      <button class="projectArea" onclick="goTo('#projekte/${escAttr(p.id)}/kontakte')"><span><div class="projectAreaTitle">Baustellenkontakte</div><div class="projectAreaSub">${(p.kontakte||[]).length} Kontakte</div></span><span>›</span></button>
       <button class="projectArea" onclick="goTo('#projekte/${escAttr(p.id)}/checkliste')"><span><div class="projectAreaTitle">Abnahme</div><div class="projectAreaSub">${escHtml(abnahme.label)}</div></span><span>›</span></button>
     </div>
 
@@ -4989,6 +5023,153 @@ function saveZugang(pid){
 function deleteZugang(pid, zid){
   const p = S.projekte.find(x=>x.id===pid);
   deleteItemWithUndo(p.zugaenge, zid, "Zugang gelöscht.");
+}
+
+/* =========================================================
+   PROJEKT: MÄNGEL & BAUSTELLENKONTAKTE
+========================================================= */
+function mangelStatusBadge(status){
+  const map={offen:"red","in Arbeit":"amber",erledigt:"green"};
+  return `<span class="badge ${map[status]||"gray"}">${escHtml(status||"offen")}</span>`;
+}
+function renderTabMaengel(body,p){
+  const list=(p.maengel||[]).slice().sort((a,b)=>{
+    if((a.status==="erledigt")!==(b.status==="erledigt")) return a.status==="erledigt"?1:-1;
+    return (a.frist||"9999").localeCompare(b.frist||"9999");
+  });
+  const offen=list.filter(m=>m.status!=="erledigt").length;
+  const late=list.filter(m=>m.status!=="erledigt"&&m.frist&&m.frist<todayISO()).length;
+  body.innerHTML=`
+    <div class="card">
+      <div class="projectSectionHead">
+        <div><b>Mängelmanagement</b><div class="pageSub">${offen} offen${late?" · "+late+" überfällig":""}</div></div>
+        <button class="btn primary sm" onclick="openMangelForm('${escAttr(p.id)}')">＋ Mangel</button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        ${list.map(m=>`
+          <div class="projectDocRow" style="align-items:flex-start;">
+            ${m.foto?`<img src="${escAttr(m.foto)}" style="width:58px;height:58px;object-fit:cover;border-radius:8px;flex-shrink:0;">`:`<div style="width:58px;height:58px;border-radius:8px;background:var(--card2);display:flex;align-items:center;justify-content:center;flex-shrink:0;">⚠</div>`}
+            <div class="projectDocMain">
+              <div class="projectDocName">${escHtml(m.titel||"Mangel")}</div>
+              <div class="projectDocMeta">${escHtml(m.bereich||"Kein Bereich")}${m.verantwortlich?" · "+escHtml(m.verantwortlich):""}${m.frist?" · Frist "+fmtDate(m.frist):""}</div>
+              ${m.beschreibung?`<div style="font-size:12px;margin-top:5px;line-height:1.4;">${escHtml(m.beschreibung)}</div>`:""}
+            </div>
+            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end;">
+              ${mangelStatusBadge(m.status)}
+              <button class="iconBtn" title="Bearbeiten" onclick="openMangelForm('${escAttr(p.id)}','${escAttr(m.id)}')">✎</button>
+              <button class="iconBtn" title="Löschen" onclick="deleteMangel('${escAttr(p.id)}','${escAttr(m.id)}')">×</button>
+            </div>
+          </div>`).join("")||`<div class="empty">Noch keine Mängel erfasst.</div>`}
+      </div>
+    </div>`;
+}
+function openMangelForm(pid,mangelId){
+  const p=S.projekte.find(x=>x.id===pid);
+  const m=mangelId?(p.maengel||[]).find(x=>x.id===mangelId):{id:uid(),titel:"",bereich:"",beschreibung:"",verantwortlich:"",frist:"",status:"offen",foto:"",erstelltAm:new Date().toISOString()};
+  window._mangelDraftFoto=m.foto||"";
+  openModal(`
+    <div class="modalHead"><div class="modalTitle">${mangelId?"Mangel bearbeiten":"Mangel erfassen"}</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
+    <div class="formRow"><label>Titel</label><input id="mgTitel" type="text" value="${escAttr(m.titel||"")}" placeholder="z. B. Riss in Trockenbauwand"></div>
+    <div class="grid cols-2">
+      <div class="formRow"><label>Raum / Bereich</label><input id="mgBereich" type="text" value="${escAttr(m.bereich||"")}" placeholder="z. B. Bad OG"></div>
+      <div class="formRow"><label>Verantwortlich</label><input id="mgVerantwortlich" type="text" value="${escAttr(m.verantwortlich||"")}" placeholder="Firma oder Person"></div>
+      <div class="formRow"><label>Frist</label><input id="mgFrist" type="date" value="${escAttr(m.frist||"")}"></div>
+      <div class="formRow"><label>Status</label><select id="mgStatus">${["offen","in Arbeit","erledigt"].map(s=>`<option value="${s}" ${m.status===s?"selected":""}>${s}</option>`).join("")}</select></div>
+    </div>
+    <div class="formRow"><label>Beschreibung</label><textarea id="mgBeschreibung" style="min-height:100px;">${escHtml(m.beschreibung||"")}</textarea></div>
+    <div class="formRow"><label>Foto</label><input type="file" accept="image/*" onchange="setMangelFoto(this)"><div class="pageSub">${m.foto?"Foto vorhanden – neues Foto ersetzt es.":"optional"}</div></div>
+    <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="saveMangel('${escAttr(pid)}','${escAttr(m.id)}',${mangelId?"true":"false"})">Speichern</button></div>
+  `,true);
+}
+async function setMangelFoto(input){
+  const file=input&&input.files&&input.files[0];
+  if(!file) return;
+  try{ window._mangelDraftFoto=await fileToDataURL(file); }
+  catch(e){ toast("Foto konnte nicht geladen werden: "+e.message,"error"); }
+}
+function saveMangel(pid,id,isEdit){
+  const p=S.projekte.find(x=>x.id===pid);
+  if(!p) return;
+  if(!p.maengel) p.maengel=[];
+  const titel=document.getElementById("mgTitel").value.trim();
+  if(!titel){ toast("Titel erforderlich.","warn"); return; }
+  let m=isEdit?p.maengel.find(x=>x.id===id):{id,erstelltAm:new Date().toISOString()};
+  m.titel=titel;
+  m.bereich=document.getElementById("mgBereich").value.trim();
+  m.verantwortlich=document.getElementById("mgVerantwortlich").value.trim();
+  m.frist=document.getElementById("mgFrist").value;
+  m.status=document.getElementById("mgStatus").value;
+  m.beschreibung=document.getElementById("mgBeschreibung").value.trim();
+  m.foto=window._mangelDraftFoto||"";
+  if(!isEdit) p.maengel.push(m);
+  addProjektChronik(pid,"mangel",(isEdit?"Mangel aktualisiert: ":"Mangel erfasst: ")+titel);
+  saveState(); closeModal(); goTo("#projekte/"+pid+"/maengel");
+}
+function deleteMangel(pid,id){
+  const p=S.projekte.find(x=>x.id===pid);
+  if(!p) return;
+  deleteItemWithUndo(p.maengel,id,"Mangel gelöscht.");
+}
+
+function renderTabProjektKontakte(body,p){
+  const list=p.kontakte||[];
+  body.innerHTML=`
+    <div class="card">
+      <div class="projectSectionHead">
+        <div><b>Baustellenkontakte</b><div class="pageSub">Bauherr, Architekt, Hausmeister, Fachfirmen und weitere Ansprechpartner</div></div>
+        <button class="btn primary sm" onclick="openProjektKontaktForm('${escAttr(p.id)}')">＋ Kontakt</button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        ${list.map(k=>`<div class="projectDocRow">
+          <div style="width:40px;height:40px;border-radius:50%;background:var(--primary-bg);display:flex;align-items:center;justify-content:center;flex-shrink:0;">${escHtml(initialsOf(k.name||k.firma||"?"))}</div>
+          <div class="projectDocMain"><div class="projectDocName">${escHtml(k.name||k.firma||"Kontakt")}</div><div class="projectDocMeta">${escHtml([k.rolle,k.firma].filter(Boolean).join(" · ")||"Ohne Rolle")}${k.notiz?" · "+escHtml(k.notiz):""}</div></div>
+          <div class="projectDocActions">
+            ${k.tel?`<a class="iconBtn" href="tel:${escAttr(k.tel)}" title="Anrufen">☎</a>`:""}
+            ${k.email?`<a class="iconBtn" href="mailto:${escAttr(k.email)}" title="E-Mail">✉</a>`:""}
+            <button class="iconBtn" onclick="openProjektKontaktForm('${escAttr(p.id)}','${escAttr(k.id)}')">✎</button>
+            <button class="iconBtn" onclick="deleteProjektKontakt('${escAttr(p.id)}','${escAttr(k.id)}')">×</button>
+          </div>
+        </div>`).join("")||`<div class="empty">Noch keine Baustellenkontakte hinterlegt.</div>`}
+      </div>
+    </div>`;
+}
+function openProjektKontaktForm(pid,kontaktId){
+  const p=S.projekte.find(x=>x.id===pid);
+  const k=kontaktId?(p.kontakte||[]).find(x=>x.id===kontaktId):{id:uid(),name:"",rolle:"",firma:"",tel:"",email:"",notiz:""};
+  openModal(`
+    <div class="modalHead"><div class="modalTitle">${kontaktId?"Kontakt bearbeiten":"Baustellenkontakt hinzufügen"}</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
+    <div class="grid cols-2">
+      <div class="formRow"><label>Name</label><input id="pkName" type="text" value="${escAttr(k.name||"")}"></div>
+      <div class="formRow"><label>Rolle</label><input id="pkRolle" type="text" value="${escAttr(k.rolle||"")}" placeholder="z. B. Architekt, Hausmeister"></div>
+      <div class="formRow"><label>Firma</label><input id="pkFirma" type="text" value="${escAttr(k.firma||"")}"></div>
+      <div class="formRow"><label>Telefon</label><input id="pkTel" type="tel" value="${escAttr(k.tel||"")}"></div>
+      <div class="formRow" style="grid-column:1/-1;"><label>E-Mail</label><input id="pkEmail" type="email" value="${escAttr(k.email||"")}"></div>
+    </div>
+    <div class="formRow"><label>Notiz</label><textarea id="pkNotiz">${escHtml(k.notiz||"")}</textarea></div>
+    <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="saveProjektKontakt('${escAttr(pid)}','${escAttr(k.id)}',${kontaktId?"true":"false"})">Speichern</button></div>
+  `);
+}
+function saveProjektKontakt(pid,id,isEdit){
+  const p=S.projekte.find(x=>x.id===pid);
+  if(!p) return;
+  if(!p.kontakte) p.kontakte=[];
+  const name=document.getElementById("pkName").value.trim();
+  if(!name){ toast("Name erforderlich.","warn"); return; }
+  let k=isEdit?p.kontakte.find(x=>x.id===id):{id};
+  k.name=name;
+  k.rolle=document.getElementById("pkRolle").value.trim();
+  k.firma=document.getElementById("pkFirma").value.trim();
+  k.tel=document.getElementById("pkTel").value.trim();
+  k.email=document.getElementById("pkEmail").value.trim();
+  k.notiz=document.getElementById("pkNotiz").value.trim();
+  if(!isEdit) p.kontakte.push(k);
+  addProjektChronik(pid,"kontakt",(isEdit?"Baustellenkontakt aktualisiert: ":"Baustellenkontakt hinzugefügt: ")+name);
+  saveState(); closeModal(); goTo("#projekte/"+pid+"/kontakte");
+}
+function deleteProjektKontakt(pid,id){
+  const p=S.projekte.find(x=>x.id===pid);
+  if(!p) return;
+  deleteItemWithUndo(p.kontakte,id,"Kontakt gelöscht.");
 }
 
 function renderTabChecklist(body, p){
