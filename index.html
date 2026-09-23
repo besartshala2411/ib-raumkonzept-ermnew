@@ -778,6 +778,7 @@ function ensureShape(s){
     if(sub.notizen==null) sub.notizen="";
     if(sub.status==null) sub.status="aktiv";
     if(sub.adresse==null) sub.adresse="";
+    if(sub.unterlagenGeprueftAm==null) sub.unterlagenGeprueftAm="";
   });
   s.projekte.forEach(p=>{
     if(!p.team) p.team=[];
@@ -2912,6 +2913,26 @@ function subDokumentBadge(s){
   if(st.expiring) return `<span class="badge amber">${st.expiring} bald fällig</span>`;
   return `<span class="badge green">Unterlagen vollständig</span>`;
 }
+function subEinsatzStatus(s){
+  const docs=subDokumentStatus(s);
+  if((s.status||"aktiv")!=="aktiv") return {key:"gesperrt",label:"Nicht freigegeben",color:"red",reason:s.status==="inaktiv"?"Nicht mehr eingesetzt":"Status gesperrt"};
+  if(docs.expired) return {key:"pruefen",label:"Nicht freigegeben",color:"red",reason:docs.expired+" Bescheinigung(en) abgelaufen"};
+  if(docs.missing) return {key:"pruefen",label:"Unterlagen fehlen",color:"amber",reason:docs.missing+" Pflichtdokument(e) fehlen"};
+  if(docs.expiring) return {key:"freigegeben",label:"Freigegeben · prüfen",color:"amber",reason:docs.expiring+" Dokument(e) laufen bald ab"};
+  return {key:"freigegeben",label:"Einsatz freigegeben",color:"green",reason:"Pflichtunterlagen vollständig"};
+}
+function subEinsatzBadge(s){
+  const e=subEinsatzStatus(s);
+  return `<span class="badge ${e.color}" title="${escAttr(e.reason)}">${escHtml(e.label)}</span>`;
+}
+function markSubUnterlagenGeprueft(id){
+  const s=S.subunternehmer.find(x=>x.id===id);
+  if(!s) return;
+  s.unterlagenGeprueftAm=todayISO();
+  saveState(); route(location.hash);
+  toast("Unterlagenprüfung gespeichert.","success");
+}
+
 let _subSearch="";
 function setSubSearch(v){
   _subSearch=String(v||"").trim().toLowerCase();
@@ -2928,10 +2949,18 @@ const SUB_TABS = [
 ];
 function renderSubunternehmer(view, id, tab){
   if(id) return renderSubDetail(view, id, tab||"dokumente");
+  const active=S.subunternehmer.filter(s=>(s.status||"aktiv")==="aktiv").length;
+  const ready=S.subunternehmer.filter(s=>subEinsatzStatus(s).key==="freigegeben").length;
+  const attention=S.subunternehmer.filter(s=>subEinsatzStatus(s).key==="pruefen").length;
   view.innerHTML = `
     <div class="pageHead">
       <div><div class="pageTitle">Subunternehmer</div><div class="pageSub">${S.subunternehmer.length} Fremdfirmen · operative Partnerverwaltung</div></div>
       <button class="btn primary" onclick="openSubForm()">＋ Subunternehmer</button>
+    </div>
+    <div class="grid cols-3" style="margin-bottom:12px;">
+      <div class="kpi"><div class="kpiVal">${active}</div><div class="kpiLabel">Aktiv</div></div>
+      <div class="kpi"><div class="kpiVal">${ready}</div><div class="kpiLabel">Einsatz freigegeben</div></div>
+      <div class="kpi"><div class="kpiVal">${attention}</div><div class="kpiLabel">Unterlagen prüfen</div></div>
     </div>
     <div class="filterBar" style="margin-bottom:12px;">
       <input type="search" id="subSearchInput" placeholder="Firma, Gewerk, Ansprechpartner, Telefon oder Adresse suchen …" oninput="filterSubRows()">
@@ -2941,33 +2970,28 @@ function renderSubunternehmer(view, id, tab){
         <option value="gesperrt">Gesperrt</option>
         <option value="inaktiv">Nicht mehr eingesetzt</option>
       </select>
+      <select id="subDocFilter" onchange="filterSubRows()">
+        <option value="">Alle Unterlagen</option>
+        <option value="freigegeben">Einsatz freigegeben</option>
+        <option value="pruefen">Unterlagen prüfen</option>
+        <option value="gesperrt">Nicht freigegeben</option>
+      </select>
     </div>
     <div class="card"><div class="tableWrap"><table>
-      <thead><tr><th>Firma</th><th>Gewerk</th><th>Status</th><th>Unterlagen</th><th>Kontakt</th><th>Projekte</th><th></th></tr></thead>
+      <thead><tr><th>Firma</th><th>Gewerk</th><th>Einsatz</th><th>Unterlagen</th><th>Kontakt</th><th>Projekte</th><th></th></tr></thead>
       <tbody id="subTableBody">
       ${S.subunternehmer.map(s=>{
         const assigned=S.projekte.filter(p=>(p.subunternehmer||[]).includes(s.id)&&!p.archiviert).length;
-        return `<tr data-sub-search="${escAttr(subSearchText(s))}" data-sub-status="${escAttr(s.status||"aktiv")}" style="cursor:pointer;" onclick="goTo('#subunternehmer/${escAttr(s.id)}')">
-          <td><b style="font-weight:600;">${escHtml(s.firma)}</b><div class="pageSub">${escHtml(s.ansprechpartner||s.adresse||"")}</div></td>
-          <td>${escHtml(s.gewerk||"–")}</td>
-          <td><span class="badge ${s.status==="gesperrt"?"red":s.status==="inaktiv"?"gray":"green"}">${escHtml(s.status==="inaktiv"?"nicht mehr eingesetzt":s.status||"aktiv")}</span></td>
-          <td>${subDokumentBadge(s)}</td>
-          <td><div>${escHtml(s.tel||"–")}</div><div class="pageSub">${escHtml(s.email||"")}</div></td>
-          <td>${assigned}</td>
-          <td style="text-align:right;white-space:nowrap;" onclick="event.stopPropagation()"><button class="iconBtn" onclick="goTo('#subunternehmer/${escAttr(s.id)}')">›</button></td>
-        </tr>`;
-      }).join("") || `<tr><td colspan="7"><div class="empty">Noch keine Subunternehmer.</div></td></tr>`}
-      </tbody>
-    </table></div></div>
-  `;
-}
-function filterSubRows(){
+        const einsatz=subEinsatzStatus(s);
+        return `<tr data-sub-search="${escAttr(subSearchText(s))}" data-sub-status="${escfunction filterSubRows(){
   const q=(document.getElementById("subSearchInput")?.value||"").trim().toLowerCase();
   const status=document.getElementById("subStatusFilter")?.value||"";
+  const doc=document.getElementById("subDocFilter")?.value||"";
   document.querySelectorAll("#subTableBody tr[data-sub-search]").forEach(row=>{
     const okQ=!q||row.dataset.subSearch.includes(q);
     const okStatus=!status||row.dataset.subStatus===status;
-    row.classList.toggle("hidden",!(okQ&&okStatus));
+    const okDoc=!doc||row.dataset.subDoc===doc;
+    row.classList.toggle("hidden",!(okQ&&okStatus&&okDoc));
   });
 }
 function renderSubStammdatenFields(s){
@@ -2993,7 +3017,7 @@ function initSubSigPad(s){
   initSigPad("sSig", s.unterschrift || "", v=>window._subSigDraft=v);
 }
 function openSubForm(){
-  const s = {id:uid(), firma:"", ansprechpartner:"", tel:"", email:"", adresse:"", gewerk:"", status:"aktiv", notizen:"", dokumente:[]};
+  const s = {id:uid(), firma:"", ansprechpartner:"", tel:"", email:"", adresse:"", gewerk:"", status:"aktiv", unterlagenGeprueftAm:"", notizen:"", dokumente:[]};
   window._newSubDraft = s;
   openModal(`
     <div class="modalHead"><div class="modalTitle">Subunternehmer anlegen</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
@@ -3077,6 +3101,7 @@ function renderSubDetail(view, id, tab){
   const s=S.subunternehmer.find(x=>x.id===id);
   if(!s){ view.innerHTML=`<div class="empty">Subunternehmer nicht gefunden. <button class="btn" onclick="goTo('#subunternehmer')">Zurück</button></div>`; return; }
   const ds=subDokumentStatus(s);
+  const einsatz=subEinsatzStatus(s);
   const activeProjects=S.projekte.filter(p=>(p.subunternehmer||[]).includes(s.id)&&!p.archiviert).length;
   view.innerHTML=`
     <div class="pageHead">
@@ -3086,14 +3111,15 @@ function renderSubDetail(view, id, tab){
         <div class="pageSub">${escHtml(s.gewerk||"Kein Gewerk")}${s.ansprechpartner?" · "+escHtml(s.ansprechpartner):""}</div>
       </div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-        <span class="badge ${s.status==="gesperrt"?"red":s.status==="inaktiv"?"gray":"green"}">${escHtml(s.status==="inaktiv"?"nicht mehr eingesetzt":s.status||"aktiv")}</span>
-        ${subDokumentBadge(s)}
+        ${subEinsatzBadge(s)}
+        ${s.tel?`<a class="btn sm" href="tel:${escAttr(s.tel)}">Anrufen</a>`:""}
+        ${s.email?`<a class="btn sm" href="mailto:${escAttr(s.email)}">E-Mail</a>`:""}
       </div>
     </div>
     <div class="grid cols-3" style="margin-bottom:14px;">
       <div class="kpi"><div class="kpiVal">${activeProjects}</div><div class="kpiLabel">Aktive Projekte</div></div>
       <div class="kpi"><div class="kpiVal">${ds.total-ds.missing}/${ds.total}</div><div class="kpiLabel">Bescheinigungen vorhanden</div></div>
-      <div class="kpi"><div class="kpiVal">${ds.expired+ds.expiring}</div><div class="kpiLabel">Ablauf prüfen</div></div>
+      <div class="kpi"><div class="kpiVal">${ds.expired+ds.expiring}</div><div class="kpiLabel">Ablauf prüfen</div><div class="kpiHint">${s.unterlagenGeprueftAm?"Zuletzt geprüft "+fmtDate(s.unterlagenGeprueftAm):"Noch nicht bestätigt"}</div></div>
     </div>
     <div class="tabs">${SUB_TABS.map(t=>`<button class="tabBtn ${tab===t.id?"active":""}" onclick="goTo('#subunternehmer/${escAttr(s.id)}/${t.id}')">${t.icon} ${t.label}</button>`).join("")}</div>
     <div id="subTabBody"></div>
@@ -3112,8 +3138,12 @@ function renderSubDetail(view, id, tab){
     body.innerHTML=`<div class="card"><div class="formRow"><label>Interne Notizen</label><div class="micWrap"><textarea id="subNotizen" style="min-height:220px;" onchange="quickUpdateSubField('${escAttr(s.id)}','notizen',this.value)">${escHtml(s.notizen||"")}</textarea>${fieldMic("subNotizen")}</div></div></div>`;
   }else{
     body.innerHTML=`
-      <div style="display:flex;justify-content:flex-end;margin-bottom:10px;">
-        <button class="btn primary sm" onclick="openSubBescheinigungForm('${escAttr(s.id)}')">＋ Bescheinigung hinzufügen</button>
+      <div class="card" style="margin-bottom:10px;padding:12px 14px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+        <div><b style="font-weight:600;">Interne Einsatzfreigabe: ${escHtml(einsatz.label)}</b><div class="pageSub">${escHtml(einsatz.reason)}</div></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn sm" onclick="markSubUnterlagenGeprueft('${escAttr(s.id)}')">Unterlagen heute geprüft</button>
+          <button class="btn primary sm" onclick="openSubBescheinigungForm('${escAttr(s.id)}')">＋ Bescheinigung</button>
+        </div>
       </div>
       ${renderPflichtChecklist("subunternehmer",id)}
       ${renderSubFreieDokumente(s)}
@@ -3203,12 +3233,13 @@ function removeSubDoc(id,docId){
 }
 function renderSubProjekteTab(s){
   const zugeordnet=S.projekte.filter(p=>(p.subunternehmer||[]).includes(s.id));
-  const verfuegbar=S.projekte.filter(p=>!(p.subunternehmer||[]).includes(s.id)&&!p.archiviert);
   return `
     <div class="card">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
-        <div><b>Zugeordnete Projekte (${zugeordnet.length})</b><div class="pageSub">Subunternehmer zentral Projekten zuordnen.</div></div>
-        <select onchange="addSubToProjekt('${escAttr(s.id)}',this.value);this.value='';"><option value="">＋ Projekt zuordnen</option>${verfuegbar.map(p=>`<option value="${escAttr(p.id)}">${escHtml(p.name)}</option>`).join("")}</select>
+      <div style="margin-bottom:12px;"><b>Zugeordnete Projekte (${zugeordnet.length})</b><div class="pageSub">Projekt suchen und direkt zuordnen.</div></div>
+      <div style="position:relative;margin-bottom:14px;">
+        <input id="subProjectSearch" type="search" placeholder="Projektname, Adresse oder Kunde suchen …"
+          oninput="renderSubProjectSearch('${escAttr(s.id)}',this.value)" onfocus="renderSubProjectSearch('${escAttr(s.id)}',this.value)">
+        <div id="subProjectResults" class="kundeSearchResults hidden"></div>
       </div>
       <div style="display:flex;flex-direction:column;gap:8px;">
         ${zugeordnet.map(p=>`<div class="projectDocRow">
@@ -3219,17 +3250,24 @@ function renderSubProjekteTab(s){
     </div>
   `;
 }
-function addSubToProjekt(subId,projektId){
+function renderSubProjectSearch(subId,value){
+  const s=S.sfunction addSubToProjekt(subId,projektId){
   if(!projektId) return;
   const p=S.projekte.find(x=>x.id===projektId);
-  if(!p) return;
+  const s=S.subunternehmer.find(x=>x.id===subId);
+  if(!p||!s) return;
+  if((s.status||"aktiv")!=="aktiv"){
+    toast("Dieser Subunternehmer ist nicht für neue Einsätze freigegeben.","warn");
+    return;
+  }
   if(!p.subunternehmer) p.subunternehmer=[];
   if(!p.subunternehmer.includes(subId)){
     p.subunternehmer.push(subId);
-    const s=S.subunternehmer.find(x=>x.id===subId);
-    addProjektChronik(projektId,"subunternehmer","Subunternehmer hinzugefügt: "+(s?s.firma:""));
+    addProjektChronik(projektId,"subunternehmer","Subunternehmer hinzugefügt: "+s.firma);
   }
+  const einsatz=subEinsatzStatus(s);
   saveState(); route(location.hash);
+  if(einsatz.key!=="freigegeben") toast("Subunternehmer zugeordnet – Unterlagen bitte prüfen: "+einsatz.reason,"warn");
 }
 function removeSubFromProjekt(subId,projektId){
   const p=S.projekte.find(x=>x.id===projektId);
@@ -3998,8 +4036,11 @@ function renderProjectSubSearch(pid,value){
   if(!p||!out) return;
   const q=String(value||"").trim().toLowerCase();
   if(!q){ out.innerHTML='<div class="kundeSearchHint">Firma oder Gewerk eingeben.</div>';out.classList.remove("hidden");return; }
-  const matches=S.subunternehmer.filter(s=>!p.subunternehmer.includes(s.id)&&s.status!=="inaktiv"&&subSearchText(s).includes(q)).slice(0,15);
-  out.innerHTML=matches.map(s=>`<div class="kundeSearchItem" onmousedown="addSubToProjekt('${escAttr(s.id)}','${escAttr(pid)}')"><div class="kundeSearchName">${escHtml(s.firma)}</div><div class="kundeSearchMeta">${escHtml(s.gewerk||"Kein Gewerk")} · ${subDokumentStatus(s).complete?"Unterlagen vollständig":"Unterlagen prüfen"}</div></div>`).join("")||'<div class="kundeSearchHint">Kein passender Subunternehmer.</div>';
+  const matches=S.subunternehmer.filter(s=>!p.subunternehmer.includes(s.id)&&(s.status||"aktiv")==="aktiv"&&subSearchText(s).includes(q)).slice(0,15);
+  out.innerHTML=matches.map(s=>{
+    const e=subEinsatzStatus(s);
+    return `<div class="kundeSearchItem" onmousedown="addSubToProjekt('${escAttr(s.id)}','${escAttr(pid)}')"><div class="kundeSearchName">${escHtml(s.firma)}</div><div class="kundeSearchMeta">${escHtml(s.gewerk||"Kein Gewerk")} · ${escHtml(e.label)}</div></div>`;
+  }).join("")||'<div class="kundeSearchHint">Kein passender aktiver Subunternehmer.</div>';
   out.classList.remove("hidden");
 }
 function addTeamMember(pid, mid){
