@@ -273,10 +273,21 @@ tr:hover td{background:var(--card2);}
 .projectWarn{position:absolute;right:5px;top:5px;z-index:3;background:var(--red);color:#fff;border-radius:5px;padding:3px 6px;font-size:11px;font-weight:800;}
 .projectCardMain{padding:10px 11px 8px;}
 .projectCardCode{color:var(--text-dim2);font-size:10px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.projectCardName{font-size:13.5px;font-weight:800;line-height:1.25;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.projectCardAddress{color:var(--text-dim);font-size:11.5px;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.projectCardMeta{font-size:11.5px;font-weight:700;margin-top:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.projectCardClient{color:var(--text-dim);font-size:10.5px;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.projectCardName{font-size:13.5px;font-weight:600;line-height:1.25;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.projectCardAddress{color:var(--text-dim);font-size:11.5px;font-weight:400;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.projectCardMeta{font-size:11.5px;font-weight:500;margin-top:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.projectCardClient{color:var(--text-dim);font-size:10.5px;font-weight:400;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.projectDropzone{border:1.5px dashed var(--border);border-radius:12px;padding:22px 18px;text-align:center;background:var(--bg2);transition:border-color .15s ease,background-color .15s ease,transform .15s ease;cursor:pointer;margin-bottom:14px;}
+.projectDropzone:hover,.projectDropzone.dragover{border-color:var(--primary);background:var(--primary-bg);}
+.projectDropzone.dragover{transform:scale(1.01);}
+.projectDropzoneIcon{font-size:26px;line-height:1;margin-bottom:8px;}
+.projectDropzoneTitle{font-size:13.5px;font-weight:600;}
+.projectDropzoneHint{font-size:11.5px;color:var(--text-dim);margin-top:4px;}
+.projectDocRow{display:flex;align-items:center;gap:10px;background:var(--card2);padding:10px 12px;border-radius:9px;}
+.projectDocMain{min-width:0;flex:1;}
+.projectDocName{font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.projectDocMeta{font-size:10.5px;color:var(--text-dim);margin-top:2px;}
+.projectDocActions{display:flex;align-items:center;gap:2px;flex-shrink:0;}
 .projectCardFoot{display:flex;align-items:center;gap:5px;padding:6px 8px;border-top:1px solid var(--border);background:var(--card2);min-height:31px;}
 .projectMiniStatus{font-size:9.5px;font-weight:750;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;}
 .projectCardFootSpacer{flex:1;}
@@ -3829,30 +3840,81 @@ function saveFotoMarkierung(){
 function renderTabProjektDokumente(body, p){
   body.innerHTML = `
     <div class="card">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
-        <b>Dokumente (${p.dokumente.length})</b>
-        <label class="btn primary sm" style="margin:0;">⬆ Hochladen<input type="file" multiple style="display:none;" onchange="addProjektDokument('${escAttr(p.id)}', this)"></label>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px;">
+        <div>
+          <div style="font-size:15px;font-weight:600;">Dokumente</div>
+          <div class="pageSub">${p.dokumente.length} ${p.dokumente.length===1?"Datei":"Dateien"} im Projekt</div>
+        </div>
+        <label class="btn primary sm" style="margin:0;">Dateien auswählen
+          <input type="file" multiple style="display:none;" onchange="addProjektDokument('${escAttr(p.id)}', this)">
+        </label>
       </div>
-      <div style="display:flex; flex-direction:column; gap:8px;">
+
+      <div class="projectDropzone" id="projectDocDropzone"
+        onclick="document.getElementById('projectDocFileInput').click()"
+        ondragenter="projektDokDrag(event,true)"
+        ondragover="projektDokDrag(event,true)"
+        ondragleave="projektDokDrag(event,false)"
+        ondrop="dropProjektDokumente('${escAttr(p.id)}',event)">
+        <div class="projectDropzoneIcon">↧</div>
+        <div class="projectDropzoneTitle">Dokumente hier hineinziehen</div>
+        <div class="projectDropzoneHint">oder klicken und Dateien vom Gerät auswählen</div>
+        <input id="projectDocFileInput" type="file" multiple style="display:none;" onchange="addProjektDokument('${escAttr(p.id)}', this)">
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:7px;">
         ${p.dokumente.map(d=>`
-          <div style="display:flex; justify-content:space-between; align-items:center; background:var(--card2); padding:10px 14px; border-radius:10px;">
-            <a href="javascript:void(0)" data-docurl="${escAttr(d.dataURL)}" data-docname="${escAttr(d.name)}" onclick="openDataUrlDoc(this.dataset.docurl,this.dataset.docname)" style="cursor:pointer;">📄 ${escHtml(d.name)}</a><button class="iconBtn" title="Teilen" data-docurl="${escAttr(d.dataURL)}" data-docname="${escAttr(d.name)}" onclick="shareDataUrlDoc(this.dataset.docurl,this.dataset.docname)">📤</button>
-            <button class="iconBtn" onclick="deleteProjektDokument('${escAttr(p.id)}','${escAttr(d.id)}')">🗑️</button>
+          <div class="projectDocRow">
+            <div style="font-size:18px;" aria-hidden="true">📄</div>
+            <div class="projectDocMain">
+              <div class="projectDocName" title="${escAttr(d.name)}">${escHtml(d.name)}</div>
+              <div class="projectDocMeta">${d.datum?fmtDate(String(d.datum).slice(0,10)):""}</div>
+            </div>
+            <div class="projectDocActions">
+              <button class="iconBtn" title="Öffnen" data-docurl="${escAttr(d.dataURL)}" data-docname="${escAttr(d.name)}" onclick="openDataUrlDoc(this.dataset.docurl,this.dataset.docname)">↗</button>
+              <button class="iconBtn" title="Teilen" data-docurl="${escAttr(d.dataURL)}" data-docname="${escAttr(d.name)}" onclick="shareDataUrlDoc(this.dataset.docurl,this.dataset.docname)">📤</button>
+              <button class="iconBtn" title="Löschen" onclick="deleteProjektDokument('${escAttr(p.id)}','${escAttr(d.id)}')">🗑️</button>
+            </div>
           </div>
-        `).join("") || `<div class="empty">Noch keine Dokumente.</div>`}
+        `).join("") || `<div class="empty" style="padding:24px 16px;">Noch keine Dokumente.</div>`}
       </div>
     </div>
   `;
 }
-async function addProjektDokument(pid, input){
+function projektDokDrag(event, active){
+  event.preventDefault();
+  event.stopPropagation();
+  const zone=document.getElementById("projectDocDropzone");
+  if(zone) zone.classList.toggle("dragover", !!active);
+}
+async function addProjektDokumentFiles(pid, files){
   const p = S.projekte.find(x=>x.id===pid);
-  for(const file of input.files){
+  if(!p || !files || !files.length) return;
+  let added=0;
+  for(const file of Array.from(files)){
     try{
       const dataURL = await fileToDataURL(file);
       p.dokumente.push({id:uid(), name:file.name, dataURL, datum:new Date().toISOString()});
-    }catch(e){ toast("Datei-Fehler: "+e.message, "error"); }
+      added++;
+    }catch(e){
+      toast("Datei-Fehler bei "+(file&&file.name?file.name:"Datei")+": "+e.message, "error");
+    }
   }
-  saveState(); route(location.hash);
+  if(added){
+    saveState();
+    route(location.hash);
+    toast(added===1?"Dokument hochgeladen.":added+" Dokumente hochgeladen.", "success");
+  }
+}
+async function addProjektDokument(pid, input){
+  await addProjektDokumentFiles(pid, input && input.files);
+}
+async function dropProjektDokumente(pid, event){
+  event.preventDefault();
+  event.stopPropagation();
+  const zone=document.getElementById("projectDocDropzone");
+  if(zone) zone.classList.remove("dragover");
+  await addProjektDokumentFiles(pid, event.dataTransfer && event.dataTransfer.files);
 }
 function deleteProjektDokument(pid, did){
   const p = S.projekte.find(x=>x.id===pid);
