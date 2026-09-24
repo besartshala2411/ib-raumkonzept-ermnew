@@ -428,7 +428,7 @@ async function main() {
   assert(acctBlockHtml.includes("Passwort zurücksetzen") && !acctBlockHtml.includes("Konto erstellen"), "Konto-Block zeigt 'Passwort zurücksetzen', sobald ein Konto existiert");
   window.buildSidebar();
   const sidebarBossHtml = window.document.getElementById("sidebar").innerHTML;
-  assert(sidebarBossHtml.includes('data-route="rechnungen"'), "Sidebar zeigt 'Rechnungen' für Geschäftsführer");
+  assert(!sidebarBossHtml.includes('data-route="rechnungen"'), "Sidebar blendet 'Rechnungen' auch für Geschäftsführer aus, da WISO führend ist");
   window.route("#rechnungen");
   assert(!window.document.getElementById("view").innerHTML.includes("nur für Geschäftsführung"), "Geschäftsführer kann #rechnungen normal aufrufen");
 
