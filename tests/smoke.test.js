@@ -515,8 +515,10 @@ async function main() {
   window.renderProjekte(window.document.getElementById("view"), "p1", "chat");
   let chatHtml = window.document.getElementById("view").innerHTML;
   assert(chatHtml.includes("Baustellen-Chat") && chatHtml.includes("Material ist vor Ort"), "Projektchat zeigt projektbezogene Nachrichten");
-  assert(chatHtml.includes("Nachricht an die Baustelle") && chatHtml.includes("Foto oder Datei anhängen"), "Projektchat bietet Eingabe und Dateianhang");
+  assert(chatHtml.includes("Nachricht an die Baustelle") && chatHtml.includes("Foto oder PDF anhängen") && chatHtml.includes("Live"), "Projektchat bietet Live-Eingabe und Dateianhang");
   assert(window.globalSearchIndex().some((it) => it.typ === "projektchat" && it.label.includes("Material ist vor Ort")), "Globale Suche indexiert Baustellen-Chat");
+  assert(typeof window.subscribeProjectChat === "function" && typeof window.loadProjectChat === "function", "Projektchat besitzt eigene Realtime-Lade- und Abo-Funktionen");
+  assert(window.PROJECT_CHAT_BUCKET === "project-chat", "Projektchat nutzt separaten Storage-Bucket");
   p1Chat.chat = [];
 
   console.log("\n== Projekte: Mängel & Baustellenkontakte ==");
