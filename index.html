@@ -3782,6 +3782,7 @@ function renderProjekte(view, id, tab){
         <span class="projectMiniStatus ${overdue?"deadlineLate":""}">${overdue?"Termin überschritten":(p.deadline?"Termin "+fmtDate(p.deadline):"Kein Endtermin")}</span>
         <span class="projectCardFootSpacer"></span>
         <button class="projectIconBtn ${p.favorit?"isFavorite":""}" onclick="toggleProjektFavorit('${escAttr(p.id)}',event)" title="${p.favorit?"Favorit entfernen":"Als Favorit markieren"}" aria-label="Favorit">${p.favorit?"★":"☆"}</button>
+        ${p.archiviert?`<button class="projectIconBtn" onclick="event.preventDefault();event.stopPropagation();requestProjektPermanentDelete('${escAttr(p.id)}')" title="Projekt endgültig löschen" aria-label="Projekt endgültig löschen" style="color:var(--red);">🗑</button>`:""}
       </div>
     </article>`;
   }).join("") || `<div class="empty" style="grid-column:1/-1;">Keine Projekte gefunden.</div>`;
@@ -3916,6 +3917,57 @@ function setProjektArchiviert(id, archiviert){
 function deleteProjekt(id){
   setProjektArchiviert(id,true);
 }
+function requestProjektPermanentDelete(id){
+  const p=S.projekte.find(x=>x.id===id);
+  if(!p) return;
+  if(!p.archiviert){ toast("Nur archivierte Projekte können endgültig gelöscht werden.","warn"); return; }
+  openModal(`
+    <div class="modalHead"><div class="modalTitle">Projekt endgültig löschen?</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
+    <div class="compactFormNote" style="border-color:var(--red);background:var(--red-bg);color:var(--text);">
+      <b>${escHtml(p.name)}</b> wird nicht nur aus dem Archiv entfernt. Projektinhalte wie Besichtigungen, Fotos, Dokumente, Mängel, Material und Projektchronik gehen dauerhaft verloren.
+    </div>
+    <div class="pageSub">Die Aktion kann nicht rückgängig gemacht werden.</div>
+    <div class="modalFoot">
+      <button class="btn" onclick="closeModal()">Abbrechen</button>
+      <button class="btn danger" onclick="requestProjektPermanentDeleteSecond('${escAttr(id)}')">Weiter</button>
+    </div>
+  `,true);
+}
+function requestProjektPermanentDeleteSecond(id){
+  const p=S.projekte.find(x=>x.id===id);
+  if(!p||!p.archiviert){ closeModal(); return; }
+  closeModal();
+  openModal(`
+    <div class="modalHead"><div class="modalTitle">Bist du wirklich sicher?</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
+    <div style="font-size:13.5px;line-height:1.55;">
+      Das Projekt <b>${escHtml(p.name)}</b> wird jetzt endgültig gelöscht.
+      <br><br>
+      Auch zugehörige Aufgaben, Mitarbeitereinsätze, Vorlagen und im ERM hinterlegte Rechnungen mit diesem Projektbezug werden entfernt.
+    </div>
+    <div class="modalFoot">
+      <button class="btn" onclick="closeModal()">Nein, behalten</button>
+      <button class="btn danger" onclick="permanentlyDeleteProjekt('${escAttr(id)}')">Ja, endgültig löschen</button>
+    </div>
+  `,true);
+}
+function permanentlyDeleteProjekt(id){
+  const p=S.projekte.find(x=>x.id===id);
+  if(!p||!p.archiviert){ closeModal(); toast("Projekt konnte nicht gelöscht werden.","warn"); return; }
+
+  S.aufgaben=S.aufgaben.filter(x=>x.projektId!==id);
+  S.planung=S.planung.filter(x=>x.projektId!==id);
+  S.rechnungen=S.rechnungen.filter(x=>x.projektId!==id);
+  S.vorlagen=S.vorlagen.filter(x=>x.projektId!==id);
+  S.baustellenchat=S.baustellenchat.filter(x=>x.projektId!==id);
+  S.dokumente=S.dokumente.filter(x=>x.projektId!==id);
+  S.projekte=S.projekte.filter(x=>x.id!==id);
+
+  if(window._activeBesichtigungId) window._activeBesichtigungId=null;
+  saveState();
+  closeModal();
+  goTo("#projekte");
+  toast("Projekt „"+p.name+"“ wurde endgültig gelöscht.","success");
+}
 function duplicateProjekt(id){
   const p=S.projekte.find(x=>x.id===id);
   if(!p) return;
@@ -3998,6 +4050,7 @@ function renderProjektDetail(view, id, tab){
         ${isOverview?`
           <button class="btn sm" onclick="duplicateProjekt('${escAttr(p.id)}')">Duplizieren</button>
           <button class="btn sm" onclick="setProjektArchiviert('${escAttr(p.id)}',${p.archiviert?"false":"true"})">${p.archiviert?"Aktivieren":"Archivieren"}</button>
+          ${p.archiviert?`<button class="btn sm danger" onclick="requestProjektPermanentDelete('${escAttr(p.id)}')">Endgültig löschen</button>`:""}
           <button class="btn sm primary" onclick="openProjektForm('${escAttr(p.id)}')">Bearbeiten</button>
         `:""}
       </div>
