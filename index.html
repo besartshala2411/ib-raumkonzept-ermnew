@@ -799,6 +799,17 @@ function ensureShape(s){
     if(!p.chat) p.chat=[];
     if(!p.maengel) p.maengel=[];
     if(!p.kontakte) p.kontakte=[];
+    if(!p.nachtraege) p.nachtraege=[];
+    if(!p.entscheidungen) p.entscheidungen=[];
+    if(!p.blocker) p.blocker=[];
+    if(!p.sollBesetzung) p.sollBesetzung=[];
+    p.material.forEach(m=>{
+      if(m.lieferant==null) m.lieferant="";
+      if(m.bestelltAm==null) m.bestelltAm="";
+      if(m.liefertermin==null) m.liefertermin="";
+      if(m.lieferstatus==null) m.lieferstatus="offen";
+      if(m.lieferschein==null) m.lieferschein="";
+    });
     if(!p.status) p.status="In Planung";
     if(p.beginn==null) p.beginn="";
     if(p.archiviert==null) p.archiviert=false;
@@ -1294,6 +1305,15 @@ function globalSearchIndex(){
   S.kunden.forEach(k=>items.push({typ:"kunde", typLabel:"Kunde", id:k.id, icon:"🤝", label:k.name, sub:k.ansprechpartner||"", text:[k.name,k.ansprechpartner,k.email,k.tel,k.adresse].filter(Boolean).join(" ").toLowerCase()}));
   S.subunternehmer.forEach(s=>items.push({typ:"subunternehmer", typLabel:"Subunternehmer", id:s.id, icon:"🏗️", label:s.firma, sub:s.gewerk||"", text:[s.firma,s.ansprechpartner,s.gewerk,s.email].filter(Boolean).join(" ").toLowerCase()}));
   S.projekte.forEach(p=>items.push({typ:"projekt", typLabel:"Projekt", id:p.id, icon:"🏢", label:p.name, sub:p.adresse||"", text:[p.name,p.adresse,p.status].filter(Boolean).join(" ").toLowerCase()}));
+  S.projekte.forEach(p=>{
+    (p.kontakte||[]).forEach(x=>items.push({typ:"projektkontakt",typLabel:"Baustellenkontakt",id:p.id+":"+x.id,icon:"☎",label:x.name||x.firma||"Kontakt",sub:p.name,text:[x.name,x.firma,x.rolle,x.tel,x.email,p.name].filter(Boolean).join(" ").toLowerCase()}));
+    (p.maengel||[]).forEach(x=>items.push({typ:"projektmangel",typLabel:"Mangel",id:p.id+":"+x.id,icon:"⚠",label:x.titel,sub:p.name,text:[x.titel,x.bereich,x.beschreibung,p.name].filter(Boolean).join(" ").toLowerCase()}));
+    (p.blocker||[]).forEach(x=>items.push({typ:"projektsteuerung",typLabel:"Blocker",id:p.id,icon:"⛔",label:x.titel,sub:p.name,text:[x.titel,x.grund,p.name].filter(Boolean).join(" ").toLowerCase()}));
+    (p.entscheidungen||[]).forEach(x=>items.push({typ:"projektsteuerung",typLabel:"Entscheidung",id:p.id,icon:"?",label:x.titel,sub:p.name,text:[x.titel,x.entscheidung,x.ansprechpartner,p.name].filter(Boolean).join(" ").toLowerCase()}));
+    (p.nachtraege||[]).forEach(x=>items.push({typ:"projektsteuerung",typLabel:"Nachtrag",id:p.id,icon:"＋",label:x.titel,sub:p.name,text:[x.titel,x.ursache,x.freigegebenDurch,p.name].filter(Boolean).join(" ").toLowerCase()}));
+    (p.material||[]).forEach(x=>items.push({typ:"projektmaterial",typLabel:"Material/Lieferung",id:p.id,icon:"▤",label:x.bezeichnung,sub:p.name,text:[x.bezeichnung,x.lieferant,x.lieferstatus,p.name].filter(Boolean).join(" ").toLowerCase()}));
+    (p.dokumente||[]).forEach(x=>items.push({typ:"projektdokument",typLabel:"Projektdatei",id:p.id,icon:"📁",label:x.name,sub:p.name,text:[x.name,p.name].filter(Boolean).join(" ").toLowerCase()}));
+  });
   if(hasAdminAccess()){
     S.rechnungen.forEach(r=>items.push({typ:"rechnung", typLabel:"Rechnung", id:r.id, icon:"🧾", label:r.nr, sub:kundeName(r.kundeId), text:[r.nr,kundeName(r.kundeId)].filter(Boolean).join(" ").toLowerCase()}));
     S.vertraege.forEach(v=>items.push({typ:"vertrag", typLabel:"Vertrag", id:v.id, icon:"📜", label:v.typ+" – "+mitarbeiterName(v.mitarbeiterId), sub:v.status||"", text:[v.typ,mitarbeiterName(v.mitarbeiterId),v.status].filter(Boolean).join(" ").toLowerCase()}));
@@ -1312,6 +1332,11 @@ function globalSearchOpenResult(typ, id){
     kunde: ()=>{ const h="#kunden/"+id+"/stammdaten"; location.hash=h; route(h); },
     subunternehmer: ()=>{ const h="#subunternehmer/"+id+"/stammdaten"; location.hash=h; route(h); },
     projekt: ()=>{ const h="#projekte/"+id+"/uebersicht"; location.hash=h; route(h); },
+    projektkontakt: ()=>{ const h="#projekte/"+id.split(":")[0]+"/kontakte"; location.hash=h; route(h); },
+    projektmangel: ()=>{ const h="#projekte/"+id.split(":")[0]+"/maengel"; location.hash=h; route(h); },
+    projektsteuerung: ()=>{ const h="#projekte/"+id+"/steuerung"; location.hash=h; route(h); },
+    projektmaterial: ()=>{ const h="#projekte/"+id+"/material"; location.hash=h; route(h); },
+    projektdokument: ()=>{ const h="#projekte/"+id+"/dokumente"; location.hash=h; route(h); },
     rechnung: ()=>{ location.hash="#rechnungen"; route("#rechnungen"); openRechnungForm(id); },
     vertrag: ()=>{ location.hash="#vertraege"; route("#vertraege"); openVertragForm(id); },
     passwort: ()=>{ location.hash="#passwoerter"; route("#passwoerter"); openPasswortForm(id); },
@@ -1325,7 +1350,7 @@ function globalSearchOpenResult(typ, id){
 function openGlobalSearch(){
   openModal(`
     <div class="modalHead"><div class="modalTitle">🔍 Suche</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
-    <input id="gsInput" type="text" placeholder="Mitarbeiter, Kunden, Projekte, Rechnungen …" autocomplete="off"
+    <input id="gsInput" type="text" placeholder="Projekt, Adresse, Kunde, Subunternehmer, Dokument, Mangel, Kontakt …" autocomplete="off"
       style="width:100%; padding:12px 14px; font-size:15px; border-radius:var(--radius-sm); border:1px solid var(--border); background:var(--card2); color:var(--text);"
       oninput="renderGlobalSearchResults(this.value)"
       onkeydown="if(event.key==='Enter'){ const first=document.querySelector('#gsResults .gsResultItem'); if(first) first.click(); }">
@@ -1781,6 +1806,9 @@ function renderDashboard(view){
   const offeneMaengel=alleMaengel.filter(x=>x.mangel.status!=="erledigt");
   const ueberfaelligeMaengel=offeneMaengel.filter(x=>x.mangel.frist&&x.mangel.frist<heute);
   const subWarnungen=S.subunternehmer.filter(s=>subEinsatzStatus(s).key!=="freigegeben"&&(s.status||"aktiv")==="aktiv");
+  const blocker=aktiveProjekte.flatMap(p=>(p.blocker||[]).filter(x=>x.status!=="erledigt").map(x=>({projekt:p,item:x})));
+  const entscheidungen=aktiveProjekte.flatMap(p=>(p.entscheidungen||[]).filter(x=>x.status==="offen").map(x=>({projekt:p,item:x})));
+  const lieferungen=aktiveProjekte.flatMap(p=>(p.material||[]).filter(m=>m.liefertermin&&m.liefertermin<heute&&m.lieferstatus!=="geliefert").map(m=>({projekt:p,item:m})));
   const ohneTagebuch=aktiveProjekte.filter(p=>{
     const last=(p.bautagebuch||[]).slice().sort((a,b)=>(b.datum||"").localeCompare(a.datum||""))[0];
     return !last || last.datum<heute;
@@ -1795,7 +1823,7 @@ function renderDashboard(view){
       <div class="cockpitMetric"><div class="cockpitMetricLabel">Laufende Projekte</div><div class="cockpitMetricValue">${aktiveProjekte.length}</div><div class="cockpitMetricHint">${ohneTagebuch.length} ohne heutigen Tagesbericht</div></div>
       <div class="cockpitMetric"><div class="cockpitMetricLabel">Aufgaben überfällig</div><div class="cockpitMetricValue">${ueberfaelligeAufgaben.length}</div><div class="cockpitMetricHint">${offeneAufgaben.length} Aufgaben offen</div></div>
       <div class="cockpitMetric"><div class="cockpitMetricLabel">Offene Mängel</div><div class="cockpitMetricValue">${offeneMaengel.length}</div><div class="cockpitMetricHint">${ueberfaelligeMaengel.length} davon überfällig</div></div>
-      <div class="cockpitMetric"><div class="cockpitMetricLabel">Sub-Unterlagen prüfen</div><div class="cockpitMetricValue">${subWarnungen.length}</div><div class="cockpitMetricHint">aktive Partner mit Handlungsbedarf</div></div>
+      <div class="cockpitMetric"><div class="cockpitMetricLabel">Baustellen-Blocker</div><div class="cockpitMetricValue">${blocker.length}</div><div class="cockpitMetricHint">${entscheidungen.length} Entscheidungen · ${lieferungen.length} Lieferungen prüfen</div></div>
     </div>
 
     <div class="grid cols-2">
@@ -1823,6 +1851,15 @@ function renderDashboard(view){
       <div class="card">
         <div class="projectSectionHead"><b>Subunternehmer-Unterlagen</b><button class="btn sm" onclick="goTo('#subunternehmer')">Subunternehmer</button></div>
         <div class="simpleList">${subWarnungen.slice(0,7).map(s=>{const e=subEinsatzStatus(s);return `<div class="simpleRow" onclick="goTo('#subunternehmer/${escAttr(s.id)}/dokumente')" style="cursor:pointer;"><div class="simpleRowMain"><b>${escHtml(s.firma)}</b><div class="pageSub">${escHtml(s.gewerk||"Kein Gewerk")}</div></div><span class="badge ${e.color}">${escHtml(e.label)}</span></div>`;}).join("")||`<div class="empty" style="padding:22px;">Keine offenen Unterlagenhinweise.</div>`}</div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:16px;">
+      <div class="projectSectionHead"><b>Operative Blocker & Freigaben</b><span class="pageSub">${blocker.length+entscheidungen.length+lieferungen.length} Hinweise</span></div>
+      <div class="simpleList">
+        ${blocker.slice(0,4).map(x=>`<div class="simpleRow" onclick="goTo('#projekte/${escAttr(x.projekt.id)}/steuerung')" style="cursor:pointer"><div class="simpleRowMain"><b>⛔ ${escHtml(x.item.titel)}</b><div class="pageSub">${escHtml(x.projekt.name)}</div></div><span>Blocker</span></div>`).join("")}
+        ${entscheidungen.slice(0,4).map(x=>`<div class="simpleRow" onclick="goTo('#projekte/${escAttr(x.projekt.id)}/steuerung')" style="cursor:pointer"><div class="simpleRowMain"><b>? ${escHtml(x.item.titel)}</b><div class="pageSub">${escHtml(x.projekt.name)}</div></div><span>Entscheidung</span></div>`).join("")}
+        ${lieferungen.slice(0,4).map(x=>`<div class="simpleRow" onclick="goTo('#projekte/${escAttr(x.projekt.id)}/material')" style="cursor:pointer"><div class="simpleRowMain"><b>▤ ${escHtml(x.item.bezeichnung)}</b><div class="pageSub">${escHtml(x.projekt.name)} · Lieferung ${fmtDate(x.item.liefertermin)}</div></div><span class="deadlineLate">verspätet</span></div>`).join("")}
+        ${!blocker.length&&!entscheidungen.length&&!lieferungen.length?'<div class="empty" style="padding:16px;">Keine operativen Blocker.</div>':""}
       </div>
     </div>
   `;
@@ -3720,7 +3757,7 @@ async function renderProjekteKarte(list){
   if(statusEl) statusEl.textContent = markers.length ? "" : (withAdresse.length ? "Keine Adresse konnte auf der Karte gefunden werden." : "");
 }
 function openProjektForm(id){
-  const p = id ? S.projekte.find(x=>x.id===id) : {id:uid(), name:"", kundeId:"", adresse:"", status:"In Planung", budget:0, beginn:"", deadline:"", fortschritt:0, personalkosten:0, fremdkosten:0, abnahmeDatum:"", abnahmeBemerkung:"", archiviert:false, chronik:[], standardSubLvAbzug:20, team:[], subunternehmer:[], fotos:[], dokumente:[], grundrisse:[], material:[], lvPositionen:[], ausschreibung:[], bautagebuch:[], zugaenge:[], checkliste:[], aufmasse:[], bauzeitenplan:[], chat:[], maengel:[], kontakte:[]};
+  const p = id ? S.projekte.find(x=>x.id===id) : {id:uid(), name:"", kundeId:"", adresse:"", status:"In Planung", budget:0, beginn:"", deadline:"", fortschritt:0, personalkosten:0, fremdkosten:0, abnahmeDatum:"", abnahmeBemerkung:"", archiviert:false, chronik:[], standardSubLvAbzug:20, team:[], subunternehmer:[], fotos:[], dokumente:[], grundrisse:[], material:[], lvPositionen:[], ausschreibung:[], bautagebuch:[], zugaenge:[], checkliste:[], aufmasse:[], bauzeitenplan:[], chat:[], maengel:[], kontakte:[], nachtraege:[], entscheidungen:[], blocker:[], sollBesetzung:[]};
   openModal(`
     <div class="modalHead"><div class="modalTitle">${id?"Projekt bearbeiten":"Neues Projekt"}</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
     <div class="compactFormNote">Für den Start reichen Projekt, Kunde, Adresse, Beginn und Fertigstellung. Weitere Angaben können später ergänzt werden.</div>
@@ -3821,7 +3858,11 @@ function duplicateProjekt(id){
     bauzeitenplan:(p.bauzeitenplan||[]).map(ph=>({id:uid(),bezeichnung:ph.bezeichnung||"",von:"",bis:"",status:"geplant",fortschritt:0})),
     chat:[],
     maengel:[],
-    kontakte:[]
+    kontakte:[],
+    nachtraege:[],
+    entscheidungen:[],
+    blocker:[],
+    sollBesetzung:[]
   };
   S.projekte.push(clone);
   addProjektChronik(clone.id,"projekt","Projekt aus „"+p.name+"“ dupliziert");
@@ -3831,10 +3872,11 @@ function duplicateProjekt(id){
 }
 const PROJEKT_TABS = [
   {id:"uebersicht", label:"Überblick", icon:"▦"},
+  {id:"steuerung", label:"Baustellensteuerung", icon:"⚑"},
   {id:"lv", label:"Leistungsverzeichnis", icon:"%"},
   {id:"bauzeitenplan", label:"Bauablauf", icon:"◫"},
   {id:"dokumente", label:"Dateien & Fotos", icon:"▱"},
-  {id:"material", label:"Material", icon:"▤"},
+  {id:"material", label:"Material & Lieferungen", icon:"▤"},
   {id:"checkliste", label:"Abnahme", icon:"✓"},
 ];
 function renderProjektDetail(view, id, tab){
@@ -3872,7 +3914,7 @@ function renderProjektDetail(view, id, tab){
     uebersicht: renderTabUebersicht, team: renderTabTeam, bauzeitenplan: renderTabBauzeitenplan, fotos: renderTabFotos, dokumente: renderTabProjektDokumente,
     material: renderTabMaterial, ausschreibung: renderTabAusschreibung, bautagebuch: renderTabBautagebuch, zugaenge: renderTabZugaenge,
     checkliste: renderTabChecklist, aufmass: renderTabAufmass, chat: renderTabProjektChat, lv: renderTabProjektLv, vorlagen: renderTabProjektVorlagen,
-    maengel: renderTabMaengel, kontakte: renderTabProjektKontakte
+    maengel: renderTabMaengel, kontakte: renderTabProjektKontakte, steuerung: renderTabProjektSteuerung
   };
   (renderers[tab]||renderTabUebersicht)(body, p);
 }
@@ -4011,6 +4053,9 @@ function renderTabUebersicht(body, p){
   const ueberfaelligeAufgaben=offeneAufgaben.filter(a=>a.faellig&&a.faellig<todayISO());
   const offeneMaengel=(p.maengel||[]).filter(m=>m.status!=="erledigt");
   const ueberfaelligeMaengel=offeneMaengel.filter(m=>m.frist&&m.frist<todayISO());
+  const offeneBlocker=(p.blocker||[]).filter(x=>x.status!=="erledigt");
+  const offeneEntscheidungen=(p.entscheidungen||[]).filter(x=>x.status!=="freigegeben"&&x.status!=="erledigt");
+  const verspaeteteLieferungen=(p.material||[]).filter(m=>m.liefertermin&&m.liefertermin<todayISO()&&!["geliefert"].includes(m.lieferstatus));
   const effectiveStatus=projektEffectiveStatus(p);
   const deadlineLate=p.deadline&&p.deadline<todayISO()&&effectiveStatus!=="Abgeschlossen"&&!p.archiviert;
   const zeitraum=projektBauzeitraum(p);
@@ -4029,6 +4074,10 @@ function renderTabUebersicht(body, p){
 
   if(ueberfaelligeMaengel.length) attention.push({cls:"danger",icon:"⚠",html:`<b>${ueberfaelligeMaengel.length} Mangel${ueberfaelligeMaengel.length===1?"":"mängel"} überfällig</b><br>Mängel prüfen`});
   else if(offeneMaengel.length) attention.push({cls:"warn",icon:"!",html:`<b>${offeneMaengel.length} offene Mängel</b><br>Im Projekt bearbeiten`});
+
+  if(offeneBlocker.length) attention.push({cls:"danger",icon:"⛔",html:`<b>${offeneBlocker.length} Blocker</b><br>Baustelle kann behindert sein`});
+  else if(offeneEntscheidungen.length) attention.push({cls:"warn",icon:"?",html:`<b>${offeneEntscheidungen.length} Entscheidung${offeneEntscheidungen.length===1?"":"en"} offen</b><br>Freigaben prüfen`});
+  else if(verspaeteteLieferungen.length) attention.push({cls:"warn",icon:"▤",html:`<b>${verspaeteteLieferungen.length} Lieferung${verspaeteteLieferungen.length===1?"":"en"} verspätet</b><br>Material prüfen`});
 
   if(deadlineLate) attention.push({cls:"danger",icon:"⏱",html:`<b>Termin überschritten</b><br>${fmtDate(p.deadline)}`});
   else attention.push({cls:"",icon:"📅",html:`<b>${p.deadline?fmtDate(p.deadline):"Kein Endtermin"}</b><br>Fertigstellung`});
@@ -4074,6 +4123,7 @@ function renderTabUebersicht(body, p){
       <button class="projectArea" onclick="goTo('#projekte/${escAttr(p.id)}/lv')"><span><div class="projectAreaTitle">Leistungsverzeichnis</div><div class="projectAreaSub">${(p.lvPositionen||[]).length} Positionen</div></span><span>›</span></button>
       <button class="projectArea" onclick="goTo('#projekte/${escAttr(p.id)}/bauzeitenplan')"><span><div class="projectAreaTitle">Bauablauf</div><div class="projectAreaSub">${p.bauzeitenplan.length} Phasen</div></span><span>›</span></button>
       <button class="projectArea" onclick="goTo('#projekte/${escAttr(p.id)}/team')"><span><div class="projectAreaTitle">Team & Einsatz</div><div class="projectAreaSub">${p.team.length} Mitarbeiter · Wochenplanung</div></span><span>›</span></button>
+      <button class="projectArea" onclick="goTo('#projekte/${escAttr(p.id)}/steuerung')"><span><div class="projectAreaTitle">Baustellensteuerung</div><div class="projectAreaSub">${offeneBlocker.length} Blocker · ${offeneEntscheidungen.length} Entscheidungen</div></span><span>›</span></button>
       <button class="projectArea" onclick="goTo('#projekte/${escAttr(p.id)}/dokumente')"><span><div class="projectAreaTitle">Dateien & Fotos</div><div class="projectAreaSub">${p.dokumente.length} Dateien · ${p.fotos.length} Fotos</div></span><span>›</span></button>
       <button class="projectArea" onclick="goTo('#projekte/${escAttr(p.id)}/maengel')"><span><div class="projectAreaTitle">Mängel</div><div class="projectAreaSub">${offeneMaengel.length} offen</div></span><span>›</span></button>
       <button class="projectArea" onclick="goTo('#projekte/${escAttr(p.id)}/kontakte')"><span><div class="projectAreaTitle">Baustellenkontakte</div><div class="projectAreaSub">${(p.kontakte||[]).length} Kontakte</div></span><span>›</span></button>
@@ -4200,6 +4250,10 @@ function renderTabTeam(body,p){
     </div>
 
     <div class="card" style="margin-bottom:16px;">
+      <div class="projectSectionHead"><div><b>Soll-Besetzung</b><div class="pageSub">Welche Gewerke und wie viele Personen werden benötigt?</div></div><button class="btn sm" onclick="openSollBesetzungForm('${escAttr(p.id)}')">＋ Bedarf</button></div>
+      <div class="simpleList">${(p.sollBesetzung||[]).map(s=>`<div class="simpleRow"><div class="simpleRowMain"><b>${escHtml(s.gewerk)}</b></div><span>${Number(s.anzahl)||0} Person(en)</span></div>`).join("")||'<div class="empty" style="padding:12px;">Noch keine Soll-Besetzung hinterlegt.</div>'}</div>
+    </div>
+    <div class="card" style="margin-bottom:16px;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
         <b>Team (${p.team.length})</b>
         <select onchange="addTeamMember('${escAttr(p.id)}',this.value);this.value='';"><option value="">＋ Mitarbeiter hinzufügen</option>${S.mitarbeiter.filter(m=>!p.team.includes(m.id)).map(m=>`<option value="${escAttr(m.id)}">${escHtml(m.name)}</option>`).join("")}</select>
@@ -4221,6 +4275,17 @@ function renderTabTeam(body,p){
       </div>
     </div>
   `;
+}
+function openSollBesetzungForm(pid){
+  openModal(`<div class="modalHead"><div class="modalTitle">Soll-Besetzung hinzufügen</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
+  <div class="grid cols-2"><div class="formRow"><label>Gewerk / Rolle</label><input id="sbGewerk" type="text" placeholder="z. B. Maler"></div><div class="formRow"><label>Anzahl</label><input id="sbAnzahl" type="number" min="1" value="1"></div></div>
+  <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="saveSollBesetzung('${escAttr(pid)}')">Speichern</button></div>`);
+}
+function saveSollBesetzung(pid){
+  const p=S.projekte.find(x=>x.id===pid),gewerk=document.getElementById("sbGewerk").value.trim(),anzahl=Math.max(1,Number(document.getElementById("sbAnzahl").value)||1);
+  if(!gewerk){toast("Gewerk erforderlich.","warn");return;}
+  const ex=p.sollBesetzung.find(x=>x.gewerk.toLowerCase()===gewerk.toLowerCase());if(ex)ex.anzahl=anzahl;else p.sollBesetzung.push({id:uid(),gewerk,anzahl});
+  addProjektChronik(pid,"planung","Soll-Besetzung aktualisiert: "+gewerk+" "+anzahl);saveState();closeModal();route(location.hash);
 }
 function renderProjectSubSearch(pid,value){
   const p=S.projekte.find(x=>x.id===pid);
@@ -4604,48 +4669,202 @@ function deleteProjektDokument(pid, did){
   deleteItemWithUndo(p.dokumente, did, "Dokument gelöscht.");
 }
 
-function renderTabMaterial(body, p){
-  const summe = p.material.reduce((s,m)=>s+(Number(m.preis)||0),0);
-  body.innerHTML = `
-    <div class="card">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; gap:12px;">
-        <div><b>Materialkosten</b><div class="pageSub">Einfach die Gesamtkosten je Einkauf eintragen.</div></div>
-        <button class="btn primary" onclick="openMaterialForm('${escAttr(p.id)}')">＋ Material</button>
+/* =========================================================
+   PROJEKT: BAUSTELLENSTEUERUNG
+========================================================= */
+function renderTabProjektSteuerung(body,p){
+  const blocker=(p.blocker||[]).filter(x=>x.status!=="erledigt");
+  const entscheidungen=(p.entscheidungen||[]).filter(x=>x.status!=="erledigt");
+  const nachtraege=(p.nachtraege||[]).filter(x=>x.status!=="ausgeführt"&&x.status!=="abgelehnt");
+  body.innerHTML=`
+    <div class="grid cols-3" style="margin-bottom:14px;">
+      <div class="kpi"><div class="kpiVal">${blocker.length}</div><div class="kpiLabel">Offene Blocker</div></div>
+      <div class="kpi"><div class="kpiVal">${entscheidungen.filter(x=>x.status!=="freigegeben").length}</div><div class="kpiLabel">Offene Entscheidungen</div></div>
+      <div class="kpi"><div class="kpiVal">${nachtraege.length}</div><div class="kpiLabel">Offene Nachträge</div></div>
+    </div>
+
+    <div class="grid cols-2">
+      <div class="card">
+        <div class="projectSectionHead"><div><b>Blocker</b><div class="pageSub">Was hält die Baustelle gerade auf?</div></div><button class="btn sm primary" onclick="openBlockerForm('${escAttr(p.id)}')">＋ Blocker</button></div>
+        <div class="simpleList">${(p.blocker||[]).map(x=>`<div class="simpleRow"><div class="simpleRowMain"><b>${escHtml(x.titel)}</b><div class="pageSub">${escHtml(x.grund||"")}${x.faellig?" · bis "+fmtDate(x.faellig):""}</div></div><select onchange="setProjektSteuerungStatus('${escAttr(p.id)}','blocker','${escAttr(x.id)}',this.value)">${["offen","erledigt"].map(s=>`<option ${x.status===s?"selected":""}>${s}</option>`).join("")}</select></div>`).join("")||'<div class="empty" style="padding:12px;">Keine Blocker.</div>'}</div>
       </div>
-      <div class="simpleList">${p.material.map(m=>`<div class="simpleRow"><div class="simpleRowMain"><b>${escHtml(m.bezeichnung)}</b><div class="pageSub">${[m.menge,m.einheit,fmtDate(m.datum)].filter(Boolean).join(' · ')}</div></div><div style="display:flex;align-items:center;gap:8px"><b>${fmtCurrency(m.preis)}</b><button class="iconBtn" aria-label="Material löschen" onclick="deleteMaterial('${escAttr(p.id)}','${escAttr(m.id)}')">×</button></div></div>`).join('')||`<div class="empty" style="padding:28px">Noch kein Material erfasst.</div>`}</div>
-      <div style="display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--border);margin-top:14px;padding-top:14px"><span>Material gesamt</span><strong style="font-size:20px">${fmtCurrency(summe)}</strong></div>
-      <div style="display:flex;gap:8px;margin-top:14px"><button class="btn sm" onclick="exportLvPDF('${escAttr(p.id)}',true)">Liste als PDF</button></div>
+
+      <div class="card">
+        <div class="projectSectionHead"><div><b>Entscheidungen & Freigaben</b><div class="pageSub">Farben, Materialien, Ausführungen und Freigaben</div></div><button class="btn sm primary" onclick="openEntscheidungForm('${escAttr(p.id)}')">＋ Entscheidung</button></div>
+        <div class="simpleList">${(p.entscheidungen||[]).map(x=>`<div class="simpleRow"><div class="simpleRowMain"><b>${escHtml(x.titel)}</b><div class="pageSub">${escHtml(x.ansprechpartner||"")}${x.faellig?" · bis "+fmtDate(x.faellig):""}${x.entscheidung?" · "+escHtml(x.entscheidung):""}</div></div><select onchange="setProjektSteuerungStatus('${escAttr(p.id)}','entscheidungen','${escAttr(x.id)}',this.value)">${["offen","freigegeben","erledigt"].map(s=>`<option ${x.status===s?"selected":""}>${s}</option>`).join("")}</select></div>`).join("")||'<div class="empty" style="padding:12px;">Keine Entscheidungen erfasst.</div>'}</div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:14px;">
+      <div class="projectSectionHead"><div><b>Nachträge</b><div class="pageSub">Nur operative Dokumentation – Abrechnung bleibt außerhalb des ERM.</div></div><button class="btn sm primary" onclick="openNachtragForm('${escAttr(p.id)}')">＋ Nachtrag</button></div>
+      <div class="simpleList">${(p.nachtraege||[]).map(x=>`<div class="simpleRow"><div class="simpleRowMain"><b>${escHtml(x.titel)}</b><div class="pageSub">${escHtml(x.ursache||"")}${x.freigegebenDurch?" · freigegeben durch "+escHtml(x.freigegebenDurch):""}</div></div><select onchange="setProjektSteuerungStatus('${escAttr(p.id)}','nachtraege','${escAttr(x.id)}',this.value)">${["angefragt","freigegeben","ausgeführt","abgelehnt"].map(s=>`<option ${x.status===s?"selected":""}>${s}</option>`).join("")}</select></div>`).join("")||'<div class="empty" style="padding:12px;">Keine Nachträge.</div>'}</div>
+    </div>
+
+    <div class="grid cols-2" style="margin-top:14px;">
+      <div class="card"><div class="projectSectionHead"><div><b>Baustellenstart</b><div class="pageSub">Vor Arbeitsbeginn Vollständigkeit prüfen.</div></div><button class="btn sm" onclick="openProjektStartCheck('${escAttr(p.id)}')">Start-Check öffnen</button></div></div>
+      <div class="card"><div class="projectSectionHead"><div><b>Projektabschluss</b><div class="pageSub">Offene Punkte vor dem Archivieren prüfen.</div></div><button class="btn sm" onclick="openProjektAbschlussCheck('${escAttr(p.id)}')">Abschluss-Check öffnen</button></div></div>
     </div>
   `;
 }
-function openMaterialForm(pid){
-  const p = S.projekte.find(x=>x.id===pid);
+function openBlockerForm(pid){
+  openModal(`<div class="modalHead"><div class="modalTitle">Blocker erfassen</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
+  <div class="formRow"><label>Titel</label><input id="blTitel" type="text" placeholder="z. B. Material fehlt"></div>
+  <div class="formRow"><label>Grund / nächste Aktion</label><textarea id="blGrund"></textarea></div>
+  <div class="formRow"><label>Fällig bis</label><input id="blFaellig" type="date"></div>
+  <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="saveBlocker('${escAttr(pid)}')">Speichern</button></div>`);
+}
+function saveBlocker(pid){
+  const p=S.projekte.find(x=>x.id===pid),titel=document.getElementById("blTitel").value.trim();
+  if(!titel){toast("Titel erforderlich.","warn");return;}
+  p.blocker.push({id:uid(),titel,grund:document.getElementById("blGrund").value.trim(),faellig:document.getElementById("blFaellig").value,status:"offen",erstelltAm:new Date().toISOString()});
+  addProjektChronik(pid,"blocker","Blocker erfasst: "+titel);saveState();closeModal();route(location.hash);
+}
+function openEntscheidungForm(pid){
+  openModal(`<div class="modalHead"><div class="modalTitle">Entscheidung / Freigabe</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
+  <div class="formRow"><label>Thema</label><input id="enTitel" type="text" placeholder="z. B. Farbton Flur"></div>
+  <div class="grid cols-2"><div class="formRow"><label>Ansprechpartner</label><input id="enPerson" type="text"></div><div class="formRow"><label>Benötigt bis</label><input id="enFaellig" type="date"></div></div>
+  <div class="formRow"><label>Entscheidung / Vorgabe</label><textarea id="enText"></textarea></div>
+  <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="saveEntscheidung('${escAttr(pid)}')">Speichern</button></div>`);
+}
+function saveEntscheidung(pid){
+  const p=S.projekte.find(x=>x.id===pid),titel=document.getElementById("enTitel").value.trim();
+  if(!titel){toast("Thema erforderlich.","warn");return;}
+  p.entscheidungen.push({id:uid(),titel,ansprechpartner:document.getElementById("enPerson").value.trim(),faellig:document.getElementById("enFaellig").value,entscheidung:document.getElementById("enText").value.trim(),status:"offen",erstelltAm:new Date().toISOString()});
+  addProjektChronik(pid,"entscheidung","Entscheidung angelegt: "+titel);saveState();closeModal();route(location.hash);
+}
+function openNachtragForm(pid){
+  openModal(`<div class="modalHead"><div class="modalTitle">Operativen Nachtrag erfassen</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
+  <div class="formRow"><label>Zusatzleistung</label><input id="ntTitel" type="text"></div>
+  <div class="formRow"><label>Ursache / Beschreibung</label><textarea id="ntUrsache"></textarea></div>
+  <div class="grid cols-2"><div class="formRow"><label>Angefragt am</label><input id="ntDatum" type="date" value="${todayISO()}"></div><div class="formRow"><label>Freigegeben durch</label><input id="ntFreigabe" type="text"></div></div>
+  <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="saveNachtrag('${escAttr(pid)}')">Speichern</button></div>`);
+}
+function saveNachtrag(pid){
+  const p=S.projekte.find(x=>x.id===pid),titel=document.getElementById("ntTitel").value.trim();
+  if(!titel){toast("Zusatzleistung erforderlich.","warn");return;}
+  p.nachtraege.push({id:uid(),titel,ursache:document.getElementById("ntUrsache").value.trim(),angefragtAm:document.getElementById("ntDatum").value,freigegebenDurch:document.getElementById("ntFreigabe").value.trim(),status:"angefragt",erstelltAm:new Date().toISOString()});
+  addProjektChronik(pid,"nachtrag","Nachtrag erfasst: "+titel);saveState();closeModal();route(location.hash);
+}
+function setProjektSteuerungStatus(pid,key,id,status){
+  const p=S.projekte.find(x=>x.id===pid); if(!p||!Array.isArray(p[key])) return;
+  const item=p[key].find(x=>x.id===id); if(!item)return;
+  item.status=status;
+  addProjektChronik(pid,key,"Status geändert: "+(item.titel||"Eintrag")+" → "+status);
+  saveState();route(location.hash);
+}
+function projektStartChecks(p){
+  return [
+    ["Kunde zugeordnet",!!p.kundeId],["Baustellenadresse",!!p.adresse],["Beginn festgelegt",!!p.beginn],["Fertigstellung festgelegt",!!p.deadline],
+    ["Baustellenkontakte",(p.kontakte||[]).length>0],["Team / Einsatz",(p.team||[]).length>0||S.planung.some(x=>x.projektId===p.id)],
+    ["Zugänge / Schlüssel",(p.zugaenge||[]).length>0],["Pläne / Dokumente",(p.dokumente||[]).length>0||(p.grundrisse||[]).length>0],
+    ["Subunternehmer-Unterlagen",(p.subunternehmer||[]).every(id=>{const s=S.subunternehmer.find(x=>x.id===id);return !s||subEinsatzStatus(s).key==="freigegeben";})]
+  ];
+}
+function projektAbschlussChecks(p){
+  return [
+    ["Keine offenen Aufgaben",!S.aufgaben.some(a=>a.projektId===p.id&&a.status!=="erledigt")],["Keine offenen Mängel",!(p.maengel||[]).some(m=>m.status!=="erledigt")],
+    ["Keine offenen Blocker",!(p.blocker||[]).some(x=>x.status!=="erledigt")],["Entscheidungen abgeschlossen",!(p.entscheidungen||[]).some(x=>!["freigegeben","erledigt"].includes(x.status))],
+    ["Nachträge geklärt",!(p.nachtraege||[]).some(x=>!["ausgeführt","abgelehnt"].includes(x.status))],["Abnahme erfolgt",!!p.abnahmeDatum||!!p.checklisteUnterschrift],
+    ["Dokumentation vorhanden",(p.fotos||[]).length>0||(p.dokumente||[]).length>0],["Schlüssel / Zugänge geprüft",true]
+  ];
+}
+function renderProjectCheckModal(title,checks,extra){
+  const ok=checks.filter(x=>x[1]).length;
+  return `<div class="modalHead"><div class="modalTitle">${escHtml(title)}</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
+  <div class="pageSub" style="margin-bottom:12px;">${ok} von ${checks.length} Punkten erfüllt</div>
+  <div class="simpleList">${checks.map(x=>`<div class="simpleRow"><div class="simpleRowMain">${escHtml(x[0])}</div><span class="badge ${x[1]?"green":"amber"}">${x[1]?"OK":"prüfen"}</span></div>`).join("")}</div>${extra||""}`;
+}
+function openProjektStartCheck(pid){
+  const p=S.projekte.find(x=>x.id===pid),checks=projektStartChecks(p);
+  openModal(renderProjectCheckModal("Baustellenstart – "+p.name,checks,`<div class="modalFoot"><button class="btn" onclick="closeModal()">Schließen</button></div>`),true);
+}
+function openProjektAbschlussCheck(pid){
+  const p=S.projekte.find(x=>x.id===pid),checks=projektAbschlussChecks(p),all=checks.every(x=>x[1]);
+  openModal(renderProjectCheckModal("Projektabschluss – "+p.name,checks,`<div class="modalFoot"><button class="btn" onclick="closeModal()">Schließen</button><button class="btn primary" ${all?"":"disabled"} onclick="completeProjektFromCheck('${escAttr(pid)}')">Abschließen & archivieren</button></div>`),true);
+}
+function completeProjektFromCheck(pid){
+  const p=S.projekte.find(x=>x.id===pid);if(!p)return;
+  p.status="Abgeschlossen";p.archiviert=true;addProjektChronik(pid,"abschluss","Projekt über Abschluss-Check abgeschlossen und archiviert");
+  saveState();closeModal();goTo("#projekte");toast("Projekt abgeschlossen und archiviert.","success");
+}
+
+function materialLieferBadge(status){
+  const map={offen:"gray",bestellt:"blue","teilweise geliefert":"amber",geliefert:"green"};
+  return `<span class="badge ${map[status]||"gray"}">${escHtml(status||"offen")}</span>`;
+}
+function renderTabMaterial(body,p){
+  const list=p.material||[];
+  const late=list.filter(m=>m.liefertermin&&m.liefertermin<todayISO()&&m.lieferstatus!=="geliefert").length;
+  body.innerHTML=`
+    <div class="card">
+      <div class="projectSectionHead">
+        <div><b>Material & Lieferungen</b><div class="pageSub">${list.length} Positionen${late?" · "+late+" verspätet":""}</div></div>
+        <button class="btn primary sm" onclick="openMaterialForm('${escAttr(p.id)}')">＋ Material / Lieferung</button>
+      </div>
+      <div class="simpleList">
+        ${list.map(m=>`<div class="simpleRow">
+          <div class="simpleRowMain">
+            <b>${escHtml(m.bezeichnung)}</b>
+            <div class="pageSub">${[m.menge&&m.menge+" "+(m.einheit||""),m.lieferant,m.bestelltAm?"bestellt "+fmtDate(m.bestelltAm):"",m.liefertermin?"Lieferung "+fmtDate(m.liefertermin):""].filter(Boolean).join(" · ")}</div>
+          </div>
+          <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;justify-content:flex-end;">
+            ${materialLieferBadge(m.lieferstatus)}
+            ${m.lieferschein?`<button class="iconBtn" data-docurl="${escAttr(m.lieferschein)}" data-docname="Lieferschein" onclick="openDataUrlDoc(this.dataset.docurl,this.dataset.docname)" title="Lieferschein">📄</button>`:""}
+            <button class="iconBtn" onclick="openMaterialForm('${escAttr(p.id)}','${escAttr(m.id)}')" title="Bearbeiten">✎</button>
+            <button class="iconBtn" onclick="deleteMaterial('${escAttr(p.id)}','${escAttr(m.id)}')" title="Löschen">×</button>
+          </div>
+        </div>`).join("")||'<div class="empty" style="padding:22px;">Noch kein Material oder keine Lieferung erfasst.</div>'}
+      </div>
+    </div>`;
+}
+function openMaterialForm(pid,mid){
+  const p=S.projekte.find(x=>x.id===pid);
+  const m=mid?(p.material||[]).find(x=>x.id===mid):{id:uid(),bezeichnung:"",menge:"",einheit:"",preis:0,lieferant:"",bestelltAm:"",liefertermin:"",lieferstatus:"offen",lieferschein:""};
+  window._materialLieferschein=m.lieferschein||"";
   openModal(`
-    <div class="modalHead"><div class="modalTitle">Material erfassen</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
-    <div class="compactFormNote">Ein Eintrag pro Einkauf oder Lieferung. Doppelte Bezeichnungen werden verhindert.</div>
-    <div class="formRow"><label>Was wurde gekauft?</label><div class="micWrap"><input id="matBez" type="text" placeholder="z. B. Gipskartonplatten">${fieldMic("matBez")}</div></div>
+    <div class="modalHead"><div class="modalTitle">${mid?"Material / Lieferung bearbeiten":"Material / Lieferung erfassen"}</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
+    <div class="formRow"><label>Material / Bezeichnung</label><input id="matBez" type="text" value="${escAttr(m.bezeichnung||"")}" placeholder="z. B. Gipskartonplatten"></div>
     <div class="grid cols-2">
-      <div class="formRow"><label>Menge (optional)</label><input id="matMenge" type="number" step="0.01"></div>
-      <div class="formRow"><label>Einheit (optional)</label><input id="matEinheit" type="text" placeholder="Stk., m², kg"></div>
-      <div class="formRow" style="grid-column:1/-1;"><label>Gesamtkosten (€)</label><input id="matPreis" type="number" min="0" step="0.01"></div>
+      <div class="formRow"><label>Menge</label><input id="matMenge" type="number" step="0.01" value="${escAttr(m.menge||"")}"></div>
+      <div class="formRow"><label>Einheit</label><input id="matEinheit" type="text" value="${escAttr(m.einheit||"")}" placeholder="Stk., m², kg"></div>
+      <div class="formRow"><label>Lieferant</label><input id="matLieferant" type="text" value="${escAttr(m.lieferant||"")}"></div>
+      <div class="formRow"><label>Status</label><select id="matLieferstatus">${["offen","bestellt","teilweise geliefert","geliefert"].map(s=>`<option value="${s}" ${m.lieferstatus===s?"selected":""}>${s}</option>`).join("")}</select></div>
+      <div class="formRow"><label>Bestellt am</label><input id="matBestellt" type="date" value="${escAttr(m.bestelltAm||"")}"></div>
+      <div class="formRow"><label>Liefertermin</label><input id="matLiefertermin" type="date" value="${escAttr(m.liefertermin||"")}"></div>
+      <div class="formRow"><label>Kosten optional (€)</label><input id="matPreis" type="number" min="0" step="0.01" value="${escAttr(m.preis||0)}"></div>
+      <div class="formRow"><label>Lieferschein optional</label><input type="file" accept="application/pdf,image/*" onchange="setMaterialLieferschein(this)"></div>
     </div>
-    <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="saveMaterial('${escAttr(pid)}')">Speichern</button></div>
+    <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="saveMaterial('${escAttr(pid)}','${escAttr(m.id)}',${mid?"true":"false"})">Speichern</button></div>
   `);
 }
-function saveMaterial(pid){
-  const bezeichnung = document.getElementById("matBez").value.trim();
-  if(!bezeichnung){ toast("Bezeichnung erforderlich.", "warn"); return; }
-  const p = S.projekte.find(x=>x.id===pid);
-  if(p.material.some(m=>normalizedPositionLabel(m.bezeichnung)===normalizedPositionLabel(bezeichnung))){
-    toast("Diese LV-Position ist bereits vorhanden. Bitte die bestehende Position verwenden oder die Bezeichnung genauer unterscheiden.", "warn");
-    return;
-  }
-  p.material.push({id:uid(), titel:"", bezeichnung, beschreibung:"", menge:document.getElementById("matMenge").value, einheit:document.getElementById("matEinheit").value.trim(), preis:Number(document.getElementById("matPreis").value)||0, datum:todayISO()});
-  saveState(); closeModal(); route(location.hash);
+async function setMaterialLieferschein(input){
+  const file=input&&input.files&&input.files[0]; if(!file) return;
+  try{window._materialLieferschein=await fileToDataURL(file);}catch(e){toast("Lieferschein konnte nicht geladen werden: "+e.message,"error");}
 }
-function deleteMaterial(pid, mid){
-  const p = S.projekte.find(x=>x.id===pid);
-  deleteItemWithUndo(p.material, mid, "Material-Eintrag gelöscht.");
+function saveMaterial(pid,id,isEdit){
+  const bezeichnung=document.getElementById("matBez").value.trim();
+  if(!bezeichnung){toast("Bezeichnung erforderlich.","warn");return;}
+  const p=S.projekte.find(x=>x.id===pid);
+  if((p.material||[]).some(m=>m.id!==id&&normalizedPositionLabel(m.bezeichnung)===normalizedPositionLabel(bezeichnung))){
+    toast("Diese Materialbezeichnung ist bereits vorhanden.","warn");return;
+  }
+  let m=isEdit?p.material.find(x=>x.id===id):{id,titel:"",beschreibung:"",datum:todayISO()};
+  m.bezeichnung=bezeichnung;
+  m.menge=document.getElementById("matMenge").value;
+  m.einheit=document.getElementById("matEinheit").value.trim();
+  m.preis=Number(document.getElementById("matPreis").value)||0;
+  m.lieferant=document.getElementById("matLieferant").value.trim();
+  m.bestelltAm=document.getElementById("matBestellt").value;
+  m.liefertermin=document.getElementById("matLiefertermin").value;
+  m.lieferstatus=document.getElementById("matLieferstatus").value;
+  m.lieferschein=window._materialLieferschein||"";
+  if(!isEdit) p.material.push(m);
+  addProjektChronik(pid,"material",(isEdit?"Material/Lieferung aktualisiert: ":"Material/Lieferung erfasst: ")+bezeichnung);
+  saveState();closeModal();route(location.hash);
+}
+function deleteMaterial(pid,mid){
+  const p=S.projekte.find(x=>x.id===pid);
+  deleteItemWithUndo(p.material,mid,"Material-Eintrag gelöscht.");
 }
 function buildLvDocPositions(p, positionen, mitPreisen, subtitle){
   const doc = pdfNewDoc();
