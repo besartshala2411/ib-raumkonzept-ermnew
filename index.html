@@ -3410,10 +3410,14 @@ function renderPlantafel(view){
   const weekEnd=days[days.length-1];
   const weekLabel=fmtDate(days[0])+" – "+fmtDate(weekEnd);
   const trades=[...new Set(mitarbeiter.map(m=>m.abteilung||m.position||"").filter(Boolean))].sort((a,b)=>a.localeCompare(b,"de"));
+  const activeProjects=S.projekte.filter(p=>!p.archiviert&&projektEffectiveStatus(p)!=="Abgeschlossen");
 
   view.innerHTML=`
     <div class="pageHead">
-      <div><div class="pageTitle">Einsatzplanung</div><div class="pageSub">Mitarbeiter, Abwesenheiten und Baustellen in einer Wochenansicht</div></div>
+      <div>
+        <div class="pageTitle">Einsatzkalender</div>
+        <div class="pageSub">Wochenkalender für Mitarbeiter, Baustellen und Abwesenheiten</div>
+      </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
         <button class="btn" onclick="ptShiftWeek(-1)">←</button>
         <button class="btn" onclick="ptGoToday()">Heute</button>
@@ -3422,74 +3426,115 @@ function renderPlantafel(view){
       </div>
     </div>
 
-    <div class="filterBar" style="margin-bottom:12px;">
-      <b style="font-size:13px;">${weekLabel}</b>
-      <select id="ptTradeFilter" onchange="ptFilterRows()"><option value="">Alle Gewerke</option>${trades.map(t=>`<option value="${escAttr(t.toLowerCase())}">${escHtml(t)}</option>`).join("")}</select>
-    </div>
-
-    <div class="grid cols-5" style="margin-bottom:12px;">
-      ${days.map(d=>{
-        const available=mitarbeiter.filter(m=>!ptAbwesenheit(m,d)).length;
-        const planned=new Set(S.planung.filter(x=>x.datum===d).map(x=>x.mitarbeiterId)).size;
-        return `<div class="kpi"><div class="kpiVal">${planned}/${available}</div><div class="kpiLabel">${new Date(d+"T12:00:00").toLocaleDateString("de-DE",{weekday:"short",day:"2-digit",month:"2-digit"})}</div><div class="kpiHint">${Math.max(0,available-planned)} verfügbar</div></div>`;
-      }).join("")}
-    </div>
-
-    <div class="card" style="margin-bottom:12px;">
-      <div class="projectSectionHead"><b>Projekt-Besetzung diese Woche</b><span class="pageSub">Soll gegen tatsächlich eingeplante Mitarbeiter</span></div>
-      <div class="grid cols-3">
-        ${S.projekte.filter(p=>!p.archiviert&&projektEffectiveStatus(p)!=="Abgeschlossen"&&(p.sollBesetzung||[]).length).map(p=>{
-          const soll=(p.sollBesetzung||[]).reduce((s,x)=>s+(Number(x.anzahl)||0),0);
-          const ist=new Set(S.planung.filter(x=>x.projektId===p.id&&days.includes(x.datum)).map(x=>x.mitarbeiterId)).size;
-          const diff=Math.max(0,soll-ist);
-          return `<div class="card" style="padding:12px;cursor:pointer;" onclick="goTo('#projekte/${escAttr(p.id)}/team')">
-            <div style="font-weight:650;margin-bottom:5px;">${escHtml(p.name)}</div>
-            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;"><span class="pageSub">Ist / Soll</span><b>${ist} / ${soll}</b></div>
-            <div style="margin-top:7px;"><span class="badge ${diff?"amber":"green"}">${diff?diff+" Person(en) fehlen":"Besetzung ausreichend"}</span></div>
-          </div>`;
-        }).join("")||'<div class="empty" style="grid-column:1/-1;padding:12px;">Noch keine Soll-Besetzung bei Projekten hinterlegt.</div>'}
+    <div class="card" style="padding:12px 14px;margin-bottom:12px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+        <div>
+          <div style="font-size:15px;font-weight:700;">${weekLabel}</div>
+          <div class="pageSub">Projekt ziehen oder freien Mitarbeitereintrag anklicken.</div>
+        </div>
+        <select id="ptTradeFilter" onchange="ptFilterRows()" style="min-width:180px;">
+          <option value="">Alle Gewerke</option>
+          ${trades.map(t=>`<option value="${escAttr(t.toLowerCase())}">${escHtml(t)}</option>`).join("")}
+        </select>
       </div>
     </div>
 
     <div class="card" style="margin-bottom:12px;">
-      <div class="projectSectionHead"><b>Projekte zum Ziehen</b><span class="pageSub">Projekt auf einen Mitarbeiter-Tag ziehen</span></div>
+      <div class="projectSectionHead"><b>Projekte</b><span class="pageSub">Auf einen Mitarbeiter im Kalender ziehen</span></div>
       <div style="display:flex;gap:7px;flex-wrap:wrap;">
-        ${S.projekte.filter(p=>!p.archiviert&&projektEffectiveStatus(p)!=="Abgeschlossen").map(p=>`<div draggable="true" ondragstart="ptDragProject(event,'${escAttr(p.id)}')" style="border:1px solid;padding:6px 9px;border-radius:8px;font-size:11.5px;cursor:grab;${ptProjectStyle(p.id)}">${escHtml(p.name)}</div>`).join("")||'<span class="pageSub">Keine laufenden Projekte.</span>'}
+        ${activeProjects.map(p=>`<div draggable="true" ondragstart="ptDragProject(event,'${escAttr(p.id)}')" style="border:1px solid;padding:7px 10px;border-radius:9px;font-size:11.5px;cursor:grab;${ptProjectStyle(p.id)}">${escHtml(p.name)}</div>`).join("")||'<span class="pageSub">Keine laufenden Projekte.</span>'}
       </div>
     </div>
 
-    <div class="card"><div class="tableWrap"><table class="ptTable">
-      <thead><tr><th style="min-width:180px;">Mitarbeiter</th>${days.map(d=>`<th style="min-width:145px;" class="${d===today?"today":""}">${new Date(d+"T12:00:00").toLocaleDateString("de-DE",{weekday:"short",day:"2-digit",month:"2-digit"})}</th>`).join("")}</tr></thead>
-      <tbody>
-      ${mitarbeiter.map(m=>{
-        const trade=(m.abteilung||m.position||"");
-        return `<tr data-pt-trade="${escAttr(trade.toLowerCase())}">
-          <td><b>${escHtml(m.name)}</b><div class="pageSub">${escHtml(trade||"Kein Gewerk")}</div></td>
+    <div class="card" style="padding:0;overflow:hidden;">
+      <div class="tableWrap">
+        <div style="display:grid;grid-template-columns:repeat(5,minmax(215px,1fr));min-width:1100px;background:var(--border);gap:1px;">
           ${days.map(d=>{
-            const away=ptAbwesenheit(m,d);
-            const entries=ptEntries(m.id,d);
-            if(away) return `<td style="vertical-align:top;background:var(--amber-bg);"><div class="badge amber">${escHtml(away)}</div></td>`;
-            return `<td style="vertical-align:top;cursor:pointer;" onclick="openPlantafelCell('${escAttr(m.id)}','${d}')" ondragover="event.preventDefault()" ondrop="ptDropProject(event,'${escAttr(m.id)}','${d}')">
-              <div style="display:flex;flex-direction:column;gap:5px;min-height:46px;">
-                ${entries.map(e=>{const p=S.projekte.find(x=>x.id===e.projektId);return p?`<div style="border:1px solid;padding:5px 7px;border-radius:7px;font-size:10.5px;${ptProjectStyle(p.id)}"><b>${ptSlotLabel(e.slot)}</b> · ${escHtml(p.name)}${e.notiz?`<div style="opacity:.8;margin-top:2px;">${escHtml(e.notiz)}</div>`:""}</div>`:"";}).join("")}
-                ${entries.length?"":'<span style="color:var(--text-dim2);font-size:11px;">＋ einplanen</span>'}
+            const date=new Date(d+"T12:00:00");
+            const available=mitarbeiter.filter(m=>!ptAbwesenheit(m,d)).length;
+            const planned=new Set(S.planung.filter(x=>x.datum===d).map(x=>x.mitarbeiterId)).size;
+            const free=Math.max(0,available-planned);
+            const isToday=d===today;
+            return `<section style="background:var(--card);min-height:560px;" data-pt-day="${d}">
+              <div style="position:sticky;top:0;z-index:2;padding:13px 12px;border-bottom:1px solid var(--border);background:${isToday?"var(--primary-bg)":"var(--card)"};">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+                  <div>
+                    <div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-dim);">${date.toLocaleDateString("de-DE",{weekday:"long"})}</div>
+                    <div style="font-size:22px;font-weight:750;line-height:1.1;">${date.toLocaleDateString("de-DE",{day:"2-digit"})}</div>
+                    <div class="pageSub">${date.toLocaleDateString("de-DE",{month:"long"})}</div>
+                  </div>
+                  ${isToday?'<span class="badge blue">Heute</span>':""}
+                </div>
+                <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:9px;">
+                  <span class="badge blue">${planned} geplant</span>
+                  <span class="badge green">${free} frei</span>
+                </div>
               </div>
-            </td>`;
-          }).join("")}
-        </tr>`;
-      }).join("")||`<tr><td colspan="6"><div class="empty">Keine Mitarbeiter.</div></td></tr>`}
-      </tbody>
-    </table></div></div>
 
-    <div class="card" style="margin-top:12px;">
-      <div class="projectSectionHead"><b>Heute – wer fährt wohin?</b><span class="pageSub">${fmtDate(today)}</span></div>
-      <div class="simpleList">
-        ${mitarbeiter.map(m=>{
-          const away=ptAbwesenheit(m,today);
-          const entries=ptEntries(m.id,today);
-          if(away) return `<div class="simpleRow"><div class="simpleRowMain"><b>${escHtml(m.name)}</b><div class="pageSub">${escHtml(m.abteilung||m.position||"")}</div></div><span class="badge amber">${escHtml(away)}</span></div>`;
-          return `<div class="simpleRow"><div class="simpleRowMain"><b>${escHtml(m.name)}</b><div class="pageSub">${entries.map(e=>{const p=S.projekte.find(x=>x.id===e.projektId);return p?ptSlotLabel(e.slot)+" "+p.name:"";}).filter(Boolean).join(" · ")||"Noch frei"}</div></div>${entries.length?'<span class="badge blue">geplant</span>':'<span class="badge green">frei</span>'}</div>`;
-        }).join("")}
+              <div style="padding:10px;display:flex;flex-direction:column;gap:8px;">
+                ${mitarbeiter.map(m=>{
+                  const trade=m.abteilung||m.position||"";
+                  const away=ptAbwesenheit(m,d);
+                  const entries=ptEntries(m.id,d);
+                  if(away){
+                    return `<div data-pt-trade="${escAttr(trade.toLowerCase())}" style="border:1px solid var(--border);border-radius:10px;padding:9px 10px;background:var(--amber-bg);">
+                      <div style="display:flex;justify-content:space-between;gap:8px;align-items:center;">
+                        <div style="min-width:0;"><b style="font-size:12px;">${escHtml(m.name)}</b><div class="pageSub">${escHtml(trade||"Kein Gewerk")}</div></div>
+                        <span class="badge amber">${escHtml(away)}</span>
+                      </div>
+                    </div>`;
+                  }
+                  return `<div data-pt-trade="${escAttr(trade.toLowerCase())}" onclick="openPlantafelCell('${escAttr(m.id)}','${d}')" ondragover="event.preventDefault()" ondrop="ptDropProject(event,'${escAttr(m.id)}','${d}')" style="border:1px solid var(--border);border-radius:10px;padding:9px 10px;cursor:pointer;min-height:70px;background:var(--card2);">
+                    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:${entries.length?"7px":"0"};">
+                      <div style="min-width:0;">
+                        <b style="font-size:12px;">${escHtml(m.name)}</b>
+                        <div class="pageSub">${escHtml(trade||"Kein Gewerk")}</div>
+                      </div>
+                      ${entries.length?'<span class="badge blue">geplant</span>':'<span class="badge green">frei</span>'}
+                    </div>
+                    ${entries.length?`<div style="display:flex;flex-direction:column;gap:5px;">${entries.map(e=>{
+                      const p=S.projekte.find(x=>x.id===e.projektId);
+                      if(!p) return "";
+                      return `<div style="border:1px solid;padding:6px 7px;border-radius:7px;font-size:10.5px;${ptProjectStyle(p.id)}">
+                        <div style="display:flex;justify-content:space-between;gap:6px;"><b>${escHtml(p.name)}</b><span>${ptSlotLabel(e.slot)}</span></div>
+                        ${e.notiz?`<div style="opacity:.82;margin-top:3px;">${escHtml(e.notiz)}</div>`:""}
+                      </div>`;
+                    }).join("")}</div>`:'<div style="font-size:11px;color:var(--text-dim2);margin-top:7px;">＋ Einsatz einplanen</div>'}
+                  </div>`;
+                }).join("")}
+              </div>
+            </section>`;
+          }).join("")}
+        </div>
+      </div>
+    </div>
+
+    <div class="grid cols-2" style="margin-top:12px;">
+      <div class="card">
+        <div class="projectSectionHead"><b>Projekt-Besetzung diese Woche</b><span class="pageSub">Ist / Soll</span></div>
+        <div class="simpleList">
+          ${activeProjects.filter(p=>(p.sollBesetzung||[]).length).map(p=>{
+            const soll=(p.sollBesetzung||[]).reduce((s,x)=>s+(Number(x.anzahl)||0),0);
+            const ist=new Set(S.planung.filter(x=>x.projektId===p.id&&days.includes(x.datum)).map(x=>x.mitarbeiterId)).size;
+            const diff=Math.max(0,soll-ist);
+            return `<div class="simpleRow" onclick="goTo('#projekte/${escAttr(p.id)}/team')" style="cursor:pointer;">
+              <div class="simpleRowMain"><b>${escHtml(p.name)}</b><div class="pageSub">${diff?diff+" Person(en) fehlen":"Besetzung ausreichend"}</div></div>
+              <span class="badge ${diff?"amber":"green"}">${ist} / ${soll}</span>
+            </div>`;
+          }).join("")||'<div class="empty" style="padding:14px;">Keine Soll-Besetzung hinterlegt.</div>'}
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="projectSectionHead"><b>Heute – wer fährt wohin?</b><span class="pageSub">${fmtDate(today)}</span></div>
+        <div class="simpleList">
+          ${mitarbeiter.map(m=>{
+            const away=ptAbwesenheit(m,today);
+            const entries=ptEntries(m.id,today);
+            if(away) return `<div class="simpleRow"><div class="simpleRowMain"><b>${escHtml(m.name)}</b><div class="pageSub">${escHtml(m.abteilung||m.position||"")}</div></div><span class="badge amber">${escHtml(away)}</span></div>`;
+            return `<div class="simpleRow"><div class="simpleRowMain"><b>${escHtml(m.name)}</b><div class="pageSub">${entries.map(e=>{const p=S.projekte.find(x=>x.id===e.projektId);return p?ptSlotLabel(e.slot)+" "+p.name:"";}).filter(Boolean).join(" · ")||"Noch frei"}</div></div>${entries.length?'<span class="badge blue">geplant</span>':'<span class="badge green">frei</span>'}</div>`;
+          }).join("")}
+        </div>
       </div>
     </div>
   `;
