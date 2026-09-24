@@ -271,8 +271,8 @@ async function main() {
   window.renderDashboard(window.document.getElementById("view"));
   const dashboardHtml = window.document.getElementById("view").innerHTML;
   assert(dashboardHtml.includes('onclick="openProjektForm()"'), "Dashboard öffnet das Projektformular direkt");
-  assert(dashboardHtml.includes("Aufgaben überfällig") && dashboardHtml.includes("Offene Mängel") && dashboardHtml.includes("Sub-Unterlagen prüfen"), "Dashboard zeigt operative Tageskennzahlen statt Finanzkennzahlen");
-  assert(dashboardHtml.includes("Baustellen ohne heutigen Bericht") && dashboardHtml.includes("Nächste Fertigstellungen"), "Dashboard bündelt Tagesdokumentation und Projekttermine");
+  assert(dashboardHtml.includes("Aufgaben überfällig") && dashboardHtml.includes("Offene Mängel") && dashboardHtml.includes("Baustellen-Blocker"), "Dashboard zeigt operative Tageskennzahlen statt Finanzkennzahlen");
+  assert(dashboardHtml.includes("Baustellen ohne heutigen Bericht") && dashboardHtml.includes("Nächste Fertigstellungen") && dashboardHtml.includes("Operative Blocker &amp; Freigaben"), "Dashboard bündelt Tagesdokumentation, Termine und operative Risiken");
 
   console.log("\n== Storage Layer: sichtbare Fehlerbehandlung bei Speicherfehler ==");
   let toastMsgs = [];
@@ -300,7 +300,7 @@ async function main() {
   const fakeState = window.defaultState();
   fakeState.projekte.push(oldSavedProject);
   const shaped = window.ensureShape(fakeState);
-  assert(Array.isArray(shaped.projekte[0].team) && Array.isArray(shaped.projekte[0].fotos) && Array.isArray(shaped.projekte[0].aufmasse) && Array.isArray(shaped.projekte[0].lvPositionen) && Array.isArray(shaped.projekte[0].maengel) && Array.isArray(shaped.projekte[0].kontakte), "Alte Projekt-Datensätze bekommen fehlende Arrays inklusive Mängel und Baustellenkontakte via ensureShape()");
+  assert(Array.isArray(shaped.projekte[0].team) && Array.isArray(shaped.projekte[0].fotos) && Array.isArray(shaped.projekte[0].aufmasse) && Array.isArray(shaped.projekte[0].lvPositionen) && Array.isArray(shaped.projekte[0].maengel) && Array.isArray(shaped.projekte[0].kontakte) && Array.isArray(shaped.projekte[0].nachtraege) && Array.isArray(shaped.projekte[0].entscheidungen) && Array.isArray(shaped.projekte[0].blocker) && Array.isArray(shaped.projekte[0].sollBesetzung), "Alte Projekt-Datensätze bekommen alle operativen Projekt-Arrays via ensureShape()");
   assert(shaped.projekte[0].standardSubLvAbzug === 20, "Alte Projekte erhalten 20 % als verständlichen Standardabzug");
   const legacyPlanState = window.defaultState();
   legacyPlanState.planung.push({ id:"legacy-plan", mitarbeiterId:"m1", datum:"2026-09-01", projektId:"p1" });
@@ -345,11 +345,16 @@ async function main() {
   });
 
   console.log("\n== Globale Suche ==");
+  const p1Search = window.S.projekte.find((p) => p.id === "p1");
+  p1Search.kontakte = [{ id:"gs-contact", name:"Suchkontakt", rolle:"Architekt", firma:"", tel:"", email:"", notiz:"" }];
+  p1Search.maengel = [{ id:"gs-mangel", titel:"Suchmangel", bereich:"Flur", beschreibung:"", status:"offen", frist:"", foto:"" }];
   const gsIndex = window.globalSearchIndex();
   assert(gsIndex.some((it) => it.typ === "mitarbeiter" && it.id === "m1"), "Suchindex enthält Mitarbeiter");
   assert(gsIndex.some((it) => it.typ === "kunde" && it.id === "kd1"), "Suchindex enthält Kunden");
   assert(gsIndex.some((it) => it.typ === "subunternehmer" && it.id === "sub1"), "Suchindex enthält Subunternehmer");
   assert(gsIndex.some((it) => it.typ === "projekt" && it.id === "p1"), "Suchindex enthält Projekte");
+  assert(gsIndex.some((it) => it.typ === "projektkontakt" && it.label === "Suchkontakt"), "Suchindex enthält Baustellenkontakte");
+  assert(gsIndex.some((it) => it.typ === "projektmangel" && it.label === "Suchmangel"), "Suchindex enthält Projektmängel");
   let gsOk = true, gsMsg = "";
   try { window.openGlobalSearch(); } catch (e) { gsOk = false; gsMsg = e.message; }
   assert(gsOk, "Suche-Modal öffnet ohne Exception" + (gsOk ? "" : " (" + gsMsg + ")"));
@@ -497,6 +502,7 @@ async function main() {
   assert(uebHtml.includes("Leistungsverzeichnis") && uebHtml.includes("Dateien &amp; Fotos") && uebHtml.includes(">Abnahme<"), "Zentrale Projektbereiche sind direkt erreichbar");
   assert(!uebHtml.includes("LV öffnen"), "Leistungsverzeichnis wird in der Projektübersicht nicht doppelt angeboten");
   assert(uebHtml.includes("Team &amp; Einsatz"), "Mitarbeiter-Einsatzplanung ist direkt aus dem Projekt erreichbar");
+  assert(uebHtml.includes("Baustellensteuerung"), "Blocker, Freigaben und Nachträge sind direkt aus dem Projekt erreichbar");
   assert(uebHtml.includes(">Mängel<") && uebHtml.includes("Baustellenkontakte"), "Mängel und Baustellenkontakte sind aus der Projektübersicht erreichbar");
   assert(uebHtml.includes("Bautagebuch") && uebHtml.includes("Projektchronik"), "Bautagebuch und Projektchronik sind direkt im Überblick sichtbar");
 
@@ -512,6 +518,25 @@ async function main() {
   assert(opsHtml.includes("Anna Beispiel") && opsHtml.includes("Architektin"), "Baustellenkontakte werden im Projekt angezeigt");
   p1Ops.maengel = [];
   p1Ops.kontakte = [];
+
+  console.log("\n== Projekte: Baustellensteuerung & Lieferungen ==");
+  p1Ops.blocker = [{ id:"bl-test", titel:"Material fehlt", grund:"Lieferung offen", faellig:"2099-01-01", status:"offen" }];
+  p1Ops.entscheidungen = [{ id:"en-test", titel:"Farbton", ansprechpartner:"Bauherr", faellig:"2099-01-01", entscheidung:"", status:"offen" }];
+  p1Ops.nachtraege = [{ id:"nt-test", titel:"Zusatzwand", ursache:"Planänderung", angefragtAm:"2026-09-01", freigegebenDurch:"", status:"angefragt" }];
+  p1Ops.material = [{ id:"mat-test", bezeichnung:"Gipskarton", menge:10, einheit:"Stk.", preis:0, datum:"2026-09-01", lieferant:"Baustoffhandel", bestelltAm:"2026-09-01", liefertermin:"2099-01-01", lieferstatus:"bestellt", lieferschein:"" }];
+  window.renderProjekte(window.document.getElementById("view"), "p1", "steuerung");
+  let steuerHtml = window.document.getElementById("view").innerHTML;
+  assert(steuerHtml.includes("Material fehlt") && steuerHtml.includes("Farbton") && steuerHtml.includes("Zusatzwand"), "Baustellensteuerung zeigt Blocker, Entscheidung und Nachtrag");
+  assert(steuerHtml.includes("Start-Check öffnen") && steuerHtml.includes("Abschluss-Check öffnen"), "Start- und Abschluss-Assistent sind vorhanden");
+  window.renderProjekte(window.document.getElementById("view"), "p1", "material");
+  let matHtml = window.document.getElementById("view").innerHTML;
+  assert(matHtml.includes("Gipskarton") && matHtml.includes("Baustoffhandel") && matHtml.includes("bestellt"), "Materialtab zeigt Lieferant, Termin und Lieferstatus");
+  assert(window.globalSearchIndex().some((it) => it.typ === "projektsteuerung" && it.label === "Material fehlt"), "Globale Suche indexiert Projekt-Blocker");
+  assert(window.globalSearchIndex().some((it) => it.typ === "projektmaterial" && it.label === "Gipskarton"), "Globale Suche indexiert Material und Lieferungen");
+  p1Ops.blocker = [];
+  p1Ops.entscheidungen = [];
+  p1Ops.nachtraege = [];
+  p1Ops.material = [];
 
   window.S.mitarbeiter.push({ id: "uebWorker", name: "Übersicht Arbeiter", position: "Maler", rolle: "Mitarbeiter", tel: "", email: "uebworker@example.com", adresse: "", eintritt: "2024-01-01", status: "aktiv", urlaubstageJahr: 30, stundenlohn: 20, dokumente: [] });
   window.S.currentUserId = "uebWorker";
@@ -729,6 +754,7 @@ async function main() {
   const ptHtml = window.document.getElementById("view").innerHTML;
   assert(ptHtml.includes("Einsatzplanung") && ptHtml.includes("Heute – wer fährt wohin?"), "Plantafel zeigt Wochen- und Tagesübersicht");
   assert(ptHtml.includes("Woche → nächste kopieren") && ptHtml.includes("Alle Gewerke"), "Plantafel bietet Wochenkopie und Gewerkefilter");
+  assert(ptHtml.includes("Projekt-Besetzung diese Woche"), "Plantafel wertet Soll- und Ist-Besetzung der Projekte aus");
   window.buildSidebar();
   assert(window.document.getElementById("sidebar").innerHTML.includes('data-route="plantafel"'), "Plantafel ist in der linken Hauptnavigation sichtbar");
 
