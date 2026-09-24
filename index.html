@@ -803,6 +803,23 @@ function ensureShape(s){
     if(!p.entscheidungen) p.entscheidungen=[];
     if(!p.blocker) p.blocker=[];
     if(!p.sollBesetzung) p.sollBesetzung=[];
+    if(!p.besichtigungen) p.besichtigungen=[];
+    p.besichtigungen.forEach(b=>{
+      if(!b.bereiche) b.bereiche=[];
+      if(!b.fragen) b.fragen=[];
+      if(!b.wuensche) b.wuensche=[];
+      if(!b.entscheidungen) b.entscheidungen=[];
+      if(!b.aufgaben) b.aufgaben=[];
+      if(!b.feststellungen) b.feststellungen=[];
+      if(b.status==null) b.status="offen";
+      if(b.unterschrift==null) b.unterschrift="";
+      if(b.abschlussNotiz==null) b.abschlussNotiz="";
+      b.bereiche.forEach(br=>{
+        if(!br.fotos) br.fotos=[];
+        if(!br.masse) br.masse=[];
+        if(br.notiz==null) br.notiz="";
+      });
+    });
     p.material.forEach(m=>{
       if(m.lieferant==null) m.lieferant="";
       if(m.bestelltAm==null) m.bestelltAm="";
@@ -1313,6 +1330,14 @@ function globalSearchIndex(){
     (p.nachtraege||[]).forEach(x=>items.push({typ:"projektsteuerung",typLabel:"Nachtrag",id:p.id,icon:"＋",label:x.titel,sub:p.name,text:[x.titel,x.ursache,x.freigegebenDurch,p.name].filter(Boolean).join(" ").toLowerCase()}));
     (p.material||[]).forEach(x=>items.push({typ:"projektmaterial",typLabel:"Material/Lieferung",id:p.id,icon:"▤",label:x.bezeichnung,sub:p.name,text:[x.bezeichnung,x.lieferant,x.lieferstatus,p.name].filter(Boolean).join(" ").toLowerCase()}));
     (p.dokumente||[]).forEach(x=>items.push({typ:"projektdokument",typLabel:"Projektdatei",id:p.id,icon:"📁",label:x.name,sub:p.name,text:[x.name,p.name].filter(Boolean).join(" ").toLowerCase()}));
+    (p.besichtigungen||[]).forEach(b=>{
+      const textParts=[b.titel,b.art,b.ansprechpartner,b.teilnehmer,b.notiz,p.name];
+      (b.bereiche||[]).forEach(br=>{textParts.push(br.name,br.ebene,br.notiz);(br.masse||[]).forEach(m=>textParts.push(m.label,m.wert,m.einheit));});
+      (b.fragen||[]).forEach(x=>textParts.push(x.text,x.notiz));
+      (b.wuensche||[]).forEach(x=>textParts.push(x.text,x.notiz));
+      (b.feststellungen||[]).forEach(x=>textParts.push(x.text,x.notiz));
+      items.push({typ:"projektbesichtigung",typLabel:"Baustellenbesichtigung",id:p.id+":"+b.id,icon:"⌖",label:b.titel||b.art||"Besichtigung",sub:p.name,text:textParts.filter(Boolean).join(" ").toLowerCase()});
+    });
   });
   if(hasAdminAccess()){
     S.rechnungen.forEach(r=>items.push({typ:"rechnung", typLabel:"Rechnung", id:r.id, icon:"🧾", label:r.nr, sub:kundeName(r.kundeId), text:[r.nr,kundeName(r.kundeId)].filter(Boolean).join(" ").toLowerCase()}));
@@ -1337,6 +1362,7 @@ function globalSearchOpenResult(typ, id){
     projektsteuerung: ()=>{ const h="#projekte/"+id+"/steuerung"; location.hash=h; route(h); },
     projektmaterial: ()=>{ const h="#projekte/"+id+"/material"; location.hash=h; route(h); },
     projektdokument: ()=>{ const h="#projekte/"+id+"/dokumente"; location.hash=h; route(h); },
+    projektbesichtigung: ()=>{ const parts=id.split(":"); window._activeBesichtigungId=parts[1]; const h="#projekte/"+parts[0]+"/besichtigung"; location.hash=h; route(h); },
     rechnung: ()=>{ location.hash="#rechnungen"; route("#rechnungen"); openRechnungForm(id); },
     vertrag: ()=>{ location.hash="#vertraege"; route("#vertraege"); openVertragForm(id); },
     passwort: ()=>{ location.hash="#passwoerter"; route("#passwoerter"); openPasswortForm(id); },
@@ -3818,7 +3844,7 @@ async function renderProjekteKarte(list){
   if(statusEl) statusEl.textContent = markers.length ? "" : (withAdresse.length ? "Keine Adresse konnte auf der Karte gefunden werden." : "");
 }
 function openProjektForm(id){
-  const p = id ? S.projekte.find(x=>x.id===id) : {id:uid(), name:"", kundeId:"", adresse:"", status:"In Planung", budget:0, beginn:"", deadline:"", fortschritt:0, personalkosten:0, fremdkosten:0, abnahmeDatum:"", abnahmeBemerkung:"", archiviert:false, chronik:[], standardSubLvAbzug:20, team:[], subunternehmer:[], fotos:[], dokumente:[], grundrisse:[], material:[], lvPositionen:[], ausschreibung:[], bautagebuch:[], zugaenge:[], checkliste:[], aufmasse:[], bauzeitenplan:[], chat:[], maengel:[], kontakte:[], nachtraege:[], entscheidungen:[], blocker:[], sollBesetzung:[]};
+  const p = id ? S.projekte.find(x=>x.id===id) : {id:uid(), name:"", kundeId:"", adresse:"", status:"In Planung", budget:0, beginn:"", deadline:"", fortschritt:0, personalkosten:0, fremdkosten:0, abnahmeDatum:"", abnahmeBemerkung:"", archiviert:false, chronik:[], standardSubLvAbzug:20, team:[], subunternehmer:[], fotos:[], dokumente:[], grundrisse:[], material:[], lvPositionen:[], ausschreibung:[], bautagebuch:[], zugaenge:[], checkliste:[], aufmasse:[], bauzeitenplan:[], chat:[], maengel:[], kontakte:[], nachtraege:[], entscheidungen:[], blocker:[], sollBesetzung:[], besichtigungen:[]};
   openModal(`
     <div class="modalHead"><div class="modalTitle">${id?"Projekt bearbeiten":"Neues Projekt"}</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
     <div class="compactFormNote">Für den Start reichen Projekt, Kunde, Adresse, Beginn und Fertigstellung. Weitere Angaben können später ergänzt werden.</div>
@@ -3925,7 +3951,8 @@ function duplicateProjekt(id){
     nachtraege:[],
     entscheidungen:[],
     blocker:[],
-    sollBesetzung:[]
+    sollBesetzung:[],
+    besichtigungen:[]
   };
   S.projekte.push(clone);
   addProjektChronik(clone.id,"projekt","Projekt aus „"+p.name+"“ dupliziert");
@@ -3935,6 +3962,7 @@ function duplicateProjekt(id){
 }
 const PROJEKT_TABS = [
   {id:"uebersicht", label:"Überblick", icon:"▦"},
+  {id:"besichtigung", label:"Baustellenbesichtigung", icon:"⌖"},
   {id:"steuerung", label:"Baustellensteuerung", icon:"⚑"},
   {id:"lv", label:"Leistungsverzeichnis", icon:"%"},
   {id:"bauzeitenplan", label:"Bauablauf", icon:"◫"},
@@ -3977,7 +4005,7 @@ function renderProjektDetail(view, id, tab){
     uebersicht: renderTabUebersicht, team: renderTabTeam, bauzeitenplan: renderTabBauzeitenplan, fotos: renderTabFotos, dokumente: renderTabProjektDokumente,
     material: renderTabMaterial, ausschreibung: renderTabAusschreibung, bautagebuch: renderTabBautagebuch, zugaenge: renderTabZugaenge,
     checkliste: renderTabChecklist, aufmass: renderTabAufmass, chat: renderTabProjektChat, lv: renderTabProjektLv, vorlagen: renderTabProjektVorlagen,
-    maengel: renderTabMaengel, kontakte: renderTabProjektKontakte, steuerung: renderTabProjektSteuerung
+    maengel: renderTabMaengel, kontakte: renderTabProjektKontakte, steuerung: renderTabProjektSteuerung, besichtigung: renderTabBesichtigungen
   };
   (renderers[tab]||renderTabUebersicht)(body, p);
 }
@@ -4158,6 +4186,7 @@ function renderTabUebersicht(body, p){
     <div class="projectQuickActions">
       <button class="projectQuickAction" onclick="goTo('#projekte/${escAttr(p.id)}/dokumente')"><span>📷</span><span>Foto / Datei</span></button>
       <button class="projectQuickAction" onclick="openProjektAufgabe('${escAttr(p.id)}')"><span>📝</span><span>Aufgabe</span></button>
+      <button class="projectQuickAction" onclick="openBesichtigungForm('${escAttr(p.id)}')"><span>⌖</span><span>Besichtigung</span></button>
       <button class="projectQuickAction" onclick="openMangelForm('${escAttr(p.id)}')"><span>⚠</span><span>Mangel</span></button>
       <button class="projectQuickAction" onclick="openBautagebuchForm('${escAttr(p.id)}')"><span>✎</span><span>Heute dokumentieren</span></button>
     </div>
@@ -4186,6 +4215,7 @@ function renderTabUebersicht(body, p){
       <button class="projectArea" onclick="goTo('#projekte/${escAttr(p.id)}/lv')"><span><div class="projectAreaTitle">Leistungsverzeichnis</div><div class="projectAreaSub">${(p.lvPositionen||[]).length} Positionen</div></span><span>›</span></button>
       <button class="projectArea" onclick="goTo('#projekte/${escAttr(p.id)}/bauzeitenplan')"><span><div class="projectAreaTitle">Bauablauf</div><div class="projectAreaSub">${p.bauzeitenplan.length} Phasen</div></span><span>›</span></button>
       <button class="projectArea" onclick="goTo('#projekte/${escAttr(p.id)}/team')"><span><div class="projectAreaTitle">Team & Einsatz</div><div class="projectAreaSub">${p.team.length} Mitarbeiter · Wochenplanung</div></span><span>›</span></button>
+      <button class="projectArea" onclick="goTo('#projekte/${escAttr(p.id)}/besichtigung')"><span><div class="projectAreaTitle">Baustellenbesichtigung</div><div class="projectAreaSub">${(p.besichtigungen||[]).length} Besichtigung${(p.besichtigungen||[]).length===1?"":"en"}</div></span><span>›</span></button>
       <button class="projectArea" onclick="goTo('#projekte/${escAttr(p.id)}/steuerung')"><span><div class="projectAreaTitle">Baustellensteuerung</div><div class="projectAreaSub">${offeneBlocker.length} Blocker · ${offeneEntscheidungen.length} Entscheidungen</div></span><span>›</span></button>
       <button class="projectArea" onclick="goTo('#projekte/${escAttr(p.id)}/dokumente')"><span><div class="projectAreaTitle">Dateien & Fotos</div><div class="projectAreaSub">${p.dokumente.length} Dateien · ${p.fotos.length} Fotos</div></span><span>›</span></button>
       <button class="projectArea" onclick="goTo('#projekte/${escAttr(p.id)}/maengel')"><span><div class="projectAreaTitle">Mängel</div><div class="projectAreaSub">${offeneMaengel.length} offen</div></span><span>›</span></button>
@@ -5433,6 +5463,276 @@ function saveZugang(pid){
 function deleteZugang(pid, zid){
   const p = S.projekte.find(x=>x.id===pid);
   deleteItemWithUndo(p.zugaenge, zid, "Zugang gelöscht.");
+}
+
+/* =========================================================
+   PROJEKT: BAUSTELLENBESICHTIGUNG / BESTANDSAUFNAHME
+========================================================= */
+function besichtigungById(p,id){
+  return (p.besichtigungen||[]).find(x=>x.id===id)||null;
+}
+function renderTabBesichtigungen(body,p){
+  const list=(p.besichtigungen||[]).slice().sort((a,b)=>(b.datum||"").localeCompare(a.datum||""));
+  const activeId=window._activeBesichtigungId && besichtigungById(p,window._activeBesichtigungId) ? window._activeBesichtigungId : null;
+  if(activeId) return renderBesichtigungDetail(body,p,besichtigungById(p,activeId));
+  body.innerHTML=`
+    <div class="card">
+      <div class="projectSectionHead">
+        <div><b>Baustellenbesichtigungen</b><div class="pageSub">Bestandsaufnahme vor Baustart – Räume, Fotos, Maße, Wünsche, Fragen und Aufgaben gebündelt erfassen.</div></div>
+        <button class="btn primary sm" onclick="openBesichtigungForm('${escAttr(p.id)}')">＋ Neue Besichtigung</button>
+      </div>
+      <div class="simpleList">
+        ${list.map(b=>{
+          const fotos=(b.bereiche||[]).reduce((n,x)=>n+(x.fotos||[]).length,0);
+          const masse=(b.bereiche||[]).reduce((n,x)=>n+(x.masse||[]).length,0);
+          return `<div class="simpleRow" onclick="openBesichtigung('${escAttr(p.id)}','${escAttr(b.id)}')" style="cursor:pointer;">
+            <div class="simpleRowMain">
+              <b>${escHtml(b.titel||b.art||"Baustellenbesichtigung")}</b>
+              <div class="pageSub">${fmtDate(b.datum)}${b.uhrzeit?" · "+escHtml(b.uhrzeit):""} · ${(b.bereiche||[]).length} Bereiche · ${fotos} Fotos · ${masse} Maße</div>
+            </div>
+            <span class="badge ${b.status==="abgeschlossen"?"green":"blue"}">${b.status==="abgeschlossen"?"abgeschlossen":"offen"}</span>
+          </div>`;
+        }).join("")||'<div class="empty" style="padding:22px;">Noch keine Baustellenbesichtigung angelegt.</div>'}
+      </div>
+    </div>`;
+}
+function openBesichtigung(pid,bid){
+  window._activeBesichtigungId=bid;
+  goTo("#projekte/"+pid+"/besichtigung");
+}
+function closeBesichtigungDetail(pid){
+  window._activeBesichtigungId=null;
+  goTo("#projekte/"+pid+"/besichtigung");
+}
+function openBesichtigungForm(pid){
+  openModal(`
+    <div class="modalHead"><div class="modalTitle">Neue Baustellenbesichtigung</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
+    <div class="grid cols-2">
+      <div class="formRow"><label>Datum</label><input id="bsDatum" type="date" value="${todayISO()}"></div>
+      <div class="formRow"><label>Uhrzeit</label><input id="bsZeit" type="time"></div>
+      <div class="formRow"><label>Anlass</label><select id="bsArt"><option>Erstbesichtigung</option><option>Bestandsaufnahme</option><option>Aufmaßtermin</option><option>Planungsbesprechung</option><option>Sonstige Besichtigung</option></select></div>
+      <div class="formRow"><label>Ansprechpartner vor Ort</label><input id="bsAnsprech" type="text" placeholder="Name"></div>
+    </div>
+    <div class="formRow"><label>Teilnehmer</label><input id="bsTeilnehmer" type="text" placeholder="z. B. Bauherr, Architekt, Bauleiter"></div>
+    <div class="formRow"><label>Allgemeine Notiz</label><div class="micWrap"><textarea id="bsNotiz" placeholder="Erster Eindruck, Zugang, Besonderheiten …"></textarea>${fieldMic("bsNotiz")}</div></div>
+    <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="saveNewBesichtigung('${escAttr(pid)}')">Besichtigung starten</button></div>
+  `,true);
+}
+function saveNewBesichtigung(pid){
+  const p=S.projekte.find(x=>x.id===pid); if(!p)return;
+  const art=document.getElementById("bsArt").value;
+  const b={id:uid(),datum:document.getElementById("bsDatum").value||todayISO(),uhrzeit:document.getElementById("bsZeit").value,art,titel:art,ansprechpartner:document.getElementById("bsAnsprech").value.trim(),teilnehmer:document.getElementById("bsTeilnehmer").value.trim(),notiz:document.getElementById("bsNotiz").value.trim(),status:"offen",bereiche:[],fragen:[],wuensche:[],entscheidungen:[],aufgaben:[],feststellungen:[],unterschrift:"",abschlussNotiz:"",erstelltAm:new Date().toISOString()};
+  p.besichtigungen.push(b);
+  addProjektChronik(pid,"besichtigung","Baustellenbesichtigung gestartet: "+art);
+  saveState(); closeModal(); window._activeBesichtigungId=b.id; goTo("#projekte/"+pid+"/besichtigung");
+}
+function renderBesichtigungDetail(body,p,b){
+  const fotoCount=(b.bereiche||[]).reduce((n,x)=>n+(x.fotos||[]).length,0);
+  const massCount=(b.bereiche||[]).reduce((n,x)=>n+(x.masse||[]).length,0);
+  body.innerHTML=`
+    <div class="card" style="margin-bottom:12px;">
+      <div class="projectSectionHead">
+        <div>
+          <button class="btn sm" onclick="closeBesichtigungDetail('${escAttr(p.id)}')" style="margin-bottom:8px;">← Alle Besichtigungen</button>
+          <div><b style="font-size:17px;">${escHtml(b.titel||b.art||"Baustellenbesichtigung")}</b></div>
+          <div class="pageSub">${fmtDate(b.datum)}${b.uhrzeit?" · "+escHtml(b.uhrzeit):""}${b.ansprechpartner?" · "+escHtml(b.ansprechpartner):""}</div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <span class="badge ${b.status==="abgeschlossen"?"green":"blue"}">${b.status==="abgeschlossen"?"abgeschlossen":"laufend"}</span>
+          <button class="btn sm" onclick="exportBesichtigungPDF('${escAttr(p.id)}','${escAttr(b.id)}')">PDF</button>
+          <button class="btn sm" onclick="openBesichtigungUnterschrift('${escAttr(p.id)}','${escAttr(b.id)}')">Unterschrift</button>
+          <button class="btn primary sm" onclick="finishBesichtigung('${escAttr(p.id)}','${escAttr(b.id)}')">Besichtigung abschließen</button>
+        </div>
+      </div>
+      ${b.notiz?`<div style="font-size:13px;line-height:1.5;margin-top:8px;">${escHtml(b.notiz)}</div>`:""}
+      <div class="grid cols-4" style="margin-top:12px;">
+        <div class="kpi"><div class="kpiVal">${(b.bereiche||[]).length}</div><div class="kpiLabel">Bereiche</div></div>
+        <div class="kpi"><div class="kpiVal">${fotoCount}</div><div class="kpiLabel">Fotos</div></div>
+        <div class="kpi"><div class="kpiVal">${massCount}</div><div class="kpiLabel">Maße</div></div>
+        <div class="kpi"><div class="kpiVal">${(b.aufgaben||[]).length}</div><div class="kpiLabel">Aufgaben</div></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:12px;">
+      <div class="projectSectionHead"><div><b>Bereiche / Räume</b><div class="pageSub">Vor Ort Raum für Raum dokumentieren.</div></div><button class="btn primary sm" onclick="openBesichtigungBereichForm('${escAttr(p.id)}','${escAttr(b.id)}')">＋ Bereich</button></div>
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        ${(b.bereiche||[]).map(br=>renderBesichtigungBereichCard(p,b,br)).join("")||'<div class="empty" style="padding:16px;">Noch keinen Raum oder Bereich angelegt.</div>'}
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:12px;">
+      <div class="projectSectionHead"><b>Schnellerfassung</b><span class="pageSub">Für das Handy optimiert</span></div>
+      <div class="projectQuickActions">
+        <button class="projectQuickAction" onclick="openBesichtigungTextItem('${escAttr(p.id)}','${escAttr(b.id)}','frage')"><span>?</span><span>Offene Frage</span></button>
+        <button class="projectQuickAction" onclick="openBesichtigungTextItem('${escAttr(p.id)}','${escAttr(b.id)}','wunsch')"><span>★</span><span>Kundenwunsch</span></button>
+        <button class="projectQuickAction" onclick="openBesichtigungTextItem('${escAttr(p.id)}','${escAttr(b.id)}','entscheidung')"><span>✓</span><span>Freigabe</span></button>
+        <button class="projectQuickAction" onclick="openBesichtigungAufgabeForm('${escAttr(p.id)}','${escAttr(b.id)}')"><span>☑</span><span>Aufgabe</span></button>
+        <button class="projectQuickAction" onclick="openBesichtigungTextItem('${escAttr(p.id)}','${escAttr(b.id)}','feststellung')"><span>!</span><span>Feststellung</span></button>
+      </div>
+    </div>
+
+    <div class="grid cols-2">
+      ${renderBesichtigungListCard("Offene Fragen",b.fragen||[],"frage")}
+      ${renderBesichtigungListCard("Kundenwünsche",b.wuensche||[],"wunsch")}
+      ${renderBesichtigungListCard("Entscheidungen / Freigaben",b.entscheidungen||[],"entscheidung")}
+      ${renderBesichtigungListCard("Feststellungen / Besonderheiten",b.feststellungen||[],"feststellung")}
+    </div>
+
+    <div class="card" style="margin-top:12px;">
+      <div class="projectSectionHead"><b>Aufgaben aus der Besichtigung</b><span class="pageSub">Werden beim Abschließen ins Projekt übernommen</span></div>
+      <div class="simpleList">
+        ${(b.aufgaben||[]).map(a=>`<div class="simpleRow"><div class="simpleRowMain"><b>${escHtml(a.titel)}</b><div class="pageSub">${escHtml(a.verantwortlich||"")}${a.faellig?" · "+fmtDate(a.faellig):""}</div></div>${a.uebernommenId?'<span class="badge green">übernommen</span>':'<span class="badge blue">Entwurf</span>'}</div>`).join("")||'<div class="empty" style="padding:12px;">Keine Aufgaben erfasst.</div>'}
+      </div>
+    </div>
+  `;
+}
+function renderBesichtigungBereichCard(p,b,br){
+  return `<div class="card" style="padding:12px;background:var(--card2);">
+    <div class="projectSectionHead">
+      <div><b>${escHtml(br.name)}</b><div class="pageSub">${escHtml(br.ebene||"")}${br.notiz?" · "+escHtml(br.notiz):""}</div></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <label class="btn sm" style="margin:0;">📷 Foto<input type="file" accept="image/*" capture="environment" multiple style="display:none" onchange="addBesichtigungFotos('${escAttr(p.id)}','${escAttr(b.id)}','${escAttr(br.id)}',this.files)"></label>
+        <button class="btn sm" onclick="openBesichtigungMassForm('${escAttr(p.id)}','${escAttr(b.id)}','${escAttr(br.id)}')">↔ Maß</button>
+        <button class="btn sm" onclick="openBesichtigungBereichNotiz('${escAttr(p.id)}','${escAttr(b.id)}','${escAttr(br.id)}')">✎ Notiz</button>
+      </div>
+    </div>
+    ${(br.masse||[]).length?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin:8px 0;">${br.masse.map(m=>`<span class="badge gray">${escHtml(m.label)}: ${escHtml(m.wert)} ${escHtml(m.einheit||"")}</span>`).join("")}</div>`:""}
+    ${(br.fotos||[]).length?`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:7px;margin-top:8px;">${br.fotos.map(f=>`<div style="position:relative;"><img src="${escAttr(f.dataURL)}" alt="${escAttr(f.name||"Foto")}" style="width:100%;height:90px;object-fit:cover;border-radius:8px;"><button class="iconBtn" onclick="deleteBesichtigungFoto('${escAttr(p.id)}','${escAttr(b.id)}','${escAttr(br.id)}','${escAttr(f.id)}')" style="position:absolute;right:3px;top:3px;background:rgba(0,0,0,.55);">×</button></div>`).join("")}</div>`:""}
+  </div>`;
+}
+function openBesichtigungBereichForm(pid,bid){
+  openModal(`<div class="modalHead"><div class="modalTitle">Raum / Bereich hinzufügen</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
+  <div class="grid cols-2"><div class="formRow"><label>Bereich</label><input id="brName" type="text" placeholder="z. B. Wohnzimmer"></div><div class="formRow"><label>Ebene / Lage</label><input id="brEbene" type="text" placeholder="z. B. EG"></div></div>
+  <div class="formRow"><label>Erste Notiz</label><textarea id="brNotiz"></textarea></div>
+  <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="saveBesichtigungBereich('${escAttr(pid)}','${escAttr(bid)}')">Hinzufügen</button></div>`);
+}
+function saveBesichtigungBereich(pid,bid){
+  const p=S.projekte.find(x=>x.id===pid),b=besichtigungById(p,bid),name=document.getElementById("brName").value.trim();
+  if(!name){toast("Bereich erforderlich.","warn");return;}
+  b.bereiche.push({id:uid(),name,ebene:document.getElementById("brEbene").value.trim(),notiz:document.getElementById("brNotiz").value.trim(),fotos:[],masse:[]});
+  addProjektChronik(pid,"besichtigung","Besichtigungsbereich angelegt: "+name);saveState();closeModal();route(location.hash);
+}
+function openBesichtigungBereichNotiz(pid,bid,brid){
+  const p=S.projekte.find(x=>x.id===pid),b=besichtigungById(p,bid),br=b.bereiche.find(x=>x.id===brid);
+  openModal(`<div class="modalHead"><div class="modalTitle">Notiz – ${escHtml(br.name)}</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
+  <div class="formRow"><div class="micWrap"><textarea id="brEditNotiz" style="min-height:140px;">${escHtml(br.notiz||"")}</textarea>${fieldMic("brEditNotiz")}</div></div>
+  <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="saveBesichtigungBereichNotiz('${escAttr(pid)}','${escAttr(bid)}','${escAttr(brid)}')">Speichern</button></div>`);
+}
+function saveBesichtigungBereichNotiz(pid,bid,brid){
+  const p=S.projekte.find(x=>x.id===pid),b=besichtigungById(p,bid),br=b.bereiche.find(x=>x.id===brid);
+  br.notiz=document.getElementById("brEditNotiz").value.trim();saveState();closeModal();route(location.hash);
+}
+function openBesichtigungMassForm(pid,bid,brid){
+  openModal(`<div class="modalHead"><div class="modalTitle">Maß erfassen</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
+  <div class="grid cols-3"><div class="formRow"><label>Bezeichnung</label><input id="bmLabel" type="text" placeholder="z. B. Wand links"></div><div class="formRow"><label>Wert</label><input id="bmWert" type="number" step="0.01"></div><div class="formRow"><label>Einheit</label><select id="bmEinheit"><option>m</option><option>cm</option><option>m²</option><option>Stk.</option></select></div></div>
+  <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="saveBesichtigungMass('${escAttr(pid)}','${escAttr(bid)}','${escAttr(brid)}')">Speichern</button></div>`);
+}
+function saveBesichtigungMass(pid,bid,brid){
+  const p=S.projekte.find(x=>x.id===pid),b=besichtigungById(p,bid),br=b.bereiche.find(x=>x.id===brid),label=document.getElementById("bmLabel").value.trim(),wert=document.getElementById("bmWert").value;
+  if(!label||!wert){toast("Bezeichnung und Wert erforderlich.","warn");return;}
+  br.masse.push({id:uid(),label,wert,einheit:document.getElementById("bmEinheit").value});saveState();closeModal();route(location.hash);
+}
+async function addBesichtigungFotos(pid,bid,brid,files){
+  const p=S.projekte.find(x=>x.id===pid),b=besichtigungById(p,bid),br=b.bereiche.find(x=>x.id===brid); if(!br||!files)return;
+  let n=0;
+  for(const file of Array.from(files)){
+    try{br.fotos.push({id:uid(),name:file.name,dataURL:await fileToDataURL(file),datum:new Date().toISOString(),uebernommenId:""});n++;}catch(e){toast("Foto konnte nicht geladen werden: "+e.message,"error");}
+  }
+  if(n){addProjektChronik(pid,"besichtigung",n+" Foto(s) bei Besichtigung aufgenommen: "+br.name);saveState();route(location.hash);}
+}
+function deleteBesichtigungFoto(pid,bid,brid,fid){
+  const p=S.projekte.find(x=>x.id===pid),b=besichtigungById(p,bid),br=b.bereiche.find(x=>x.id===brid);
+  br.fotos=br.fotos.filter(x=>x.id!==fid);saveState();route(location.hash);
+}
+function renderBesichtigungListCard(title,list,type){
+  return `<div class="card"><div class="projectSectionHead"><b>${escHtml(title)}</b><span class="pageSub">${list.length}</span></div><div class="simpleList">${list.map(x=>`<div class="simpleRow"><div class="simpleRowMain"><b>${escHtml(x.text||x.titel||"Eintrag")}</b>${x.notiz?`<div class="pageSub">${escHtml(x.notiz)}</div>`:""}</div>${x.uebernommenId?'<span class="badge green">übernommen</span>':""}</div>`).join("")||'<div class="empty" style="padding:10px;">Keine Einträge.</div>'}</div></div>`;
+}
+function openBesichtigungTextItem(pid,bid,type){
+  const labels={frage:"Offene Frage",wunsch:"Kundenwunsch",entscheidung:"Entscheidung / Freigabe",feststellung:"Feststellung / Besonderheit"};
+  openModal(`<div class="modalHead"><div class="modalTitle">${labels[type]||"Eintrag"}</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
+  <div class="formRow"><label>Text</label><div class="micWrap"><textarea id="biText" style="min-height:110px;"></textarea>${fieldMic("biText")}</div></div>
+  <div class="formRow"><label>Notiz / Ansprechpartner optional</label><input id="biNotiz" type="text"></div>
+  <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="saveBesichtigungTextItem('${escAttr(pid)}','${escAttr(bid)}','${escAttr(type)}')">Speichern</button></div>`);
+}
+function saveBesichtigungTextItem(pid,bid,type){
+  const p=S.projekte.find(x=>x.id===pid),b=besichtigungById(p,bid),text=document.getElementById("biText").value.trim();if(!text){toast("Text erforderlich.","warn");return;}
+  const map={frage:"fragen",wunsch:"wuensche",entscheidung:"entscheidungen",feststellung:"feststellungen"},key=map[type];
+  b[key].push({id:uid(),text,notiz:document.getElementById("biNotiz").value.trim(),uebernommenId:""});
+  addProjektChronik(pid,"besichtigung",(type==="wunsch"?"Kundenwunsch":type==="frage"?"Offene Frage":type==="entscheidung"?"Freigabe/Entscheidung":"Feststellung")+" erfasst: "+text.slice(0,80));
+  saveState();closeModal();route(location.hash);
+}
+function openBesichtigungAufgabeForm(pid,bid){
+  openModal(`<div class="modalHead"><div class="modalTitle">Aufgabe aus Besichtigung</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
+  <div class="formRow"><label>Aufgabe</label><input id="baTitel" type="text"></div>
+  <div class="grid cols-2"><div class="formRow"><label>Verantwortlich</label><input id="baVerantw" type="text" placeholder="Person / Gewerk"></div><div class="formRow"><label>Fällig</label><input id="baFaellig" type="date"></div></div>
+  <div class="formRow"><label>Notiz</label><textarea id="baNotiz"></textarea></div>
+  <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="saveBesichtigungAufgabe('${escAttr(pid)}','${escAttr(bid)}')">Speichern</button></div>`);
+}
+function saveBesichtigungAufgabe(pid,bid){
+  const p=S.projekte.find(x=>x.id===pid),b=besichtigungById(p,bid),titel=document.getElementById("baTitel").value.trim();if(!titel){toast("Aufgabe erforderlich.","warn");return;}
+  b.aufgaben.push({id:uid(),titel,verantwortlich:document.getElementById("baVerantw").value.trim(),faellig:document.getElementById("baFaellig").value,notiz:document.getElementById("baNotiz").value.trim(),uebernommenId:""});
+  saveState();closeModal();route(location.hash);
+}
+function openBesichtigungUnterschrift(pid,bid){
+  const p=S.projekte.find(x=>x.id===pid),b=besichtigungById(p,bid);window._besichtigungSigDraft=b.unterschrift||"";
+  openModal(`<div class="modalHead"><div class="modalTitle">Unterschrift zur Besichtigung</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
+  <div class="pageSub" style="margin-bottom:10px;">Optional: Auftraggeber / Ansprechpartner bestätigt die gemeinsame Bestandsaufnahme.</div>
+  ${sigPadHTML("bsSig","Unterschrift Auftraggeber / Ansprechpartner")}
+  <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="saveBesichtigungUnterschrift('${escAttr(pid)}','${escAttr(bid)}')">Unterschrift speichern</button></div>`,true);
+  initSigPad("bsSig",b.unterschrift||"",v=>window._besichtigungSigDraft=v);
+}
+function saveBesichtigungUnterschrift(pid,bid){
+  const p=S.projekte.find(x=>x.id===pid),b=besichtigungById(p,bid);b.unterschrift=window._besichtigungSigDraft||"";saveState();closeModal();route(location.hash);toast("Unterschrift gespeichert.","success");
+}
+function finishBesichtigung(pid,bid){
+  const p=S.projekte.find(x=>x.id===pid),b=besichtigungById(p,bid);if(!p||!b)return;
+  let tasks=0,decisions=0,photos=0;
+  (b.aufgaben||[]).forEach(a=>{
+    if(a.uebernommenId)return;
+    const id=uid();
+    S.aufgaben.push({id,titel:a.titel,beschreibung:[a.notiz,a.verantwortlich?"Verantwortlich: "+a.verantwortlich:""].filter(Boolean).join("\n"),faellig:a.faellig||"",prioritaet:"mittel",projektId:pid,zugeordnet:null,status:"offen"});
+    a.uebernommenId=id;tasks++;
+  });
+  (b.entscheidungen||[]).forEach(e=>{
+    if(e.uebernommenId)return;
+    const id=uid();
+    p.entscheidungen.push({id,titel:e.text,ansprechpartner:e.notiz||"",faellig:"",entscheidung:"",status:"offen",erstelltAm:new Date().toISOString(),quelle:"Besichtigung"});
+    e.uebernommenId=id;decisions++;
+  });
+  (b.bereiche||[]).forEach(br=>(br.fotos||[]).forEach(f=>{
+    if(f.uebernommenId)return;
+    const id=uid();
+    p.fotos.push({id,name:f.name||("Besichtigung "+br.name),dataURL:f.dataURL,datum:f.datum||new Date().toISOString(),notiz:"Besichtigung · "+br.name});
+    f.uebernommenId=id;photos++;
+  }));
+  b.status="abgeschlossen";b.abgeschlossenAm=new Date().toISOString();
+  addProjektChronik(pid,"besichtigung","Baustellenbesichtigung abgeschlossen: "+(b.titel||b.art||fmtDate(b.datum))+" · "+tasks+" Aufgaben, "+decisions+" Entscheidungen, "+photos+" Fotos übernommen");
+  saveState();route(location.hash);toast("Besichtigung abgeschlossen und Ergebnisse ins Projekt übernommen.","success");
+}
+function buildBesichtigungDoc(p,b){
+  const doc=pdfNewDoc();let y=pdfHeader(doc,"Baustellenbesichtigung");
+  doc.setFontSize(10.5);
+  const line=(label,value)=>{if(y>270){doc.addPage();y=20;}doc.setFont(undefined,"bold");doc.text(label+":",15,y);doc.setFont(undefined,"normal");y=pdfWriteWrapped(doc,String(value||"–"),52,y,143)+4;};
+  line("Projekt",p.name);line("Adresse",p.adresse||"–");line("Datum",fmtDate(b.datum)+(b.uhrzeit?" · "+b.uhrzeit:""));line("Anlass",b.art||"–");line("Ansprechpartner",b.ansprechpartner||"–");line("Teilnehmer",b.teilnehmer||"–");if(b.notiz)line("Allgemeine Notiz",b.notiz);
+  y+=3;
+  (b.bereiche||[]).forEach(br=>{
+    if(y>245){doc.addPage();y=20;}
+    doc.setFont(undefined,"bold");doc.setFontSize(12);doc.text((br.ebene?br.ebene+" · ":"")+br.name,15,y);doc.setFont(undefined,"normal");doc.setFontSize(10);y+=6;
+    if(br.notiz){y=pdfWriteWrapped(doc,br.notiz,18,y,175)+3;}
+    (br.masse||[]).forEach(m=>{doc.text("• "+m.label+": "+m.wert+" "+(m.einheit||""),20,y);y+=5;if(y>270){doc.addPage();y=20;}});
+    const imgs=(br.fotos||[]).slice(0,4);
+    if(imgs.length){y+=2;for(const f of imgs){if(y>235){doc.addPage();y=20;}try{doc.addImage(f.dataURL,"JPEG",20,y,55,38);y+=42;}catch(e){}}}
+    y+=4;
+  });
+  const section=(title,list)=>{if(!list||!list.length)return;if(y>245){doc.addPage();y=20;}doc.setFont(undefined,"bold");doc.setFontSize(11);doc.text(title,15,y);doc.setFont(undefined,"normal");doc.setFontSize(10);y+=7;list.forEach(x=>{if(y>270){doc.addPage();y=20;}y=pdfWriteWrapped(doc,"• "+(x.text||x.titel||""),18,y,175)+3;});y+=3;};
+  section("Offene Fragen",b.fragen);section("Kundenwünsche",b.wuensche);section("Entscheidungen / Freigaben",b.entscheidungen);section("Feststellungen / Besonderheiten",b.feststellungen);section("Aufgaben",b.aufgaben);
+  if(b.unterschrift){if(y>230){doc.addPage();y=20;}doc.setFont(undefined,"bold");doc.text("Unterschrift Auftraggeber / Ansprechpartner",15,y);y+=6;try{doc.addImage(b.unterschrift,"PNG",15,y,60,26);y+=30;}catch(e){}}
+  pdfFooter(doc);return doc;
+}
+function exportBesichtigungPDF(pid,bid){
+  const p=S.projekte.find(x=>x.id===pid),b=besichtigungById(p,bid);if(!p||!b)return;
+  saveOrSharePdf(buildBesichtigungDoc(p,b),"Besichtigung_"+p.name.replace(/[^a-z0-9]+/gi,"_")+"_"+(b.datum||todayISO())+".pdf");
+  toast("Besichtigungsprotokoll erstellt.","success");
 }
 
 /* =========================================================
