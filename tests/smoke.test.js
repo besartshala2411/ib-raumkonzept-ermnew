@@ -505,8 +505,19 @@ async function main() {
   assert(uebHtml.includes("Team &amp; Einsatz"), "Mitarbeiter-Einsatzplanung ist direkt aus dem Projekt erreichbar");
   assert(uebHtml.includes("Baustellensteuerung"), "Blocker, Freigaben und Nachträge sind direkt aus dem Projekt erreichbar");
   assert(uebHtml.includes("Baustellenbesichtigung"), "Bestandsaufnahme ist direkt aus der Projektübersicht erreichbar");
+  assert(uebHtml.includes("Baustellen-Chat"), "Baustellen-Chat ist direkt aus der Projektübersicht erreichbar");
   assert(uebHtml.includes(">Mängel<") && uebHtml.includes("Baustellenkontakte"), "Mängel und Baustellenkontakte sind aus der Projektübersicht erreichbar");
   assert(uebHtml.includes("Bautagebuch") && uebHtml.includes("Projektchronik"), "Bautagebuch und Projektchronik sind direkt im Überblick sichtbar");
+
+  console.log("\n== Projekte: Baustellen-Chat ==");
+  const p1Chat = window.S.projekte.find((p) => p.id === "p1");
+  p1Chat.chat = [{ id:"chat-test", autor:"m1", text:"Material ist vor Ort", zeit:"2026-09-24T10:00:00.000Z", anhaenge:[], geloescht:false }];
+  window.renderProjekte(window.document.getElementById("view"), "p1", "chat");
+  let chatHtml = window.document.getElementById("view").innerHTML;
+  assert(chatHtml.includes("Baustellen-Chat") && chatHtml.includes("Material ist vor Ort"), "Projektchat zeigt projektbezogene Nachrichten");
+  assert(chatHtml.includes("Nachricht an die Baustelle") && chatHtml.includes("Foto oder Datei anhängen"), "Projektchat bietet Eingabe und Dateianhang");
+  assert(window.globalSearchIndex().some((it) => it.typ === "projektchat" && it.label.includes("Material ist vor Ort")), "Globale Suche indexiert Baustellen-Chat");
+  p1Chat.chat = [];
 
   console.log("\n== Projekte: Mängel & Baustellenkontakte ==");
   const p1Ops = window.S.projekte.find((p) => p.id === "p1");
