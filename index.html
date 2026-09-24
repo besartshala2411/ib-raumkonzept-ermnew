@@ -3966,7 +3966,7 @@ function duplicateProjekt(id){
 }
 const PROJEKT_TABS = [
   {id:"uebersicht", label:"Überblick", icon:"▦"},
-  {id:"besichtigung", label:"Baustellenbesichtigung", icon:"⌖"},
+  {id:"besichtigung", label:"Besichtigung", icon:"⌖"},
   {id:"steuerung", label:"Baustellensteuerung", icon:"⚑"},
   {id:"lv", label:"Leistungsverzeichnis", icon:"%"},
   {id:"bauzeitenplan", label:"Bauablauf", icon:"◫"},
@@ -4001,6 +4001,9 @@ function renderProjektDetail(view, id, tab){
           <button class="btn sm primary" onclick="openProjektForm('${escAttr(p.id)}')">Bearbeiten</button>
         `:""}
       </div>
+    </div>
+    <div class="tabs projectTabs" style="margin-bottom:14px;">
+      ${PROJEKT_TABS.map(t=>`<button class="tabBtn ${tab===t.id?"active":""}" onclick="goTo('#projekte/${escAttr(p.id)}/${escAttr(t.id)}')">${t.icon} ${escHtml(t.label)}</button>`).join("")}
     </div>
     <div id="projektTabBody"></div>
   `;
@@ -4181,6 +4184,19 @@ function renderTabUebersicht(body, p){
   else attention.push({cls:"",icon:"✓",html:`<b>Stammdaten vollständig</b><br>Beginn und Ende gepflegt`});
 
   body.innerHTML=`
+    ${effectiveStatus==="In Planung"?`
+      <div class="card" style="margin-bottom:12px;border-color:var(--primary);background:var(--primary-bg);">
+        <div class="projectSectionHead">
+          <div>
+            <b>⌖ Baustellenbesichtigung / Bestandsaufnahme</b>
+            <div class="pageSub">Vor Baustart Räume, Fotos, Maße, Wünsche, Fragen, Materialbedarf und Zugänge aufnehmen.</div>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn sm" onclick="goTo('#projekte/${escAttr(p.id)}/besichtigung')">Besichtigungen öffnen</button>
+            <button class="btn primary sm" onclick="openBesichtigungForm('${escAttr(p.id)}')">＋ Besichtigung starten</button>
+          </div>
+        </div>
+      </div>`:""}
     <div class="compactSectionTitle">Heute wichtig</div>
     <div class="projectAttention">
       ${attention.map(a=>`<div class="projectAttentionItem ${a.cls}"><div class="projectAttentionIcon">${a.icon}</div><div class="projectAttentionText">${a.html}</div></div>`).join("")}
