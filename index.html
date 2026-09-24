@@ -1336,7 +1336,7 @@ function globalSearchIndex(){
     (p.nachtraege||[]).forEach(x=>items.push({typ:"projektsteuerung",typLabel:"Nachtrag",id:p.id,icon:"＋",label:x.titel,sub:p.name,text:[x.titel,x.ursache,x.freigegebenDurch,p.name].filter(Boolean).join(" ").toLowerCase()}));
     (p.material||[]).forEach(x=>items.push({typ:"projektmaterial",typLabel:"Material/Lieferung",id:p.id,icon:"▤",label:x.bezeichnung,sub:p.name,text:[x.bezeichnung,x.lieferant,x.lieferstatus,p.name].filter(Boolean).join(" ").toLowerCase()}));
     (p.dokumente||[]).forEach(x=>items.push({typ:"projektdokument",typLabel:"Projektdatei",id:p.id,icon:"📁",label:x.name,sub:p.name,text:[x.name,p.name].filter(Boolean).join(" ").toLowerCase()}));
-    (p.chat||[]).filter(m=>!m.geloescht).forEach(m=>items.push({typ:"projektchat",typLabel:"Baustellen-Chat",id:p.id,icon:"💬",label:(m.text||"Chat-Anhang").slice(0,80),sub:p.name,text:[m.text,(m.anhaenge||[]).map(a=>a.name).join(" "),p.name,mitarbeiterName(m.autor)].filter(Boolean).join(" ").toLowerCase()}));
+    currentProjectChatMessages(p).forEach(m=>items.push({typ:"projektchat",typLabel:"Baustellen-Chat",id:p.id,icon:"💬",label:(m.text||"Chat-Anhang").slice(0,80),sub:p.name,text:[m.text,(m.anhaenge||[]).map(a=>a.name).join(" "),p.name,m.autor_name||mitarbeiterName(m.autor_id||m.autor)].filter(Boolean).join(" ").toLowerCase()}));
     (p.besichtigungen||[]).forEach(b=>{
       const textParts=[b.titel,b.art,b.ansprechpartner,b.telefon,b.email,b.teilnehmer,b.notiz,p.name];
       (b.bereiche||[]).forEach(br=>{textParts.push(br.name,br.ebene,br.notiz);(br.masse||[]).forEach(m=>textParts.push(m.label,m.wert,m.einheit));});
@@ -4296,7 +4296,7 @@ function renderTabUebersicht(body, p){
       <button class="projectArea" onclick="goTo('#projekte/${escAttr(p.id)}/lv')"><span><div class="projectAreaTitle">Leistungsverzeichnis</div><div class="projectAreaSub">${(p.lvPositionen||[]).length} Positionen</div></span><span>›</span></button>
       <button class="projectArea" onclick="goTo('#projekte/${escAttr(p.id)}/bauzeitenplan')"><span><div class="projectAreaTitle">Bauablauf</div><div class="projectAreaSub">${p.bauzeitenplan.length} Phasen</div></span><span>›</span></button>
       <button class="projectArea" onclick="goTo('#projekte/${escAttr(p.id)}/team')"><span><div class="projectAreaTitle">Team & Einsatz</div><div class="projectAreaSub">${p.team.length} Mitarbeiter · Wochenplanung</div></span><span>›</span></button>
-      <button class="projectArea" onclick="goTo('#projekte/${escAttr(p.id)}/chat')"><span><div class="projectAreaTitle">Baustellen-Chat</div><div class="projectAreaSub">${(p.chat||[]).filter(m=>!m.geloescht).length} Nachrichten</div></span><span>›</span></button>
+      <button class="projectArea" onclick="goTo('#projekte/${escAttr(p.id)}/chat')"><span><div class="projectAreaTitle">Baustellen-Chat</div><div class="projectAreaSub">${currentProjectChatMessages(p).length} Nachrichten</div></span><span>›</span></button>
       <button class="projectArea" onclick="goTo('#projekte/${escAttr(p.id)}/besichtigung')"><span><div class="projectAreaTitle">Baustellenbesichtigung</div><div class="projectAreaSub">${(p.besichtigungen||[]).length} Besichtigung${(p.besichtigungen||[]).length===1?"":"en"}</div></span><span>›</span></button>
       <button class="projectArea" onclick="goTo('#projekte/${escAttr(p.id)}/steuerung')"><span><div class="projectAreaTitle">Baustellensteuerung</div><div class="projectAreaSub">${offeneBlocker.length} Blocker · ${offeneEntscheidungen.length} Entscheidungen</div></span><span>›</span></button>
       <button class="projectArea" onclick="goTo('#projekte/${escAttr(p.id)}/dokumente')"><span><div class="projectAreaTitle">Dateien & Fotos</div><div class="projectAreaSub">${p.dokumente.length} Dateien · ${p.fotos.length} Fotos</div></span><span>›</span></button>
@@ -6271,116 +6271,283 @@ function deleteChecklistItem(pid, i){
   deleteAtIndexWithUndo(p.checkliste, i, "Checklisten-Punkt gelöscht.");
 }
 
+/* ---- Baustellen-Chat: separate Supabase-Tabelle + Realtime ---- */
+const PROJECT_CHAT_BUCKET="project-chat";
+let _projectChatChannel=null;
+let _projectChatPid=null;
+const _projectChatCache={};
+
 function projektChatCanDelete(msg){
-  return !!msg && (msg.autor===S.currentUserId || hasAdminAccess());
+  if(!msg) return false;
+  return msg.autor_id===S.currentUserId || msg.autor===S.currentUserId || hasAdminAccess();
+}
+function legacyProjectChatMessages(p){
+  return (p.chat||[]).filter(m=>!m.geloescht).map(m=>({
+    id:"legacy-"+m.id,
+    legacy:true,
+    projekt_id:p.id,
+    autor_id:m.autor||"",
+    autor_name:mitarbeiterName(m.autor)||"Benutzer",
+    text:m.text||"",
+    created_at:m.zeit||"",
+    anhaenge:(m.anhaenge||[]).map(a=>({name:a.name||"Datei",type:a.type||"",dataURL:a.dataURL||""}))
+  }));
+}
+function currentProjectChatMessages(p){
+  const live=_projectChatCache[p.id]||[];
+  const liveLegacyIds=new Set(live.map(m=>m.legacy_id).filter(Boolean));
+  const legacy=legacyProjectChatMessages(p).filter(m=>!liveLegacyIds.has(String(m.id).replace(/^legacy-/,"")));
+  return [...legacy,...live].sort((a,b)=>String(a.created_at||"").localeCompare(String(b.created_at||"")));
+}
+async function projectChatSignedUrl(path){
+  if(!path) return "";
+  const sb=getSupabaseClient();
+  if(!sb) return "";
+  const {data,error}=await sb.storage.from(PROJECT_CHAT_BUCKET).createSignedUrl(path,3600);
+  if(error) throw error;
+  return data&&data.signedUrl||"";
+}
+async function hydrateProjectChatMessage(row){
+  const m={...row,anhaenge:[]};
+  if(row.attachment_path){
+    let signedUrl="";
+    try{signedUrl=await projectChatSignedUrl(row.attachment_path);}catch(e){}
+    m.anhaenge=[{
+      name:row.attachment_name||"Datei",
+      type:row.attachment_type||"",
+      storagePath:row.attachment_path,
+      signedUrl
+    }];
+  }
+  return m;
+}
+async function loadProjectChat(pid,quiet){
+  const sb=getSupabaseClient();
+  if(!sb){
+    if(!quiet) renderProjectChatMessages(pid,{offline:true});
+    return false;
+  }
+  try{
+    const {data,error}=await sb.from("project_chat_messages")
+      .select("id,projekt_id,autor_id,autor_name,text,attachment_name,attachment_type,attachment_path,created_at,deleted_at,legacy_id")
+      .eq("projekt_id",pid)
+      .is("deleted_at",null)
+      .order("created_at",{ascending:true})
+      .limit(500);
+    if(error) throw error;
+    _projectChatCache[pid]=await Promise.all((data||[]).map(hydrateProjectChatMessage));
+    renderProjectChatMessages(pid);
+    return true;
+  }catch(e){
+    if(!quiet){
+      renderProjectChatMessages(pid,{cloudError:String(e.message||e)});
+    }
+    return false;
+  }
+}
+function subscribeProjectChat(pid){
+  const sb=getSupabaseClient();
+  if(!sb) return;
+  if(_projectChatChannel){
+    try{sb.removeChannel(_projectChatChannel);}catch(e){}
+    _projectChatChannel=null;
+  }
+  _projectChatPid=pid;
+  _projectChatChannel=sb.channel("project_chat_"+pid)
+    .on("postgres_changes",{event:"*",schema:"public",table:"project_chat_messages",filter:"projekt_id=eq."+pid},async payload=>{
+      if(payload.eventType==="DELETE"){
+        _projectChatCache[pid]=(_projectChatCache[pid]||[]).filter(m=>m.id!==(payload.old&&payload.old.id));
+      }else if(payload.new){
+        const msg=await hydrateProjectChatMessage(payload.new);
+        const arr=_projectChatCache[pid]||[];
+        const idx=arr.findIndex(x=>x.id===msg.id);
+        if(msg.deleted_at){
+          if(idx>=0) arr.splice(idx,1);
+        }else if(idx>=0) arr[idx]=msg;
+        else arr.push(msg);
+        _projectChatCache[pid]=arr;
+      }
+      const hash=location.hash||"";
+      if(hash.includes("#projekte/"+pid+"/chat")) renderProjectChatMessages(pid);
+      else if(payload.eventType==="INSERT" && payload.new && payload.new.autor_id!==S.currentUserId){
+        const p=S.projekte.find(x=>x.id===pid);
+        toast("💬 Neue Nachricht · "+(p?p.name:"Baustelle"),"success");
+      }
+    })
+    .subscribe();
 }
 function renderProjektChatAttachment(a){
   const isImg=(a.type||"").startsWith("image/");
-  if(isImg){
-    return `<button type="button" onclick="openDataUrlDoc(this.dataset.url,this.dataset.name)" data-url="${escAttr(a.dataURL||"")}" data-name="${escAttr(a.name||"Foto")}" style="border:0;background:none;padding:0;cursor:pointer;">
-      <img src="${escAttr(a.dataURL||"")}" alt="${escAttr(a.name||"Foto")}" style="display:block;width:150px;max-width:100%;height:105px;object-fit:cover;border-radius:9px;margin-top:7px;">
+  const url=a.signedUrl||a.dataURL||"";
+  if(isImg && url){
+    return `<button type="button" onclick="openProjektChatAttachment(this.dataset.url,this.dataset.name,this.dataset.path)" data-url="${escAttr(url)}" data-path="${escAttr(a.storagePath||"")}" data-name="${escAttr(a.name||"Foto")}" style="border:0;background:none;padding:0;cursor:pointer;">
+      <img src="${escAttr(url)}" alt="${escAttr(a.name||"Foto")}" style="display:block;width:150px;max-width:100%;height:105px;object-fit:cover;border-radius:9px;margin-top:7px;">
     </button>`;
   }
-  return `<button class="btn sm" style="margin-top:7px;" onclick="openDataUrlDoc(this.dataset.url,this.dataset.name)" data-url="${escAttr(a.dataURL||"")}" data-name="${escAttr(a.name||"Datei")}">📎 ${escHtml(a.name||"Datei")}</button>`;
+  return `<button class="btn sm" style="margin-top:7px;" onclick="openProjektChatAttachment(this.dataset.url,this.dataset.name,this.dataset.path)" data-url="${escAttr(url)}" data-path="${escAttr(a.storagePath||"")}" data-name="${escAttr(a.name||"Datei")}">📎 ${escHtml(a.name||"Datei")}</button>`;
 }
-function renderTabProjektChat(body, p){
-  const msgs=(p.chat||[]).filter(m=>!m.geloescht).slice().sort((a,b)=>(a.zeit||"").localeCompare(b.zeit||""));
-  body.innerHTML = `
+async function openProjektChatAttachment(url,name,path){
+  try{
+    if(path){
+      const fresh=await projectChatSignedUrl(path);
+      if(fresh){window.open(fresh,"_blank","noopener");return;}
+    }
+    if(url&&url.startsWith("data:")){openDataUrlDoc(url,name);return;}
+    if(url){window.open(url,"_blank","noopener");return;}
+    throw new Error("Datei nicht verfügbar");
+  }catch(e){toast("Anhang konnte nicht geöffnet werden: "+String(e.message||e).slice(0,140),"error");}
+}
+function renderProjektChatMessages(pid,state){
+  const p=S.projekte.find(x=>x.id===pid);
+  const el=document.getElementById("pChatMsgs");
+  if(!p||!el) return;
+  const msgs=currentProjectChatMessages(p);
+  el.innerHTML=`
+    ${state&&state.cloudError?`<div class="compactFormNote" style="margin-bottom:10px;"><b>Cloud-Chat noch nicht eingerichtet.</b><br>Lokaler Altbestand bleibt sichtbar. Sobald die Chat-Migration in Supabase ausgeführt ist, erscheinen neue Nachrichten live auf allen Geräten.</div>`:""}
+    ${state&&state.offline?`<div class="compactFormNote" style="margin-bottom:10px;">Cloud-Verbindung derzeit nicht verfügbar – vorhandene lokale Nachrichten werden angezeigt.</div>`:""}
+    ${msgs.map(m=>{
+      const me=(m.autor_id||m.autor)===S.currentUserId;
+      const attachments=m.anhaenge||[];
+      return `<div style="display:flex;justify-content:${me?"flex-end":"flex-start"};margin-bottom:9px;">
+        <div class="chatMsg ${me?"me":""}" style="max-width:min(78%,620px);position:relative;">
+          <div class="chatMsgMeta" style="display:flex;justify-content:space-between;gap:10px;align-items:center;">
+            <span>${escHtml(m.autor_name||mitarbeiterName(m.autor_id||m.autor)||"Benutzer")} · ${fmtDateTime(m.created_at||m.zeit)}</span>
+            ${!m.legacy&&projektChatCanDelete(m)?`<button class="projectIconBtn" onclick="deleteProjektChatMessage('${escAttr(pid)}','${escAttr(m.id)}')" title="Nachricht löschen" style="font-size:12px;">×</button>`:""}
+          </div>
+          ${m.text?`<div style="white-space:pre-wrap;word-break:break-word;">${escHtml(m.text)}</div>`:""}
+          ${attachments.map(renderProjektChatAttachment).join("")}
+          ${m.legacy?`<div class="pageSub" style="margin-top:5px;font-size:9.5px;">Altbestand</div>`:""}
+        </div>
+      </div>`;
+    }).join("") || `<div class="empty" style="padding:50px 16px;">Noch keine Nachrichten auf dieser Baustelle.<br><span class="pageSub">Schreibe die erste Nachricht an das Projektteam.</span></div>`}
+  `;
+  requestAnimationFrame(()=>{el.scrollTop=el.scrollHeight;});
+  const count=document.getElementById("pChatCount");
+  if(count) count.textContent=msgs.length+" Nachricht"+(msgs.length===1?"":"en");
+}
+function renderTabProjektChat(body,p){
+  const initialCount=currentProjectChatMessages(p).length;
+  body.innerHTML=`
     <div class="card" style="padding:0;overflow:hidden;">
       <div class="projectSectionHead" style="padding:14px 16px;border-bottom:1px solid var(--border);margin:0;">
         <div>
           <b>💬 Baustellen-Chat</b>
-          <div class="pageSub">Interner Chat für ${escHtml(p.name)} · ${msgs.length} Nachricht${msgs.length===1?"":"en"}</div>
+          <div class="pageSub">${escHtml(p.name)} · <span id="pChatCount">${initialCount} Nachricht${initialCount===1?"":"en"}</span></div>
         </div>
-        <span class="badge blue">Projektintern</span>
+        <span class="badge green">Live</span>
       </div>
-
       <div class="chatMsgs" id="pChatMsgs" style="min-height:360px;max-height:60vh;padding:14px;overflow-y:auto;background:var(--bg2);">
-        ${msgs.map(m=>{
-          const me=m.autor===S.currentUserId;
-          return `<div style="display:flex;justify-content:${me?"flex-end":"flex-start"};margin-bottom:9px;">
-            <div class="chatMsg ${me?"me":""}" style="max-width:min(78%,620px);position:relative;">
-              <div class="chatMsgMeta" style="display:flex;justify-content:space-between;gap:10px;align-items:center;">
-                <span>${escHtml(mitarbeiterName(m.autor)||"Benutzer")} · ${fmtDateTime(m.zeit)}</span>
-                ${projektChatCanDelete(m)?`<button class="projectIconBtn" onclick="deleteProjektChatMessage('${escAttr(p.id)}','${escAttr(m.id)}')" title="Nachricht löschen" style="font-size:12px;">×</button>`:""}
-              </div>
-              ${m.text?`<div style="white-space:pre-wrap;word-break:break-word;">${escHtml(m.text)}</div>`:""}
-              ${(m.anhaenge||[]).map(renderProjektChatAttachment).join("")}
-            </div>
-          </div>`;
-        }).join("") || `<div class="empty" style="padding:50px 16px;">Noch keine Nachrichten auf dieser Baustelle.<br><span class="pageSub">Schreibe die erste Nachricht an das Projektteam.</span></div>`}
+        <div class="empty" style="padding:50px 16px;">Chat wird geladen …</div>
       </div>
-
       <div style="padding:10px 12px;border-top:1px solid var(--border);background:var(--card);">
         <div id="pChatAttachmentPreview" style="display:none;margin-bottom:8px;"></div>
         <div class="chatInputBar" style="padding:0;">
-          <label class="iconBtn" title="Foto oder Datei anhängen" style="cursor:pointer;">📎
+          <label class="iconBtn" title="Foto oder PDF anhängen" style="cursor:pointer;">📎
             <input type="file" accept="image/*,application/pdf" style="display:none" onchange="setProjektChatAttachment(this)">
           </label>
           <input type="text" id="pChatInput" autocomplete="off" placeholder="Nachricht an die Baustelle …" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendProjektChat('${escAttr(p.id)}')}">
           ${micButtonHTML("pChatInput")}
-          <button class="btn primary" onclick="sendProjektChat('${escAttr(p.id)}')">Senden</button>
+          <button class="btn primary" id="pChatSendBtn" onclick="sendProjektChat('${escAttr(p.id)}')">Senden</button>
         </div>
       </div>
     </div>
   `;
   window._projektChatAttachment=null;
-  const msgsEl=document.getElementById("pChatMsgs");
-  if(msgsEl) requestAnimationFrame(()=>{ msgsEl.scrollTop=msgsEl.scrollHeight; });
+  renderProjectChatMessages(p.id);
+  loadProjectChat(p.id);
+  subscribeProjectChat(p.id);
   const input=document.getElementById("pChatInput");
   if(input) setTimeout(()=>input.focus(),50);
 }
 async function setProjektChatAttachment(input){
   const file=input&&input.files&&input.files[0];
   if(!file) return;
-  try{
-    window._projektChatAttachment={id:uid(),name:file.name,type:file.type||"application/octet-stream",dataURL:await fileToDataURL(file)};
-    const preview=document.getElementById("pChatAttachmentPreview");
-    if(preview){
-      preview.style.display="flex";
-      preview.style.alignItems="center";
-      preview.style.justifyContent="space-between";
-      preview.style.gap="8px";
-      preview.innerHTML=`<span class="badge blue">📎 ${escHtml(file.name)}</span><button class="iconBtn" onclick="clearProjektChatAttachment()">×</button>`;
-    }
-  }catch(e){ toast("Anhang konnte nicht geladen werden: "+e.message,"error"); }
+  if(file.size>15*1024*1024){toast("Anhänge dürfen maximal 15 MB groß sein.","warn");input.value="";return;}
+  window._projektChatAttachment={id:uid(),file,name:file.name,type:file.type||"application/octet-stream"};
+  const preview=document.getElementById("pChatAttachmentPreview");
+  if(preview){
+    preview.style.display="flex";
+    preview.style.alignItems="center";
+    preview.style.justifyContent="space-between";
+    preview.style.gap="8px";
+    preview.innerHTML=`<span class="badge blue">📎 ${escHtml(file.name)}</span><button class="iconBtn" onclick="clearProjektChatAttachment()">×</button>`;
+  }
 }
 function clearProjektChatAttachment(){
   window._projektChatAttachment=null;
   const preview=document.getElementById("pChatAttachmentPreview");
   if(preview){preview.style.display="none";preview.innerHTML="";}
 }
-function sendProjektChat(pid){
+function safeStorageFilename(name){
+  const ext=(String(name||"").match(/\.([a-z0-9]{1,8})$/i)||[])[1]||"bin";
+  return uid().replace(/[^a-z0-9_-]/gi,"")+"."+ext.toLowerCase();
+}
+async function uploadProjektChatAttachment(pid,attachment){
+  if(!attachment||!attachment.file) return null;
+  const sb=getSupabaseClient();
+  if(!sb) throw new Error("Cloud-Verbindung nicht verfügbar");
+  const path="ib_raumkonzept/"+pid+"/"+new Date().toISOString().slice(0,10)+"/"+safeStorageFilename(attachment.name);
+  const {error}=await sb.storage.from(PROJECT_CHAT_BUCKET).upload(path,attachment.file,{contentType:attachment.type,upsert:false});
+  if(error) throw error;
+  return {path,name:attachment.name,type:attachment.type};
+}
+async function sendProjektChat(pid){
   const input=document.getElementById("pChatInput");
+  const btn=document.getElementById("pChatSendBtn");
   const text=(input?.value||"").trim();
   const attachment=window._projektChatAttachment;
   if(!text&&!attachment) return;
+  const sb=getSupabaseClient();
+  if(!sb){toast("Für den Live-Chat ist eine Cloud-Verbindung erforderlich.","warn");return;}
   const p=S.projekte.find(x=>x.id===pid);
   if(!p) return;
-  if(!p.chat) p.chat=[];
-  p.chat.push({
-    id:uid(),
-    autor:S.currentUserId,
-    text,
-    zeit:new Date().toISOString(),
-    anhaenge:attachment?[attachment]:[],
-    geloescht:false
-  });
-  addProjektChronik(pid,"chat","Neue Chat-Nachricht von "+(mitarbeiterName(S.currentUserId)||"Benutzer"));
-  saveState();
-  window._projektChatAttachment=null;
-  route(location.hash);
+  if(btn) btn.disabled=true;
+  try{
+    let uploaded=null;
+    if(attachment) uploaded=await uploadProjektChatAttachment(pid,attachment);
+    const row={
+      projekt_id:pid,
+      autor_id:S.currentUserId||null,
+      autor_name:mitarbeiterName(S.currentUserId)||"Benutzer",
+      text:text,
+      attachment_name:uploaded?uploaded.name:null,
+      attachment_type:uploaded?uploaded.type:null,
+      attachment_path:uploaded?uploaded.path:null,
+      org_id:"ib_raumkonzept"
+    };
+    const {data,error}=await sb.from("project_chat_messages").insert(row).select("id,projekt_id,autor_id,autor_name,text,attachment_name,attachment_type,attachment_path,created_at,deleted_at,legacy_id").single();
+    if(error) throw error;
+    if(data){
+      const msg=await hydrateProjectChatMessage(data);
+      const arr=_projectChatCache[pid]||[];
+      if(!arr.some(x=>x.id===msg.id)) arr.push(msg);
+      _projectChatCache[pid]=arr;
+      renderProjectChatMessages(pid);
+    }
+    if(input) input.value="";
+    clearProjektChatAttachment();
+  }catch(e){
+    toast("Chat-Nachricht konnte nicht gesendet werden: "+String(e.message||e).slice(0,180),"error");
+  }finally{
+    if(btn) btn.disabled=false;
+    if(input) input.focus();
+  }
 }
-function deleteProjektChatMessage(pid,mid){
-  const p=S.projekte.find(x=>x.id===pid);
-  const m=p&&(p.chat||[]).find(x=>x.id===mid);
-  if(!m||!projektChatCanDelete(m)) return;
-  confirmDelete("Diese Chat-Nachricht wirklich löschen?",()=>{
-    m.geloescht=true;
-    m.text="";
-    m.anhaenge=[];
-    saveState();
-    route(location.hash);
+async function deleteProjektChatMessage(pid,mid){
+  const msg=(_projectChatCache[pid]||[]).find(x=>x.id===mid);
+  if(!msg||!projektChatCanDelete(msg)) return;
+  confirmDelete("Diese Chat-Nachricht wirklich löschen?",async ()=>{
+    const sb=getSupabaseClient();
+    if(!sb){toast("Cloud-Verbindung nicht verfügbar.","warn");return;}
+    try{
+      const {error}=await sb.from("project_chat_messages").update({deleted_at:new Date().toISOString(),text:""}).eq("id",mid);
+      if(error) throw error;
+      _projectChatCache[pid]=(_projectChatCache[pid]||[]).filter(x=>x.id!==mid);
+      if(msg.attachment_path){
+        sb.storage.from(PROJECT_CHAT_BUCKET).remove([msg.attachment_path]).catch(()=>{});
+      }
+      renderProjectChatMessages(pid);
+    }catch(e){toast("Nachricht konnte nicht gelöscht werden: "+String(e.message||e).slice(0,160),"error");}
   });
 }
 
