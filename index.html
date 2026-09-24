@@ -722,7 +722,6 @@ function defaultLC(){
     theme:"dark",
     cloudSyncEnabled:true,
     pushEnabled:false, vapidPublicKey:"",
-    geminiApiKey:"",
   };
 }
 var LC = defaultLC();
@@ -736,11 +735,9 @@ function saveLC(){
   try{
     localStorage.setItem(LC_KEY, JSON.stringify(LC));
   }catch(e){
-    toast("⚠️ Lokale Einstellungen (Cloud-Sync/KI-Key) konnten nicht gespeichert werden: "+e.message, "error");
+    toast("⚠️ Lokale Einstellungen konnten nicht gespeichert werden: "+e.message, "error");
   }
 }
-function getGeminiKey(){ return LC.geminiApiKey || ""; }
-function setGeminiKey(key){ LC.geminiApiKey = key; saveLC(); }
 
 /** Ensures older/incomplete saved states get any newly-introduced fields without breaking. */
 function ensureShape(s){
@@ -1902,11 +1899,9 @@ function renderDashboard(view){
 }
 async function runDailyOverview(){
   const out = document.getElementById("aiOverviewOut");
-  const key = getGeminiKey();
-  if(!key){ out.textContent = "Kein Gemini API-Key hinterlegt. Bitte in Einstellungen → KI-Assistent eintragen."; return; }
   out.textContent = "Lädt...";
   try{
-    const text = await callGemini(buildDailyOverviewPrompt(), key);
+    const text = await callGemini(buildDailyOverviewPrompt());
     out.textContent = text;
   }catch(e){
     out.textContent = "Fehler beim Abruf: " + e.message;
@@ -7918,40 +7913,54 @@ reg("kundenportal","Kundenportal","🌐","Analyse",renderKundenportal);
 reg("datev","WISO/DATEV Export","💾","Analyse",renderDatev);
 
 /* =========================================================
-   KI-ASSISTENT (Gemini)
+   KI-ASSISTENT (Gemini über geschützte Netlify-Funktion)
 ========================================================= */
-async function callGemini(prompt, apiKey){
-  const url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=" + encodeURIComponent(apiKey);
-  const res = await fetch(url, {
-    method:"POST", headers:{"Content-Type":"application/json"},
-    body: JSON.stringify({contents:[{parts:[{text:prompt}]}]})
-  });
-  if(!res.ok){
-    const t = await res.text().catch(()=> "");
-    throw new Error("HTTP "+res.status+" – "+t.slice(0,200));
-  }
-  const data = await res.json();
-  const text = data && data.candidates && data.candidates[0] && data.candidates[0].content
-    ? data.candidates[0].content.parts.map(p=>p.text).join("")
-    : "Keine Antwort erhalten.";
-  return text;
+async function getAuthAccessToken(){
+  const sb=getSupabaseClient();
+  if(!sb) throw new Error("Anmeldung nicht verfügbar.");
+  const {data,error}=await sb.auth.getSession();
+  if(error) throw error;
+  const token=data&&data.session&&data.session.access_token;
+  if(!token) throw new Error("Bitte erneut anmelden.");
+  return token;
 }
-async function callGeminiWithFile(prompt, apiKey, base64Data, mimeType){
-  const url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=" + encodeURIComponent(apiKey);
-  const res = await fetch(url, {
-    method:"POST", headers:{"Content-Type":"application/json"},
-    body: JSON.stringify({contents:[{parts:[{text:prompt},{inline_data:{mime_type:mimeType||"application/pdf", data:base64Data}}]}]})
+async function callGeminiProxy(payload){
+  const token=await getAuthAccessToken();
+  const res=await fetch("/.netlify/functions/gemini-proxy",{
+    method:"POST",
+    headers:{
+      "Content-Type":"application/json",
+      "Authorization":"Bearer "+token
+    },
+    body:JSON.stringify(payload)
   });
-  if(!res.ok){
-    const t = await res.text().catch(()=> "");
-    throw new Error("HTTP "+res.status+" – "+t.slice(0,200));
+  const data=await res.json().catch(()=>({}));
+  if(!res.ok) throw new Error(data.error||("HTTP "+res.status));
+  if(!data.text) throw new Error("Keine Antwort von der KI erhalten.");
+  return data.text;
+}
+async function callGemini(prompt){
+  return callGeminiProxy({prompt:String(prompt||"")});
+}
+async function callGeminiWithFile(prompt, base64Data, mimeType){
+  return callGeminiProxy({
+    prompt:String(prompt||""),
+    file:{base64:String(base64Data||""),mimeType:mimeType||"application/pdf"}
+  });
+}
+async function testGeminiConnection(){
+  const out=document.getElementById("kiStatus");
+  if(out) out.innerHTML='<span class="badge amber">prüfe …</span>';
+  try{
+    const text=await callGemini("Antworte exakt mit: OK");
+    if(out) out.innerHTML='<span class="badge green">verbunden</span>';
+    toast("KI-Verbindung funktioniert auf diesem Gerät.","success");
+    return text;
+  }catch(e){
+    if(out) out.innerHTML='<span class="badge red">nicht verbunden</span>';
+    toast("KI-Verbindung fehlgeschlagen: "+String(e.message||e).slice(0,160),"error");
+    return "";
   }
-  const data = await res.json();
-  const text = data && data.candidates && data.candidates[0] && data.candidates[0].content
-    ? data.candidates[0].content.parts.map(p=>p.text).join("")
-    : "";
-  if(!text) throw new Error("Keine Antwort von der KI erhalten.");
-  return text;
 }
 function extractJsonFromText(text){
   let t = String(text||"").trim();
@@ -7983,15 +7992,13 @@ async function analyzeProjektAngebotPdf(pid){
   const statusEl=document.getElementById("projektLvStatus");
   const file=input&&input.files&&input.files[0];
   if(!file){ statusEl.textContent="Bitte zuerst eine PDF-Datei auswählen."; return; }
-  const apiKey=getGeminiKey();
-  if(!apiKey){ statusEl.innerHTML="Bitte zuerst unter <b>Einstellungen → KI-Assistent</b> den Gemini API-Key eintragen."; return; }
   const abzug=Math.max(0,Math.min(100,Number(document.getElementById("projektLvAbzug").value)||0));
   statusEl.textContent="Angebot wird gelesen …";
   try{
     const dataURL=await fileToDataURL(file);
     const base64=dataURL.slice(dataURL.indexOf(",")+1);
     const prompt=`Analysiere dieses deutsche Handwerker-Angebot oder Leistungsverzeichnis. Antworte ausschließlich als valides JSON ohne Markdown: {"positionen":[{"titel":"Abschnitt oder Gewerk, sonst leer","bezeichnung":"kurze eindeutige Leistung","beschreibung":"Leistungstext, sonst leer","menge":0,"einheit":"","einzelpreis":0,"gesamtpreis":0}],"angebotssumme":0}. Nutze bei preis den Gesamtpreis der Position. Keine Position doppelt ausgeben.`;
-    const result=extractJsonFromText(await callGeminiWithFile(prompt,apiKey,base64,file.type||"application/pdf"));
+    const result=extractJsonFromText(await callGeminiWithFile(prompt,base64,file.type||"application/pdf"));
     const positionen=(Array.isArray(result.positionen)?result.positionen:[]).map(pos=>({
       id:uid(), titel:String(pos.titel||"").slice(0,100), bezeichnung:String(pos.bezeichnung||"Position").slice(0,220),
       beschreibung:String(pos.beschreibung||"").slice(0,800), menge:Number(pos.menge)||0, einheit:String(pos.einheit||"").slice(0,20),
@@ -8077,14 +8084,12 @@ async function analyzeLvPdf(){
   const statusEl = document.getElementById("lvImportStatus");
   const file = input.files && input.files[0];
   if(!file){ statusEl.textContent = "Bitte zuerst eine PDF-Datei auswählen."; return; }
-  const apiKey = getGeminiKey();
-  if(!apiKey){ statusEl.innerHTML = "Kein Gemini API-Key hinterlegt. Bitte zuerst in <b>Einstellungen → KI-Assistent</b> eintragen."; return; }
   statusEl.textContent = "Lese PDF und analysiere mit KI … das kann einen Moment dauern.";
   try{
     const dataURL = await fileToDataURL(file);
     const base64 = dataURL.slice(dataURL.indexOf(",")+1);
     const prompt = `Du bist Assistent eines deutschen Handwerksbetriebs (Trockenbau/Maler/Fliesen/Sanitär). Analysiere das beigefügte Leistungsverzeichnis oder Angebot als PDF und extrahiere die Projektdaten. Antworte AUSSCHLIESSLICH mit validem JSON in genau diesem Format, ohne Erklärtext, ohne Markdown-Codeblock: {"name":"kurzer Projektname/Titel","adresse":"Bauadresse falls vorhanden, sonst leer","kunde":"Kundenname/Auftraggeber falls vorhanden, sonst leer","positionen":[{"titel":"Gewerk/Titel-Abschnitt falls das Dokument die Positionen gruppiert, sonst leer","bezeichnung":"kurzer Titel der Position","beschreibung":"ausführlichere Beschreibung/Leistungstext der Position falls im Dokument vorhanden, sonst leer","menge":0,"einheit":"...","einzelpreis":0,"gesamtpreis":0}],"budgetSchaetzung":0}. Wenn ein Wert nicht im Dokument steht, benutze "" bzw. 0. budgetSchaetzung ist die im Dokument genannte Gesamtsumme bzw. die Summe aller Positionen. Bezeichnung und Beschreibung sind unterschiedliche Felder - nicht denselben Text doppelt eintragen, wenn das Dokument beides trennt.`;
-    const text = await callGeminiWithFile(prompt, apiKey, base64, file.type||"application/pdf");
+    const text = await callGeminiWithFile(prompt, base64, file.type||"application/pdf");
     const result = extractJsonFromText(text);
     openLvReviewForm(result, { name: file.name, dataURL });
   }catch(e){
@@ -8877,17 +8882,16 @@ function copySQL(){
 }
 function renderSetKI(body){
   body.innerHTML = `
-    <div class="card" style="max-width:600px;">
-      <b>🤖 KI-Assistent (Gemini)</b>
-      <div class="pageSub" style="margin:8px 0 16px;">Kostenloser API-Key von <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a>. Wird nur lokal auf diesem Gerät gespeichert, nie in die Cloud synchronisiert.</div>
-      <div class="formRow"><label>Gemini API-Key</label><input id="kiKey" type="password" value="${escAttr(getGeminiKey())}"></div>
-      <button class="btn primary" onclick="saveKIKey()">Speichern</button>
+    <div class="card" style="max-width:640px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
+        <b>🤖 KI-Assistent (Gemini)</b>
+        <span id="kiStatus" class="badge gray">serverseitig</span>
+      </div>
+      <div class="pageSub" style="margin:8px 0 16px;">Der Gemini-Schlüssel liegt zentral und geschützt auf Netlify. Mitarbeiter müssen auf ihren Geräten keinen API-Key mehr eintragen. Nach der Anmeldung funktionieren die KI-Funktionen automatisch.</div>
+      <div class="compactFormNote">Netlify-Umgebungsvariable: <b>GEMINI_API_KEY</b>. Der Wert wird niemals an den Browser ausgeliefert.</div>
+      <button class="btn primary" style="margin-top:14px;" onclick="testGeminiConnection()">KI-Verbindung testen</button>
     </div>
   `;
-}
-function saveKIKey(){
-  setGeminiKey(document.getElementById("kiKey").value.trim());
-  toast("API-Key gespeichert (nur lokal).", "success");
 }
 function renderSetPush(body){
   body.innerHTML = `
