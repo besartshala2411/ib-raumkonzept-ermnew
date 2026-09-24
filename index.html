@@ -797,6 +797,10 @@ function ensureShape(s){
     if(!p.aufmasse) p.aufmasse=[];
     if(!p.bauzeitenplan) p.bauzeitenplan=[];
     if(!p.chat) p.chat=[];
+    p.chat.forEach(m=>{
+      if(m.anhaenge==null) m.anhaenge=[];
+      if(m.geloescht==null) m.geloescht=false;
+    });
     if(!p.maengel) p.maengel=[];
     if(!p.kontakte) p.kontakte=[];
     if(!p.nachtraege) p.nachtraege=[];
@@ -1332,6 +1336,7 @@ function globalSearchIndex(){
     (p.nachtraege||[]).forEach(x=>items.push({typ:"projektsteuerung",typLabel:"Nachtrag",id:p.id,icon:"＋",label:x.titel,sub:p.name,text:[x.titel,x.ursache,x.freigegebenDurch,p.name].filter(Boolean).join(" ").toLowerCase()}));
     (p.material||[]).forEach(x=>items.push({typ:"projektmaterial",typLabel:"Material/Lieferung",id:p.id,icon:"▤",label:x.bezeichnung,sub:p.name,text:[x.bezeichnung,x.lieferant,x.lieferstatus,p.name].filter(Boolean).join(" ").toLowerCase()}));
     (p.dokumente||[]).forEach(x=>items.push({typ:"projektdokument",typLabel:"Projektdatei",id:p.id,icon:"📁",label:x.name,sub:p.name,text:[x.name,p.name].filter(Boolean).join(" ").toLowerCase()}));
+    (p.chat||[]).filter(m=>!m.geloescht).forEach(m=>items.push({typ:"projektchat",typLabel:"Baustellen-Chat",id:p.id,icon:"💬",label:(m.text||"Chat-Anhang").slice(0,80),sub:p.name,text:[m.text,(m.anhaenge||[]).map(a=>a.name).join(" "),p.name,mitarbeiterName(m.autor)].filter(Boolean).join(" ").toLowerCase()}));
     (p.besichtigungen||[]).forEach(b=>{
       const textParts=[b.titel,b.art,b.ansprechpartner,b.telefon,b.email,b.teilnehmer,b.notiz,p.name];
       (b.bereiche||[]).forEach(br=>{textParts.push(br.name,br.ebene,br.notiz);(br.masse||[]).forEach(m=>textParts.push(m.label,m.wert,m.einheit));});
@@ -1367,6 +1372,7 @@ function globalSearchOpenResult(typ, id){
     projektmaterial: ()=>{ const h="#projekte/"+id+"/material"; location.hash=h; route(h); },
     projektdokument: ()=>{ const h="#projekte/"+id+"/dokumente"; location.hash=h; route(h); },
     projektbesichtigung: ()=>{ const parts=id.split(":"); window._activeBesichtigungId=parts[1]; const h="#projekte/"+parts[0]+"/besichtigung"; location.hash=h; route(h); },
+    projektchat: ()=>{ const h="#projekte/"+id+"/chat"; location.hash=h; route(h); },
     rechnung: ()=>{ location.hash="#rechnungen"; route("#rechnungen"); openRechnungForm(id); },
     vertrag: ()=>{ location.hash="#vertraege"; route("#vertraege"); openVertragForm(id); },
     passwort: ()=>{ location.hash="#passwoerter"; route("#passwoerter"); openPasswortForm(id); },
@@ -4019,6 +4025,7 @@ function duplicateProjekt(id){
 const PROJEKT_TABS = [
   {id:"uebersicht", label:"Überblick", icon:"▦"},
   {id:"besichtigung", label:"Besichtigung", icon:"⌖"},
+  {id:"chat", label:"Baustellen-Chat", icon:"💬"},
   {id:"steuerung", label:"Baustellensteuerung", icon:"⚑"},
   {id:"lv", label:"Leistungsverzeichnis", icon:"%"},
   {id:"bauzeitenplan", label:"Bauablauf", icon:"◫"},
@@ -4260,6 +4267,7 @@ function renderTabUebersicht(body, p){
       <button class="projectQuickAction" onclick="goTo('#projekte/${escAttr(p.id)}/dokumente')"><span>📷</span><span>Foto / Datei</span></button>
       <button class="projectQuickAction" onclick="openProjektAufgabe('${escAttr(p.id)}')"><span>📝</span><span>Aufgabe</span></button>
       <button class="projectQuickAction" onclick="openBesichtigungForm('${escAttr(p.id)}')"><span>⌖</span><span>Besichtigung</span></button>
+      <button class="projectQuickAction" onclick="goTo('#projekte/${escAttr(p.id)}/chat')"><span>💬</span><span>Chat</span></button>
       <button class="projectQuickAction" onclick="openMangelForm('${escAttr(p.id)}')"><span>⚠</span><span>Mangel</span></button>
       <button class="projectQuickAction" onclick="openBautagebuchForm('${escAttr(p.id)}')"><span>✎</span><span>Heute dokumentieren</span></button>
     </div>
@@ -4288,6 +4296,7 @@ function renderTabUebersicht(body, p){
       <button class="projectArea" onclick="goTo('#projekte/${escAttr(p.id)}/lv')"><span><div class="projectAreaTitle">Leistungsverzeichnis</div><div class="projectAreaSub">${(p.lvPositionen||[]).length} Positionen</div></span><span>›</span></button>
       <button class="projectArea" onclick="goTo('#projekte/${escAttr(p.id)}/bauzeitenplan')"><span><div class="projectAreaTitle">Bauablauf</div><div class="projectAreaSub">${p.bauzeitenplan.length} Phasen</div></span><span>›</span></button>
       <button class="projectArea" onclick="goTo('#projekte/${escAttr(p.id)}/team')"><span><div class="projectAreaTitle">Team & Einsatz</div><div class="projectAreaSub">${p.team.length} Mitarbeiter · Wochenplanung</div></span><span>›</span></button>
+      <button class="projectArea" onclick="goTo('#projekte/${escAttr(p.id)}/chat')"><span><div class="projectAreaTitle">Baustellen-Chat</div><div class="projectAreaSub">${(p.chat||[]).filter(m=>!m.geloescht).length} Nachrichten</div></span><span>›</span></button>
       <button class="projectArea" onclick="goTo('#projekte/${escAttr(p.id)}/besichtigung')"><span><div class="projectAreaTitle">Baustellenbesichtigung</div><div class="projectAreaSub">${(p.besichtigungen||[]).length} Besichtigung${(p.besichtigungen||[]).length===1?"":"en"}</div></span><span>›</span></button>
       <button class="projectArea" onclick="goTo('#projekte/${escAttr(p.id)}/steuerung')"><span><div class="projectAreaTitle">Baustellensteuerung</div><div class="projectAreaSub">${offeneBlocker.length} Blocker · ${offeneEntscheidungen.length} Entscheidungen</div></span><span>›</span></button>
       <button class="projectArea" onclick="goTo('#projekte/${escAttr(p.id)}/dokumente')"><span><div class="projectAreaTitle">Dateien & Fotos</div><div class="projectAreaSub">${p.dokumente.length} Dateien · ${p.fotos.length} Fotos</div></span><span>›</span></button>
@@ -6262,32 +6271,117 @@ function deleteChecklistItem(pid, i){
   deleteAtIndexWithUndo(p.checkliste, i, "Checklisten-Punkt gelöscht.");
 }
 
+function projektChatCanDelete(msg){
+  return !!msg && (msg.autor===S.currentUserId || hasAdminAccess());
+}
+function renderProjektChatAttachment(a){
+  const isImg=(a.type||"").startsWith("image/");
+  if(isImg){
+    return `<button type="button" onclick="openDataUrlDoc(this.dataset.url,this.dataset.name)" data-url="${escAttr(a.dataURL||"")}" data-name="${escAttr(a.name||"Foto")}" style="border:0;background:none;padding:0;cursor:pointer;">
+      <img src="${escAttr(a.dataURL||"")}" alt="${escAttr(a.name||"Foto")}" style="display:block;width:150px;max-width:100%;height:105px;object-fit:cover;border-radius:9px;margin-top:7px;">
+    </button>`;
+  }
+  return `<button class="btn sm" style="margin-top:7px;" onclick="openDataUrlDoc(this.dataset.url,this.dataset.name)" data-url="${escAttr(a.dataURL||"")}" data-name="${escAttr(a.name||"Datei")}">📎 ${escHtml(a.name||"Datei")}</button>`;
+}
 function renderTabProjektChat(body, p){
+  const msgs=(p.chat||[]).filter(m=>!m.geloescht).slice().sort((a,b)=>(a.zeit||"").localeCompare(b.zeit||""));
   body.innerHTML = `
-    <div class="chatWrap">
-      <div class="chatMsgs" id="pChatMsgs">
-        ${p.chat.map(m=>`
-          <div class="chatMsg ${m.autor===S.currentUserId?"me":""}">
-            <div class="chatMsgMeta">${escHtml(mitarbeiterName(m.autor)||"Gast")} · ${fmtDateTime(m.zeit)}</div>
-            ${escHtml(m.text)}
-          </div>
-        `).join("") || `<div class="empty">Noch keine Nachrichten.</div>`}
+    <div class="card" style="padding:0;overflow:hidden;">
+      <div class="projectSectionHead" style="padding:14px 16px;border-bottom:1px solid var(--border);margin:0;">
+        <div>
+          <b>💬 Baustellen-Chat</b>
+          <div class="pageSub">Interner Chat für ${escHtml(p.name)} · ${msgs.length} Nachricht${msgs.length===1?"":"en"}</div>
+        </div>
+        <span class="badge blue">Projektintern</span>
       </div>
-      <div class="chatInputBar">
-        <input type="text" id="pChatInput" placeholder="Nachricht..." onkeydown="if(event.key==='Enter') sendProjektChat('${escAttr(p.id)}')">
-        ${micButtonHTML("pChatInput")}
-        <button class="btn primary" onclick="sendProjektChat('${escAttr(p.id)}')">Senden</button>
+
+      <div class="chatMsgs" id="pChatMsgs" style="min-height:360px;max-height:60vh;padding:14px;overflow-y:auto;background:var(--bg2);">
+        ${msgs.map(m=>{
+          const me=m.autor===S.currentUserId;
+          return `<div style="display:flex;justify-content:${me?"flex-end":"flex-start"};margin-bottom:9px;">
+            <div class="chatMsg ${me?"me":""}" style="max-width:min(78%,620px);position:relative;">
+              <div class="chatMsgMeta" style="display:flex;justify-content:space-between;gap:10px;align-items:center;">
+                <span>${escHtml(mitarbeiterName(m.autor)||"Benutzer")} · ${fmtDateTime(m.zeit)}</span>
+                ${projektChatCanDelete(m)?`<button class="projectIconBtn" onclick="deleteProjektChatMessage('${escAttr(p.id)}','${escAttr(m.id)}')" title="Nachricht löschen" style="font-size:12px;">×</button>`:""}
+              </div>
+              ${m.text?`<div style="white-space:pre-wrap;word-break:break-word;">${escHtml(m.text)}</div>`:""}
+              ${(m.anhaenge||[]).map(renderProjektChatAttachment).join("")}
+            </div>
+          </div>`;
+        }).join("") || `<div class="empty" style="padding:50px 16px;">Noch keine Nachrichten auf dieser Baustelle.<br><span class="pageSub">Schreibe die erste Nachricht an das Projektteam.</span></div>`}
+      </div>
+
+      <div style="padding:10px 12px;border-top:1px solid var(--border);background:var(--card);">
+        <div id="pChatAttachmentPreview" style="display:none;margin-bottom:8px;"></div>
+        <div class="chatInputBar" style="padding:0;">
+          <label class="iconBtn" title="Foto oder Datei anhängen" style="cursor:pointer;">📎
+            <input type="file" accept="image/*,application/pdf" style="display:none" onchange="setProjektChatAttachment(this)">
+          </label>
+          <input type="text" id="pChatInput" autocomplete="off" placeholder="Nachricht an die Baustelle …" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendProjektChat('${escAttr(p.id)}')}">
+          ${micButtonHTML("pChatInput")}
+          <button class="btn primary" onclick="sendProjektChat('${escAttr(p.id)}')">Senden</button>
+        </div>
       </div>
     </div>
   `;
-  const msgs = document.getElementById("pChatMsgs"); msgs.scrollTop = msgs.scrollHeight;
+  window._projektChatAttachment=null;
+  const msgsEl=document.getElementById("pChatMsgs");
+  if(msgsEl) requestAnimationFrame(()=>{ msgsEl.scrollTop=msgsEl.scrollHeight; });
+  const input=document.getElementById("pChatInput");
+  if(input) setTimeout(()=>input.focus(),50);
+}
+async function setProjektChatAttachment(input){
+  const file=input&&input.files&&input.files[0];
+  if(!file) return;
+  try{
+    window._projektChatAttachment={id:uid(),name:file.name,type:file.type||"application/octet-stream",dataURL:await fileToDataURL(file)};
+    const preview=document.getElementById("pChatAttachmentPreview");
+    if(preview){
+      preview.style.display="flex";
+      preview.style.alignItems="center";
+      preview.style.justifyContent="space-between";
+      preview.style.gap="8px";
+      preview.innerHTML=`<span class="badge blue">📎 ${escHtml(file.name)}</span><button class="iconBtn" onclick="clearProjektChatAttachment()">×</button>`;
+    }
+  }catch(e){ toast("Anhang konnte nicht geladen werden: "+e.message,"error"); }
+}
+function clearProjektChatAttachment(){
+  window._projektChatAttachment=null;
+  const preview=document.getElementById("pChatAttachmentPreview");
+  if(preview){preview.style.display="none";preview.innerHTML="";}
 }
 function sendProjektChat(pid){
-  const input = document.getElementById("pChatInput");
-  const text = input.value.trim(); if(!text) return;
-  const p = S.projekte.find(x=>x.id===pid);
-  p.chat.push({id:uid(), autor:S.currentUserId, text, zeit:new Date().toISOString()});
-  saveState(); route(location.hash);
+  const input=document.getElementById("pChatInput");
+  const text=(input?.value||"").trim();
+  const attachment=window._projektChatAttachment;
+  if(!text&&!attachment) return;
+  const p=S.projekte.find(x=>x.id===pid);
+  if(!p) return;
+  if(!p.chat) p.chat=[];
+  p.chat.push({
+    id:uid(),
+    autor:S.currentUserId,
+    text,
+    zeit:new Date().toISOString(),
+    anhaenge:attachment?[attachment]:[],
+    geloescht:false
+  });
+  addProjektChronik(pid,"chat","Neue Chat-Nachricht von "+(mitarbeiterName(S.currentUserId)||"Benutzer"));
+  saveState();
+  window._projektChatAttachment=null;
+  route(location.hash);
+}
+function deleteProjektChatMessage(pid,mid){
+  const p=S.projekte.find(x=>x.id===pid);
+  const m=p&&(p.chat||[]).find(x=>x.id===mid);
+  if(!m||!projektChatCanDelete(m)) return;
+  confirmDelete("Diese Chat-Nachricht wirklich löschen?",()=>{
+    m.geloescht=true;
+    m.text="";
+    m.anhaenge=[];
+    saveState();
+    route(location.hash);
+  });
 }
 
 /* ---- Aufmaß (manuelle Raumvermessung, Shoelace-Formel) ---- */
