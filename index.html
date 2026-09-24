@@ -811,6 +811,8 @@ function ensureShape(s){
       if(!b.entscheidungen) b.entscheidungen=[];
       if(!b.aufgaben) b.aufgaben=[];
       if(!b.feststellungen) b.feststellungen=[];
+      if(!b.materialbedarf) b.materialbedarf=[];
+      if(!b.zugaenge) b.zugaenge=[];
       if(b.status==null) b.status="offen";
       if(b.unterschrift==null) b.unterschrift="";
       if(b.abschlussNotiz==null) b.abschlussNotiz="";
@@ -1331,11 +1333,13 @@ function globalSearchIndex(){
     (p.material||[]).forEach(x=>items.push({typ:"projektmaterial",typLabel:"Material/Lieferung",id:p.id,icon:"▤",label:x.bezeichnung,sub:p.name,text:[x.bezeichnung,x.lieferant,x.lieferstatus,p.name].filter(Boolean).join(" ").toLowerCase()}));
     (p.dokumente||[]).forEach(x=>items.push({typ:"projektdokument",typLabel:"Projektdatei",id:p.id,icon:"📁",label:x.name,sub:p.name,text:[x.name,p.name].filter(Boolean).join(" ").toLowerCase()}));
     (p.besichtigungen||[]).forEach(b=>{
-      const textParts=[b.titel,b.art,b.ansprechpartner,b.teilnehmer,b.notiz,p.name];
+      const textParts=[b.titel,b.art,b.ansprechpartner,b.telefon,b.email,b.teilnehmer,b.notiz,p.name];
       (b.bereiche||[]).forEach(br=>{textParts.push(br.name,br.ebene,br.notiz);(br.masse||[]).forEach(m=>textParts.push(m.label,m.wert,m.einheit));});
       (b.fragen||[]).forEach(x=>textParts.push(x.text,x.notiz));
       (b.wuensche||[]).forEach(x=>textParts.push(x.text,x.notiz));
       (b.feststellungen||[]).forEach(x=>textParts.push(x.text,x.notiz));
+      (b.materialbedarf||[]).forEach(x=>textParts.push(x.text,x.menge,x.einheit,x.notiz));
+      (b.zugaenge||[]).forEach(x=>textParts.push(x.text,x.notiz));
       items.push({typ:"projektbesichtigung",typLabel:"Baustellenbesichtigung",id:p.id+":"+b.id,icon:"⌖",label:b.titel||b.art||"Besichtigung",sub:p.name,text:textParts.filter(Boolean).join(" ").toLowerCase()});
     });
   });
@@ -5512,6 +5516,8 @@ function openBesichtigungForm(pid){
       <div class="formRow"><label>Uhrzeit</label><input id="bsZeit" type="time"></div>
       <div class="formRow"><label>Anlass</label><select id="bsArt"><option>Erstbesichtigung</option><option>Bestandsaufnahme</option><option>Aufmaßtermin</option><option>Planungsbesprechung</option><option>Sonstige Besichtigung</option></select></div>
       <div class="formRow"><label>Ansprechpartner vor Ort</label><input id="bsAnsprech" type="text" placeholder="Name"></div>
+      <div class="formRow"><label>Telefon Ansprechpartner</label><input id="bsTel" type="tel"></div>
+      <div class="formRow"><label>E-Mail Ansprechpartner</label><input id="bsEmail" type="email"></div>
     </div>
     <div class="formRow"><label>Teilnehmer</label><input id="bsTeilnehmer" type="text" placeholder="z. B. Bauherr, Architekt, Bauleiter"></div>
     <div class="formRow"><label>Allgemeine Notiz</label><div class="micWrap"><textarea id="bsNotiz" placeholder="Erster Eindruck, Zugang, Besonderheiten …"></textarea>${fieldMic("bsNotiz")}</div></div>
@@ -5521,7 +5527,7 @@ function openBesichtigungForm(pid){
 function saveNewBesichtigung(pid){
   const p=S.projekte.find(x=>x.id===pid); if(!p)return;
   const art=document.getElementById("bsArt").value;
-  const b={id:uid(),datum:document.getElementById("bsDatum").value||todayISO(),uhrzeit:document.getElementById("bsZeit").value,art,titel:art,ansprechpartner:document.getElementById("bsAnsprech").value.trim(),teilnehmer:document.getElementById("bsTeilnehmer").value.trim(),notiz:document.getElementById("bsNotiz").value.trim(),status:"offen",bereiche:[],fragen:[],wuensche:[],entscheidungen:[],aufgaben:[],feststellungen:[],unterschrift:"",abschlussNotiz:"",erstelltAm:new Date().toISOString()};
+  const b={id:uid(),datum:document.getElementById("bsDatum").value||todayISO(),uhrzeit:document.getElementById("bsZeit").value,art,titel:art,ansprechpartner:document.getElementById("bsAnsprech").value.trim(),teilnehmer:document.getElementById("bsTeilnehmer").value.trim(),telefon:document.getElementById("bsTel").value.trim(),email:document.getElementById("bsEmail").value.trim(),notiz:document.getElementById("bsNotiz").value.trim(),status:"offen",bereiche:[],fragen:[],wuensche:[],entscheidungen:[],aufgaben:[],feststellungen:[],materialbedarf:[],zugaenge:[],unterschrift:"",abschlussNotiz:"",erstelltAm:new Date().toISOString()};
   p.besichtigungen.push(b);
   addProjektChronik(pid,"besichtigung","Baustellenbesichtigung gestartet: "+art);
   saveState(); closeModal(); window._activeBesichtigungId=b.id; goTo("#projekte/"+pid+"/besichtigung");
@@ -5568,6 +5574,8 @@ function renderBesichtigungDetail(body,p,b){
         <button class="projectQuickAction" onclick="openBesichtigungTextItem('${escAttr(p.id)}','${escAttr(b.id)}','entscheidung')"><span>✓</span><span>Freigabe</span></button>
         <button class="projectQuickAction" onclick="openBesichtigungAufgabeForm('${escAttr(p.id)}','${escAttr(b.id)}')"><span>☑</span><span>Aufgabe</span></button>
         <button class="projectQuickAction" onclick="openBesichtigungTextItem('${escAttr(p.id)}','${escAttr(b.id)}','feststellung')"><span>!</span><span>Feststellung</span></button>
+        <button class="projectQuickAction" onclick="openBesichtigungMaterialForm('${escAttr(p.id)}','${escAttr(b.id)}')"><span>▤</span><span>Materialbedarf</span></button>
+        <button class="projectQuickAction" onclick="openBesichtigungZugangForm('${escAttr(p.id)}','${escAttr(b.id)}')"><span>🔑</span><span>Zugang</span></button>
       </div>
     </div>
 
@@ -5576,7 +5584,11 @@ function renderBesichtigungDetail(body,p,b){
       ${renderBesichtigungListCard("Kundenwünsche",b.wuensche||[],"wunsch")}
       ${renderBesichtigungListCard("Entscheidungen / Freigaben",b.entscheidungen||[],"entscheidung")}
       ${renderBesichtigungListCard("Feststellungen / Besonderheiten",b.feststellungen||[],"feststellung")}
+      ${renderBesichtigungListCard("Materialbedarf",b.materialbedarf||[],"material")}
+      ${renderBesichtigungListCard("Zugang / Schlüssel",b.zugaenge||[],"zugang")}
     </div>
+
+    ${b.abschlussNotiz?`<div class="card" style="margin-top:12px;"><div class="projectSectionHead"><b>Zusammenfassung</b><span class="badge green">erstellt</span></div><div style="font-size:13px;line-height:1.55;white-space:pre-wrap;">${escHtml(b.abschlussNotiz)}</div></div>`:""}
 
     <div class="card" style="margin-top:12px;">
       <div class="projectSectionHead"><b>Aufgaben aus der Besichtigung</b><span class="pageSub">Werden beim Abschließen ins Projekt übernommen</span></div>
@@ -5673,6 +5685,39 @@ function saveBesichtigungAufgabe(pid,bid){
   b.aufgaben.push({id:uid(),titel,verantwortlich:document.getElementById("baVerantw").value.trim(),faellig:document.getElementById("baFaellig").value,notiz:document.getElementById("baNotiz").value.trim(),uebernommenId:""});
   saveState();closeModal();route(location.hash);
 }
+function openBesichtigungMaterialForm(pid,bid){
+  openModal(`<div class="modalHead"><div class="modalTitle">Materialbedarf erfassen</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
+  <div class="grid cols-3"><div class="formRow"><label>Material</label><input id="bmatText" type="text" placeholder="z. B. Gipskarton"></div><div class="formRow"><label>Menge</label><input id="bmatMenge" type="number" step="0.01"></div><div class="formRow"><label>Einheit</label><input id="bmatEinheit" type="text" placeholder="Stk., m²"></div></div>
+  <div class="formRow"><label>Notiz</label><input id="bmatNotiz" type="text" placeholder="optional"></div>
+  <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="saveBesichtigungMaterial('${escAttr(pid)}','${escAttr(bid)}')">Speichern</button></div>`);
+}
+function saveBesichtigungMaterial(pid,bid){
+  const p=S.projekte.find(x=>x.id===pid),b=besichtigungById(p,bid),text=document.getElementById("bmatText").value.trim();if(!text){toast("Material erforderlich.","warn");return;}
+  b.materialbedarf.push({id:uid(),text,menge:document.getElementById("bmatMenge").value,einheit:document.getElementById("bmatEinheit").value.trim(),notiz:document.getElementById("bmatNotiz").value.trim(),uebernommenId:""});
+  addProjektChronik(pid,"besichtigung","Materialbedarf erfasst: "+text);saveState();closeModal();route(location.hash);
+}
+function openBesichtigungZugangForm(pid,bid){
+  openModal(`<div class="modalHead"><div class="modalTitle">Zugang / Schlüssel erfassen</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
+  <div class="formRow"><label>Bezeichnung</label><input id="bzugText" type="text" placeholder="z. B. Haustür, Bauzaun, Schlüssel"></div>
+  <div class="formRow"><label>Information</label><textarea id="bzugNotiz" placeholder="Code, Übergabe, Ansprechpartner …"></textarea></div>
+  <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="saveBesichtigungZugang('${escAttr(pid)}','${escAttr(bid)}')">Speichern</button></div>`);
+}
+function saveBesichtigungZugang(pid,bid){
+  const p=S.projekte.find(x=>x.id===pid),b=besichtigungById(p,bid),text=document.getElementById("bzugText").value.trim();if(!text){toast("Bezeichnung erforderlich.","warn");return;}
+  b.zugaenge.push({id:uid(),text,notiz:document.getElementById("bzugNotiz").value.trim(),uebernommenId:""});
+  addProjektChronik(pid,"besichtigung","Zugang erfasst: "+text);saveState();closeModal();route(location.hash);
+}
+function besichtigungZusammenfassung(b){
+  const fotos=(b.bereiche||[]).reduce((n,x)=>n+(x.fotos||[]).length,0);
+  const masse=(b.bereiche||[]).reduce((n,x)=>n+(x.masse||[]).length,0);
+  const parts=[
+    (b.bereiche||[]).length+" Bereiche/Räume aufgenommen, "+fotos+" Fotos und "+masse+" Maße dokumentiert.",
+    (b.fragen||[]).length+" offene Fragen, "+(b.wuensche||[]).length+" Kundenwünsche und "+(b.feststellungen||[]).length+" Feststellungen erfasst.",
+    (b.entscheidungen||[]).length+" Entscheidungen/Freigaben, "+(b.aufgaben||[]).length+" Aufgaben, "+(b.materialbedarf||[]).length+" Materialbedarfe und "+(b.zugaenge||[]).length+" Zugangs-/Schlüsselinformationen dokumentiert."
+  ];
+  if(b.ansprechpartner) parts.push("Ansprechpartner vor Ort: "+b.ansprechpartner+".");
+  return parts.join("\n");
+}
 function openBesichtigungUnterschrift(pid,bid){
   const p=S.projekte.find(x=>x.id===pid),b=besichtigungById(p,bid);window._besichtigungSigDraft=b.unterschrift||"";
   openModal(`<div class="modalHead"><div class="modalTitle">Unterschrift zur Besichtigung</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
@@ -5686,7 +5731,7 @@ function saveBesichtigungUnterschrift(pid,bid){
 }
 function finishBesichtigung(pid,bid){
   const p=S.projekte.find(x=>x.id===pid),b=besichtigungById(p,bid);if(!p||!b)return;
-  let tasks=0,decisions=0,photos=0;
+  let tasks=0,decisions=0,photos=0,materials=0,access=0,contacts=0;
   (b.aufgaben||[]).forEach(a=>{
     if(a.uebernommenId)return;
     const id=uid();
@@ -5696,17 +5741,33 @@ function finishBesichtigung(pid,bid){
   (b.entscheidungen||[]).forEach(e=>{
     if(e.uebernommenId)return;
     const id=uid();
-    p.entscheidungen.push({id,titel:e.text,ansprechpartner:e.notiz||"",faellig:"",entscheidung:"",status:"offen",erstelltAm:new Date().toISOString(),quelle:"Besichtigung"});
+    p.entscheidungen.push({id,titel:e.text,ansprechpartner:e.notiz||b.ansprechpartner||"",faellig:"",entscheidung:"",status:"offen",erstelltAm:new Date().toISOString(),quelle:"Besichtigung"});
     e.uebernommenId=id;decisions++;
   });
+  (b.materialbedarf||[]).forEach(m=>{
+    if(m.uebernommenId)return;
+    const duplicate=(p.material||[]).find(x=>normalizedPositionLabel(x.bezeichnung)===normalizedPositionLabel(m.text));
+    if(duplicate){m.uebernommenId=duplicate.id;return;}
+    const id=uid();
+    p.material.push({id,titel:"",bezeichnung:m.text,beschreibung:m.notiz||"",menge:m.menge||"",einheit:m.einheit||"",preis:0,datum:todayISO(),lieferant:"",bestelltAm:"",liefertermin:"",lieferstatus:"offen",lieferschein:"",quelle:"Besichtigung"});
+    m.uebernommenId=id;materials++;
+  });
+  (b.zugaenge||[]).forEach(z=>{
+    if(z.uebernommenId)return;
+    const id=uid();p.zugaenge.push({id,bezeichnung:z.text,info:z.notiz||"",quelle:"Besichtigung"});z.uebernommenId=id;access++;
+  });
+  if(b.ansprechpartner && !(p.kontakte||[]).some(k=>(k.name||"").trim().toLowerCase()===b.ansprechpartner.trim().toLowerCase())){
+    p.kontakte.push({id:uid(),name:b.ansprechpartner,rolle:"Ansprechpartner Besichtigung",firma:"",tel:b.telefon||"",email:b.email||"",notiz:"Aus Baustellenbesichtigung übernommen"});contacts++;
+  }
   (b.bereiche||[]).forEach(br=>(br.fotos||[]).forEach(f=>{
     if(f.uebernommenId)return;
     const id=uid();
     p.fotos.push({id,name:f.name||("Besichtigung "+br.name),dataURL:f.dataURL,datum:f.datum||new Date().toISOString(),notiz:"Besichtigung · "+br.name});
     f.uebernommenId=id;photos++;
   }));
+  b.abschlussNotiz=besichtigungZusammenfassung(b);
   b.status="abgeschlossen";b.abgeschlossenAm=new Date().toISOString();
-  addProjektChronik(pid,"besichtigung","Baustellenbesichtigung abgeschlossen: "+(b.titel||b.art||fmtDate(b.datum))+" · "+tasks+" Aufgaben, "+decisions+" Entscheidungen, "+photos+" Fotos übernommen");
+  addProjektChronik(pid,"besichtigung","Baustellenbesichtigung abgeschlossen: "+(b.titel||b.art||fmtDate(b.datum))+" · "+tasks+" Aufgaben, "+decisions+" Entscheidungen, "+materials+" Materialpositionen, "+photos+" Fotos übernommen");
   saveState();route(location.hash);toast("Besichtigung abgeschlossen und Ergebnisse ins Projekt übernommen.","success");
 }
 function buildBesichtigungDoc(p,b){
@@ -5725,7 +5786,7 @@ function buildBesichtigungDoc(p,b){
     y+=4;
   });
   const section=(title,list)=>{if(!list||!list.length)return;if(y>245){doc.addPage();y=20;}doc.setFont(undefined,"bold");doc.setFontSize(11);doc.text(title,15,y);doc.setFont(undefined,"normal");doc.setFontSize(10);y+=7;list.forEach(x=>{if(y>270){doc.addPage();y=20;}y=pdfWriteWrapped(doc,"• "+(x.text||x.titel||""),18,y,175)+3;});y+=3;};
-  section("Offene Fragen",b.fragen);section("Kundenwünsche",b.wuensche);section("Entscheidungen / Freigaben",b.entscheidungen);section("Feststellungen / Besonderheiten",b.feststellungen);section("Aufgaben",b.aufgaben);
+  section("Offene Fragen",b.fragen);section("Kundenwünsche",b.wuensche);section("Entscheidungen / Freigaben",b.entscheidungen);section("Feststellungen / Besonderheiten",b.feststellungen);section("Aufgaben",b.aufgaben);section("Materialbedarf",b.materialbedarf);section("Zugang / Schlüssel",b.zugaenge);if(b.abschlussNotiz){if(y>245){doc.addPage();y=20;}doc.setFont(undefined,"bold");doc.setFontSize(11);doc.text("Zusammenfassung",15,y);doc.setFont(undefined,"normal");doc.setFontSize(10);y+=7;y=pdfWriteWrapped(doc,b.abschlussNotiz,18,y,175)+4;}
   if(b.unterschrift){if(y>230){doc.addPage();y=20;}doc.setFont(undefined,"bold");doc.text("Unterschrift Auftraggeber / Ansprechpartner",15,y);y+=6;try{doc.addImage(b.unterschrift,"PNG",15,y,60,26);y+=30;}catch(e){}}
   pdfFooter(doc);return doc;
 }
