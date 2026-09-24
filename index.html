@@ -3436,6 +3436,22 @@ function renderPlantafel(view){
     </div>
 
     <div class="card" style="margin-bottom:12px;">
+      <div class="projectSectionHead"><b>Projekt-Besetzung diese Woche</b><span class="pageSub">Soll gegen tatsächlich eingeplante Mitarbeiter</span></div>
+      <div class="grid cols-3">
+        ${S.projekte.filter(p=>!p.archiviert&&projektEffectiveStatus(p)!=="Abgeschlossen"&&(p.sollBesetzung||[]).length).map(p=>{
+          const soll=(p.sollBesetzung||[]).reduce((s,x)=>s+(Number(x.anzahl)||0),0);
+          const ist=new Set(S.planung.filter(x=>x.projektId===p.id&&days.includes(x.datum)).map(x=>x.mitarbeiterId)).size;
+          const diff=Math.max(0,soll-ist);
+          return `<div class="card" style="padding:12px;cursor:pointer;" onclick="goTo('#projekte/${escAttr(p.id)}/team')">
+            <div style="font-weight:650;margin-bottom:5px;">${escHtml(p.name)}</div>
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;"><span class="pageSub">Ist / Soll</span><b>${ist} / ${soll}</b></div>
+            <div style="margin-top:7px;"><span class="badge ${diff?"amber":"green"}">${diff?diff+" Person(en) fehlen":"Besetzung ausreichend"}</span></div>
+          </div>`;
+        }).join("")||'<div class="empty" style="grid-column:1/-1;padding:12px;">Noch keine Soll-Besetzung bei Projekten hinterlegt.</div>'}
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:12px;">
       <div class="projectSectionHead"><b>Projekte zum Ziehen</b><span class="pageSub">Projekt auf einen Mitarbeiter-Tag ziehen</span></div>
       <div style="display:flex;gap:7px;flex-wrap:wrap;">
         ${S.projekte.filter(p=>!p.archiviert&&projektEffectiveStatus(p)!=="Abgeschlossen").map(p=>`<div draggable="true" ondragstart="ptDragProject(event,'${escAttr(p.id)}')" style="border:1px solid;padding:6px 9px;border-radius:8px;font-size:11.5px;cursor:grab;${ptProjectStyle(p.id)}">${escHtml(p.name)}</div>`).join("")||'<span class="pageSub">Keine laufenden Projekte.</span>'}
@@ -3787,6 +3803,7 @@ function saveProjekt(id, isEdit){
   const name = document.getElementById("pName").value.trim();
   if(!name){ toast("Projektname erforderlich.", "warn"); return; }
   let p = isEdit ? S.projekte.find(x=>x.id===id) : window._newProjektDraft;
+  const previousStatus=isEdit?p.status:null;
   p.name=name; p.kundeId=document.getElementById("pKunde").value;
   p.status=document.getElementById("pStatus").value; p.adresse=document.getElementById("pAdresse").value.trim();
   const beginn=document.getElementById("pBeginn").value;
@@ -3803,7 +3820,8 @@ function saveProjekt(id, isEdit){
     window._newProjektDraft=null;
     addProjektChronik(p.id,"projekt","Projekt angelegt");
   }else{
-    addProjektChronik(p.id,"projekt","Projektdaten aktualisiert");
+    if(previousStatus!==p.status) addProjektChronik(p.id,"status","Projektstatus geändert: "+previousStatus+" → "+p.status);
+    else addProjektChronik(p.id,"projekt","Projektdaten aktualisiert");
   }
   saveState(); closeModal();
   goTo(p.archiviert?"#projekte":"#projekte/"+p.id);
