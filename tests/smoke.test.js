@@ -300,7 +300,7 @@ async function main() {
   const fakeState = window.defaultState();
   fakeState.projekte.push(oldSavedProject);
   const shaped = window.ensureShape(fakeState);
-  assert(Array.isArray(shaped.projekte[0].team) && Array.isArray(shaped.projekte[0].fotos) && Array.isArray(shaped.projekte[0].aufmasse) && Array.isArray(shaped.projekte[0].lvPositionen) && Array.isArray(shaped.projekte[0].maengel) && Array.isArray(shaped.projekte[0].kontakte) && Array.isArray(shaped.projekte[0].nachtraege) && Array.isArray(shaped.projekte[0].entscheidungen) && Array.isArray(shaped.projekte[0].blocker) && Array.isArray(shaped.projekte[0].sollBesetzung), "Alte Projekt-Datensätze bekommen alle operativen Projekt-Arrays via ensureShape()");
+  assert(Array.isArray(shaped.projekte[0].team) && Array.isArray(shaped.projekte[0].fotos) && Array.isArray(shaped.projekte[0].aufmasse) && Array.isArray(shaped.projekte[0].lvPositionen) && Array.isArray(shaped.projekte[0].maengel) && Array.isArray(shaped.projekte[0].kontakte) && Array.isArray(shaped.projekte[0].nachtraege) && Array.isArray(shaped.projekte[0].entscheidungen) && Array.isArray(shaped.projekte[0].blocker) && Array.isArray(shaped.projekte[0].sollBesetzung) && Array.isArray(shaped.projekte[0].besichtigungen), "Alte Projekt-Datensätze bekommen alle operativen Projekt-Arrays inklusive Besichtigungen via ensureShape()");
   assert(shaped.projekte[0].standardSubLvAbzug === 20, "Alte Projekte erhalten 20 % als verständlichen Standardabzug");
   const legacyPlanState = window.defaultState();
   legacyPlanState.planung.push({ id:"legacy-plan", mitarbeiterId:"m1", datum:"2026-09-01", projektId:"p1" });
@@ -355,6 +355,7 @@ async function main() {
   assert(gsIndex.some((it) => it.typ === "projekt" && it.id === "p1"), "Suchindex enthält Projekte");
   assert(gsIndex.some((it) => it.typ === "projektkontakt" && it.label === "Suchkontakt"), "Suchindex enthält Baustellenkontakte");
   assert(gsIndex.some((it) => it.typ === "projektmangel" && it.label === "Suchmangel"), "Suchindex enthält Projektmängel");
+  assert(gsIndex.some((it) => it.typ === "projektbesichtigung"), "Suchindex enthält Baustellenbesichtigungen");
   let gsOk = true, gsMsg = "";
   try { window.openGlobalSearch(); } catch (e) { gsOk = false; gsMsg = e.message; }
   assert(gsOk, "Suche-Modal öffnet ohne Exception" + (gsOk ? "" : " (" + gsMsg + ")"));
@@ -503,6 +504,7 @@ async function main() {
   assert(!uebHtml.includes("LV öffnen"), "Leistungsverzeichnis wird in der Projektübersicht nicht doppelt angeboten");
   assert(uebHtml.includes("Team &amp; Einsatz"), "Mitarbeiter-Einsatzplanung ist direkt aus dem Projekt erreichbar");
   assert(uebHtml.includes("Baustellensteuerung"), "Blocker, Freigaben und Nachträge sind direkt aus dem Projekt erreichbar");
+  assert(uebHtml.includes("Baustellenbesichtigung"), "Bestandsaufnahme ist direkt aus der Projektübersicht erreichbar");
   assert(uebHtml.includes(">Mängel<") && uebHtml.includes("Baustellenkontakte"), "Mängel und Baustellenkontakte sind aus der Projektübersicht erreichbar");
   assert(uebHtml.includes("Bautagebuch") && uebHtml.includes("Projektchronik"), "Bautagebuch und Projektchronik sind direkt im Überblick sichtbar");
 
@@ -518,6 +520,49 @@ async function main() {
   assert(opsHtml.includes("Anna Beispiel") && opsHtml.includes("Architektin"), "Baustellenkontakte werden im Projekt angezeigt");
   p1Ops.maengel = [];
   p1Ops.kontakte = [];
+
+  console.log("\n== Projekte: Baustellenbesichtigung vor Baustart ==");
+  const tasksBeforeInspection = window.S.aufgaben.length;
+  const decisionsBeforeInspection = p1Ops.entscheidungen.length;
+  const materialBeforeInspection = p1Ops.material.length;
+  const accessBeforeInspection = p1Ops.zugaenge.length;
+  const contactsBeforeInspection = p1Ops.kontakte.length;
+  const nachtraegeBeforeInspection = p1Ops.nachtraege.length;
+  p1Ops.besichtigungen = [{
+    id:"bs-test", datum:"2026-09-24", uhrzeit:"09:00", art:"Erstbesichtigung", titel:"Erstbesichtigung",
+    ansprechpartner:"Klaus Bauherr", telefon:"040123", email:"klaus@example.com", teilnehmer:"Bauherr, Bauleiter", notiz:"Bestandsaufnahme",
+    status:"offen", unterschrift:"", abschlussNotiz:"",
+    bereiche:[{id:"br-test",name:"Wohnzimmer",ebene:"EG",notiz:"Wände prüfen",fotos:[],masse:[{id:"bm-test",label:"Wand links",wert:"4.2",einheit:"m"}]}],
+    fragen:[{id:"bf-test",text:"Welche Farbe?",notiz:"Bauherr",uebernommenId:""}],
+    wuensche:[{id:"bw-test",text:"Matte Oberfläche",notiz:"",uebernommenId:""}],
+    entscheidungen:[{id:"be-test",text:"Sockelleiste weiß",notiz:"Bauherr",uebernommenId:""}],
+    aufgaben:[{id:"ba-test",titel:"Untergrund prüfen",verantwortlich:"Bauleiter",faellig:"2099-01-01",notiz:"vor Baustart",uebernommenId:""}],
+    feststellungen:[{id:"bfs-test",text:"Feuchte Stelle prüfen",notiz:"Wohnzimmer",uebernommenId:""}],
+    materialbedarf:[{id:"bmat-test",text:"Abdeckvlies",menge:"3",einheit:"Rollen",notiz:"",uebernommenId:""}],
+    zugaenge:[{id:"bzug-test",text:"Haustür",notiz:"Schlüssel beim Bauherrn",uebernommenId:""}]
+  }];
+  window._activeBesichtigungId = "bs-test";
+  window.renderProjekte(window.document.getElementById("view"), "p1", "besichtigung");
+  let bsHtml = window.document.getElementById("view").innerHTML;
+  assert(bsHtml.includes("Wohnzimmer") && bsHtml.includes("Wand links") && bsHtml.includes("Materialbedarf") && bsHtml.includes("Zugang / Schlüssel"), "Besichtigung zeigt Bereiche, Maße, Materialbedarf und Zugang");
+  assert(bsHtml.includes("Offene Frage") && bsHtml.includes("Kundenwunsch") && bsHtml.includes("Feststellung"), "Mobile Schnellerfassung enthält die wichtigen Vor-Ort-Kategorien");
+  assert(bsHtml.includes("Besichtigung abschließen") && bsHtml.includes("PDF") && bsHtml.includes("Unterschrift"), "Besichtigung bietet Abschluss, PDF und Unterschrift");
+  window.finishBesichtigung("p1","bs-test");
+  const bs = p1Ops.besichtigungen[0];
+  assert(bs.status === "abgeschlossen" && bs.abschlussNotiz.includes("Bereiche/Räume"), "Abschluss erzeugt Status und automatische Zusammenfassung");
+  assert(window.S.aufgaben.length === tasksBeforeInspection + 1, "Besichtigungsaufgabe wird ins Projekt-Aufgabensystem übernommen");
+  assert(p1Ops.entscheidungen.length === decisionsBeforeInspection + 1, "Besichtigungsfreigabe wird in Entscheidungen übernommen");
+  assert(p1Ops.material.length === materialBeforeInspection + 1 && p1Ops.material.some((m) => m.bezeichnung === "Abdeckvlies"), "Materialbedarf wird als offene Materialposition übernommen");
+  assert(p1Ops.zugaenge.length === accessBeforeInspection + 1, "Zugangsinformation wird ins Projekt übernommen");
+  assert(p1Ops.kontakte.length === contactsBeforeInspection + 1 && p1Ops.kontakte.some((k) => k.name === "Klaus Bauherr"), "Ansprechpartner der Besichtigung wird als Baustellenkontakt übernommen");
+  assert(p1Ops.nachtraege.length === nachtraegeBeforeInspection, "Baustellenbesichtigung erzeugt vor Baustart ausdrücklich keinen Nachtrag");
+  assert(window.globalSearchIndex().some((it) => it.typ === "projektbesichtigung" && it.label === "Erstbesichtigung"), "Globale Suche indexiert Baustellenbesichtigungen");
+  window._activeBesichtigungId = null;
+  window.S.aufgaben = window.S.aufgaben.slice(0,tasksBeforeInspection);
+  p1Ops.entscheidungen = p1Ops.entscheidungen.slice(0,decisionsBeforeInspection);
+  p1Ops.material = p1Ops.material.slice(0,materialBeforeInspection);
+  p1Ops.zugaenge = p1Ops.zugaenge.slice(0,accessBeforeInspection);
+  p1Ops.kontakte = p1Ops.kontakte.slice(0,contactsBeforeInspection);
 
   console.log("\n== Projekte: Baustellensteuerung & Lieferungen ==");
   p1Ops.blocker = [{ id:"bl-test", titel:"Material fehlt", grund:"Lieferung offen", faellig:"2099-01-01", status:"offen" }];
