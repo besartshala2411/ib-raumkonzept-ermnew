@@ -615,6 +615,24 @@ async function main() {
   window.setProjektArchiviert(duplicate.id, false);
   assert(duplicate.archiviert === false && duplicate.status === "Aktiv", "Archiviertes abgeschlossenes Projekt kann wieder als aktiv zurückgeholt werden");
   window.S.projekte = window.S.projekte.filter((p) => p.id !== duplicate.id);
+
+  const deleteCandidate = {
+    ...window.S.projekte.find((p) => p.id === "p1"),
+    id:"delete-project-test", name:"Löschtest", archiviert:true, status:"Abgeschlossen",
+    fotos:[], dokumente:[], maengel:[], material:[], besichtigungen:[], chronik:[]
+  };
+  window.S.projekte.push(deleteCandidate);
+  window.S.aufgaben.push({id:"delete-task-test",titel:"Löschaufgabe",projektId:"delete-project-test",status:"offen",faellig:"",prioritaet:"mittel"});
+  window.S.planung.push({id:"delete-plan-test",mitarbeiterId:"m1",datum:"2099-01-01",projektId:"delete-project-test",slot:"ganztags",notiz:""});
+  window.S.rechnungen.push({id:"delete-invoice-test",nr:"RE-DEL",kundeId:"",projektId:"delete-project-test",datum:"2026-01-01",faellig:"",status:"offen",positionen:[],notiz:""});
+  window.requestProjektPermanentDelete("delete-project-test");
+  assert(window.document.getElementById("modalOverlay").innerHTML.includes("Die Aktion kann nicht rückgängig gemacht werden"), "Erste Sicherheitsabfrage für endgültiges Projektlöschen wird angezeigt");
+  window.requestProjektPermanentDeleteSecond("delete-project-test");
+  assert(window.document.getElementById("modalOverlay").innerHTML.includes("Bist du wirklich sicher?") && window.document.getElementById("modalOverlay").innerHTML.includes("Ja, endgültig löschen"), "Zweite ausdrückliche Sicherheitsabfrage wird angezeigt");
+  window.permanentlyDeleteProjekt("delete-project-test");
+  assert(!window.S.projekte.some((p) => p.id === "delete-project-test"), "Archiviertes Projekt wird nach doppelter Bestätigung endgültig entfernt");
+  assert(!window.S.aufgaben.some((x) => x.projektId === "delete-project-test") && !window.S.planung.some((x) => x.projektId === "delete-project-test") && !window.S.rechnungen.some((x) => x.projektId === "delete-project-test"), "Verknüpfte Projektaufgaben, Planung und Rechnungen werden mit entfernt");
+
   p1Workflow.beginn = "";
 
   console.log("\n== Briefkopf Live-Vorschau (Split-Layout) ==");
