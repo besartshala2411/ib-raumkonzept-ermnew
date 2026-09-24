@@ -3956,9 +3956,21 @@ function requestProjektPermanentDeleteSecond(id){
     </div>
   `,true);
 }
-function permanentlyDeleteProjekt(id){
+async function permanentlyDeleteProjekt(id){
   const p=S.projekte.find(x=>x.id===id);
   if(!p||!p.archiviert){ closeModal(); toast("Projekt konnte nicht gelöscht werden.","warn"); return; }
+
+  const sb=getSupabaseClient();
+  if(sb){
+    try{
+      const {data:chatRows}=await sb.from("project_chat_messages").select("attachment_path").eq("projekt_id",id);
+      const paths=(chatRows||[]).map(x=>x.attachment_path).filter(Boolean);
+      if(paths.length) await sb.storage.from(PROJECT_CHAT_BUCKET).remove(paths);
+      await sb.from("project_chat_messages").delete().eq("projekt_id",id);
+    }catch(e){
+      toast("Live-Chat konnte nicht vollständig bereinigt werden: "+String(e.message||e).slice(0,140),"warn");
+    }
+  }
 
   S.aufgaben=S.aufgaben.filter(x=>x.projektId!==id);
   S.planung=S.planung.filter(x=>x.projektId!==id);
@@ -3967,7 +3979,12 @@ function permanentlyDeleteProjekt(id){
   S.baustellenchat=S.baustellenchat.filter(x=>x.projektId!==id);
   S.dokumente=S.dokumente.filter(x=>x.projektId!==id);
   S.projekte=S.projekte.filter(x=>x.id!==id);
+  delete _projectChatCache[id];
 
+  if(_projectChatPid===id && _projectChatChannel && sb){
+    try{sb.removeChannel(_projectChatChannel);}catch(e){}
+    _projectChatChannel=null; _projectChatPid=null;
+  }
   if(window._activeBesichtigungId) window._activeBesichtigungId=null;
   saveState();
   closeModal();
@@ -8288,8 +8305,14 @@ async function testCloudConnection(){
   try{
     const { error } = await sb.from("erm_data").select("id").eq("id",1).single();
     if(error) throw error;
+    const chatCheck=await sb.from("project_chat_messages").select("id").limit(1);
+    if(chatCheck.error){
+      setCloudStatus("error","Live-Chat-SQL fehlt");
+      toast("Cloud verbunden, aber das Live-Chat-SQL wurde in Supabase noch nicht ausgeführt.","warn");
+      return;
+    }
     setCloudStatus("ok");
-    toast("Verbindung erfolgreich!", "success");
+    toast("Verbindung erfolgreich – Live-Chat bereit!", "success");
   }catch(e){
     setCloudStatus("error", e.message);
     toast("Verbindung fehlgeschlagen: "+e.message, "error");
@@ -8471,6 +8494,86 @@ create policy "push_subscriptions_access" on push_subscriptions for all
           or (select auth.role()) = 'authenticated' )
   with check ( erm_check_token(current_setting('request.headers', true)::json->>'x-erm-token')
           or (select auth.role()) = 'authenticated' );
+
+-- ============================================================
+-- TEIL 1B — LIVE-BAUSTELLEN-CHAT
+-- Jetzt ebenfalls ausführen. Sicher erneut ausführbar.
+-- Neue Chatnachrichten werden einzeln gespeichert und per Realtime
+-- an alle angemeldeten Mitarbeiter verteilt.
+-- ============================================================
+create table if not exists public.project_chat_messages (
+  id uuid primary key default gen_random_uuid(),
+  projekt_id text not null,
+  autor_id text,
+  autor_name text not null default 'Benutzer',
+  text text not null default '',
+  attachment_name text,
+  attachment_type text,
+  attachment_path text,
+  legacy_id text,
+  org_id text not null default 'ib_raumkonzept',
+  created_at timestamptz not null default now(),
+  deleted_at timestamptz
+);
+
+create index if not exists project_chat_messages_project_created_idx
+  on public.project_chat_messages (projekt_id, created_at);
+
+create unique index if not exists project_chat_messages_legacy_idx
+  on public.project_chat_messages (projekt_id, legacy_id)
+  where legacy_id is not null;
+
+alter table public.project_chat_messages enable row level security;
+alter table public.project_chat_messages replica identity full;
+
+drop policy if exists "project_chat_authenticated" on public.project_chat_messages;
+create policy "project_chat_authenticated" on public.project_chat_messages
+  for all to authenticated
+  using ((select auth.role()) = 'authenticated')
+  with check ((select auth.role()) = 'authenticated');
+
+revoke all on public.project_chat_messages from anon;
+grant select, insert, update, delete on public.project_chat_messages to authenticated;
+
+do $
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'project_chat_messages'
+  ) then
+    alter publication supabase_realtime add table public.project_chat_messages;
+  end if;
+end $;
+
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values (
+  'project-chat','project-chat',false,15728640,
+  array['image/jpeg','image/png','image/webp','image/heic','image/heif','application/pdf']
+)
+on conflict (id) do update
+set public = excluded.public,
+    file_size_limit = excluded.file_size_limit,
+    allowed_mime_types = excluded.allowed_mime_types;
+
+drop policy if exists "project_chat_storage_select" on storage.objects;
+create policy "project_chat_storage_select" on storage.objects
+  for select to authenticated using (bucket_id = 'project-chat');
+
+drop policy if exists "project_chat_storage_insert" on storage.objects;
+create policy "project_chat_storage_insert" on storage.objects
+  for insert to authenticated with check (bucket_id = 'project-chat');
+
+drop policy if exists "project_chat_storage_update" on storage.objects;
+create policy "project_chat_storage_update" on storage.objects
+  for update to authenticated
+  using (bucket_id = 'project-chat')
+  with check (bucket_id = 'project-chat');
+
+drop policy if exists "project_chat_storage_delete" on storage.objects;
+create policy "project_chat_storage_delete" on storage.objects
+  for delete to authenticated using (bucket_id = 'project-chat');
 
 -- ============================================================
 -- TEIL 2 — ERST ausführen, wenn alle Mitarbeiter erfolgreich mit
@@ -8740,7 +8843,7 @@ function renderSetCloud(body){
         <b>☁️ Cloud Sync (Supabase)</b>
         <div id="cloudStatusOut">${cloudStatusHTML()}</div>
       </div>
-      <div class="pageSub" style="margin:8px 0 16px;">Alle Mitarbeiter mit eigenem Konto sehen dieselben Daten in Echtzeit.</div>
+      <div class="pageSub" style="margin:8px 0 16px;">Alle Mitarbeiter mit eigenem Konto sehen dieselben Daten. Der Baustellen-Chat nutzt eine eigene Realtime-Tabelle, damit mehrere Personen gleichzeitig schreiben und lesen können.</div>
       <label style="display:flex; align-items:center; gap:10px; margin-bottom:16px;">
         <input type="checkbox" id="csEnabled" ${LC.cloudSyncEnabled?"checked":""}> Cloud-Sync aktivieren
       </label>
