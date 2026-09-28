@@ -58,7 +58,31 @@ export default async (req) => {
 
   const parts = [{ text: prompt }];
   const file = body && body.file;
-  if (file && file.base64) {
+  let tempStoragePath = null;
+
+  if (file && file.storagePath) {
+    tempStoragePath = String(file.storagePath);
+    const objectUrl = `${SUPABASE_URL}/storage/v1/object/project-chat/${tempStoragePath.split("/").map(encodeURIComponent).join("/")}`;
+    const fileRes = await fetch(objectUrl, {
+      headers: {
+        apikey: SUPABASE_SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      },
+    });
+    if (!fileRes.ok) {
+      return json(400, { error: "Temporäre PDF konnte nicht aus dem Storage geladen werden." });
+    }
+    const bytes = Buffer.from(await fileRes.arrayBuffer());
+    if (bytes.length > 15 * 1024 * 1024) {
+      return json(413, { error: "PDF ist größer als 15 MB." });
+    }
+    parts.push({
+      inline_data: {
+        mime_type: String(file.mimeType || fileRes.headers.get("content-type") || "application/pdf"),
+        data: bytes.toString("base64"),
+      },
+    });
+  } else if (file && file.base64) {
     const base64 = cleanBase64(file.base64);
     if (base64.length > 28_000_000) {
       return json(413, { error: "Datei ist zu groß für die KI-Verarbeitung." });
@@ -105,5 +129,16 @@ export default async (req) => {
     return json(200, { ok: true, text });
   } catch (e) {
     return json(502, { error: "Gemini-Anfrage fehlgeschlagen: " + String(e && e.message || e).slice(0, 300) });
+  } finally {
+    if (tempStoragePath) {
+      const objectUrl = `${SUPABASE_URL}/storage/v1/object/project-chat/${tempStoragePath.split("/").map(encodeURIComponent).join("/")}`;
+      fetch(objectUrl, {
+        method: "DELETE",
+        headers: {
+          apikey: SUPABASE_SERVICE_ROLE_KEY,
+          Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        },
+      }).catch(() => {});
+    }
   }
 };
