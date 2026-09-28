@@ -2,6 +2,8 @@ const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3.6-flash";
+const GEMINI_FILE_MODEL = process.env.GEMINI_FILE_MODEL || "gemini-3.5-flash-lite";
+const GEMINI_TIMEOUT_MS = 48000;
 
 function json(status, body) {
   return new Response(JSON.stringify(body), {
@@ -96,63 +98,59 @@ export default async (req) => {
   }
 
   try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(GEMINI_MODEL)}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`;
-    const requestBody = JSON.stringify({ contents: [{ parts }] });
-    const delays = [0, 900, 2200, 4500];
-    let lastStatus = 502;
-    let lastMessage = "Gemini derzeit nicht erreichbar.";
+    const model = file ? GEMINI_FILE_MODEL : GEMINI_MODEL;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS);
 
-    for (let attempt = 0; attempt < delays.length; attempt++) {
-      if (delays[attempt]) {
-        await new Promise((resolve) => setTimeout(resolve, delays[attempt]));
-      }
-
-      const res = await fetch(url, {
+    let res;
+    try {
+      res = await fetch(url, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: requestBody,
+        body: JSON.stringify({
+          contents: [{ parts }],
+          generationConfig: file
+            ? { maxOutputTokens: 8192 }
+            : { maxOutputTokens: 4096 },
+        }),
+        signal: controller.signal,
       });
+    } finally {
+      clearTimeout(timeout);
+    }
 
-      const data = await res.json().catch(() => ({}));
-      if (res.ok) {
-        const text =
-          data &&
-          Array.isArray(data.candidates) &&
-          data.candidates[0] &&
-          data.candidates[0].content &&
-          Array.isArray(data.candidates[0].content.parts)
-            ? data.candidates[0].content.parts.map((p) => p.text || "").join("")
-            : "";
-        if (!text) return json(502, { error: "Keine Antwort von Gemini erhalten." });
-        return json(200, { ok: true, text, attempts: attempt + 1 });
-      }
-
-      lastStatus = res.status;
-      lastMessage =
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const message =
         data?.error?.message ||
         data?.message ||
         `Gemini HTTP ${res.status}`;
-
-      const retryable =
-        res.status === 429 ||
-        res.status === 500 ||
-        res.status === 502 ||
-        res.status === 503 ||
-        res.status === 504 ||
-        /high demand|temporar|overload|unavailable|try again/i.test(String(lastMessage));
-
-      if (!retryable) {
-        return json(res.status >= 400 && res.status < 600 ? res.status : 502, {
-          error: String(lastMessage).slice(0, 500),
-        });
-      }
+      return json(res.status >= 400 && res.status < 600 ? res.status : 502, {
+        error: String(message).slice(0, 500),
+      });
     }
 
-    return json(lastStatus >= 400 && lastStatus < 600 ? lastStatus : 503, {
-      error: "Gemini ist momentan stark ausgelastet. Es wurden automatisch mehrere Versuche durchgeführt. Bitte in ein paar Minuten erneut versuchen.",
-    });
+    const text =
+      data &&
+      Array.isArray(data.candidates) &&
+      data.candidates[0] &&
+      data.candidates[0].content &&
+      Array.isArray(data.candidates[0].content.parts)
+        ? data.candidates[0].content.parts.map((p) => p.text || "").join("")
+        : "";
+
+    if (!text) return json(502, { error: "Keine Antwort von Gemini erhalten." });
+    return json(200, { ok: true, text, model });
   } catch (e) {
-    return json(502, { error: "Gemini-Anfrage fehlgeschlagen: " + String(e && e.message || e).slice(0, 300) });
+    if (e && e.name === "AbortError") {
+      return json(504, {
+        error: "Die KI-Analyse hat zu lange gedauert. Bitte PDF verkleinern oder erneut versuchen.",
+      });
+    }
+    return json(502, {
+      error: "Gemini-Anfrage fehlgeschlagen: " + String(e && e.message || e).slice(0, 300),
+    });
   } finally {
     if (tempStoragePath) {
       const objectUrl = `${SUPABASE_URL}/storage/v1/object/project-chat/${tempStoragePath.split("/").map(encodeURIComponent).join("/")}`;
