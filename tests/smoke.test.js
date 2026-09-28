@@ -822,6 +822,11 @@ async function main() {
   window.renderVorlagen(window.document.getElementById("view"));
   assert(window.document.getElementById("view").innerHTML.includes("exportVorlagePDF"), "Ausgefüllte Vorlage erscheint mit PDF-Export-Button in der Liste");
 
+  console.log("\n== Gemini PDF-Transport ==");
+  assert(typeof window.uploadGeminiTempFile === "function", "KI-PDFs werden vor der Analyse über temporären Storage transportiert");
+  assert(window.callGeminiWithFile.toString().includes("storagePath"), "Gemini-Dateiaufruf übergibt nur einen Storage-Pfad an Netlify");
+  assert(!window.callGeminiWithFile.toString().includes("base64Data"), "Gemini-Dateiaufruf sendet keine große Base64-PDF mehr durch Netlify");
+
   console.log("\n== Einsatzplanung: Wochenübersicht ==");
   window.document.getElementById("view").innerHTML = "";
   let ptOk = true, ptMsg = "";
