@@ -97,36 +97,60 @@ export default async (req) => {
 
   try {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(GEMINI_MODEL)}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`;
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ parts }],
-      }),
-    });
+    const requestBody = JSON.stringify({ contents: [{ parts }] });
+    const delays = [0, 900, 2200, 4500];
+    let lastStatus = 502;
+    let lastMessage = "Gemini derzeit nicht erreichbar.";
 
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      const message =
+    for (let attempt = 0; attempt < delays.length; attempt++) {
+      if (delays[attempt]) {
+        await new Promise((resolve) => setTimeout(resolve, delays[attempt]));
+      }
+
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: requestBody,
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        const text =
+          data &&
+          Array.isArray(data.candidates) &&
+          data.candidates[0] &&
+          data.candidates[0].content &&
+          Array.isArray(data.candidates[0].content.parts)
+            ? data.candidates[0].content.parts.map((p) => p.text || "").join("")
+            : "";
+        if (!text) return json(502, { error: "Keine Antwort von Gemini erhalten." });
+        return json(200, { ok: true, text, attempts: attempt + 1 });
+      }
+
+      lastStatus = res.status;
+      lastMessage =
         data?.error?.message ||
         data?.message ||
         `Gemini HTTP ${res.status}`;
-      return json(res.status >= 400 && res.status < 600 ? res.status : 502, {
-        error: String(message).slice(0, 500),
-      });
+
+      const retryable =
+        res.status === 429 ||
+        res.status === 500 ||
+        res.status === 502 ||
+        res.status === 503 ||
+        res.status === 504 ||
+        /high demand|temporar|overload|unavailable|try again/i.test(String(lastMessage));
+
+      if (!retryable) {
+        return json(res.status >= 400 && res.status < 600 ? res.status : 502, {
+          error: String(lastMessage).slice(0, 500),
+        });
+      }
     }
 
-    const text =
-      data &&
-      Array.isArray(data.candidates) &&
-      data.candidates[0] &&
-      data.candidates[0].content &&
-      Array.isArray(data.candidates[0].content.parts)
-        ? data.candidates[0].content.parts.map((p) => p.text || "").join("")
-        : "";
-
-    if (!text) return json(502, { error: "Keine Antwort von Gemini erhalten." });
-    return json(200, { ok: true, text });
+    return json(lastStatus >= 400 && lastStatus < 600 ? lastStatus : 503, {
+      error: "Gemini ist momentan stark ausgelastet. Es wurden automatisch mehrere Versuche durchgeführt. Bitte in ein paar Minuten erneut versuchen.",
+    });
   } catch (e) {
     return json(502, { error: "Gemini-Anfrage fehlgeschlagen: " + String(e && e.message || e).slice(0, 300) });
   } finally {
