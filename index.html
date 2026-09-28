@@ -7942,10 +7942,29 @@ async function callGeminiProxy(payload){
 async function callGemini(prompt){
   return callGeminiProxy({prompt:String(prompt||"")});
 }
-async function callGeminiWithFile(prompt, base64Data, mimeType){
+async function uploadGeminiTempFile(file){
+  if(!file) throw new Error("Datei fehlt.");
+  if(file.size>15*1024*1024) throw new Error("PDF ist größer als 15 MB. Bitte die Datei verkleinern oder aufteilen.");
+  const sb=getSupabaseClient();
+  if(!sb) throw new Error("Cloud-Verbindung nicht verfügbar.");
+  const safeName=safeStorageFilename(file.name||"dokument.pdf");
+  const path="ai-inputs/"+(S.currentUserId||"user")+"/"+Date.now()+"-"+safeName;
+  const {error}=await sb.storage.from(PROJECT_CHAT_BUCKET).upload(path,file,{
+    contentType:file.type||"application/pdf",
+    upsert:false
+  });
+  if(error) throw error;
+  return path;
+}
+async function callGeminiWithFile(prompt, file){
+  const storagePath=await uploadGeminiTempFile(file);
   return callGeminiProxy({
     prompt:String(prompt||""),
-    file:{base64:String(base64Data||""),mimeType:mimeType||"application/pdf"}
+    file:{
+      storagePath,
+      mimeType:file.type||"application/pdf",
+      name:file.name||"Dokument.pdf"
+    }
   });
 }
 async function testGeminiConnection(){
@@ -7995,10 +8014,9 @@ async function analyzeProjektAngebotPdf(pid){
   const abzug=Math.max(0,Math.min(100,Number(document.getElementById("projektLvAbzug").value)||0));
   statusEl.textContent="Angebot wird gelesen …";
   try{
-    const dataURL=await fileToDataURL(file);
-    const base64=dataURL.slice(dataURL.indexOf(",")+1);
     const prompt=`Analysiere dieses deutsche Handwerker-Angebot oder Leistungsverzeichnis. Antworte ausschließlich als valides JSON ohne Markdown: {"positionen":[{"titel":"Abschnitt oder Gewerk, sonst leer","bezeichnung":"kurze eindeutige Leistung","beschreibung":"Leistungstext, sonst leer","menge":0,"einheit":"","einzelpreis":0,"gesamtpreis":0}],"angebotssumme":0}. Nutze bei preis den Gesamtpreis der Position. Keine Position doppelt ausgeben.`;
-    const result=extractJsonFromText(await callGeminiWithFile(prompt,base64,file.type||"application/pdf"));
+    const result=extractJsonFromText(await callGeminiWithFile(prompt,file));
+    const dataURL=await fileToDataURL(file);
     const positionen=(Array.isArray(result.positionen)?result.positionen:[]).map(pos=>({
       id:uid(), titel:String(pos.titel||"").slice(0,100), bezeichnung:String(pos.bezeichnung||"Position").slice(0,220),
       beschreibung:String(pos.beschreibung||"").slice(0,800), menge:Number(pos.menge)||0, einheit:String(pos.einheit||"").slice(0,20),
@@ -8086,11 +8104,10 @@ async function analyzeLvPdf(){
   if(!file){ statusEl.textContent = "Bitte zuerst eine PDF-Datei auswählen."; return; }
   statusEl.textContent = "Lese PDF und analysiere mit KI … das kann einen Moment dauern.";
   try{
-    const dataURL = await fileToDataURL(file);
-    const base64 = dataURL.slice(dataURL.indexOf(",")+1);
     const prompt = `Du bist Assistent eines deutschen Handwerksbetriebs (Trockenbau/Maler/Fliesen/Sanitär). Analysiere das beigefügte Leistungsverzeichnis oder Angebot als PDF und extrahiere die Projektdaten. Antworte AUSSCHLIESSLICH mit validem JSON in genau diesem Format, ohne Erklärtext, ohne Markdown-Codeblock: {"name":"kurzer Projektname/Titel","adresse":"Bauadresse falls vorhanden, sonst leer","kunde":"Kundenname/Auftraggeber falls vorhanden, sonst leer","positionen":[{"titel":"Gewerk/Titel-Abschnitt falls das Dokument die Positionen gruppiert, sonst leer","bezeichnung":"kurzer Titel der Position","beschreibung":"ausführlichere Beschreibung/Leistungstext der Position falls im Dokument vorhanden, sonst leer","menge":0,"einheit":"...","einzelpreis":0,"gesamtpreis":0}],"budgetSchaetzung":0}. Wenn ein Wert nicht im Dokument steht, benutze "" bzw. 0. budgetSchaetzung ist die im Dokument genannte Gesamtsumme bzw. die Summe aller Positionen. Bezeichnung und Beschreibung sind unterschiedliche Felder - nicht denselben Text doppelt eintragen, wenn das Dokument beides trennt.`;
-    const text = await callGeminiWithFile(prompt, base64, file.type||"application/pdf");
+    const text = await callGeminiWithFile(prompt, file);
     const result = extractJsonFromText(text);
+    const dataURL = await fileToDataURL(file);
     openLvReviewForm(result, { name: file.name, dataURL });
   }catch(e){
     statusEl.textContent = "Fehler bei der Analyse: " + e.message;
