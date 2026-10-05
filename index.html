@@ -6634,7 +6634,7 @@ function projektChatFallbackMessage(pid,text){
   });
   addProjektChronik(pid,"chat","Chat-Nachricht im Fallback-Modus gespeichert");
   saveState();
-  renderProjectChatMessages(pid,{fallback:true});
+  renderProjektChatMessages(pid,{fallback:true});
 }
 function projektChatCanDelete(msg){
   if(!msg) return false;
@@ -6684,7 +6684,7 @@ async function loadProjectChat(pid,quiet){
   const sb=getSupabaseClient();
   if(!sb){
     setProjektChatStatus("offline","Supabase SDK nicht verfügbar");
-    if(!quiet) renderProjectChatMessages(pid,{offline:true});
+    if(!quiet) renderProjektChatMessages(pid,{offline:true});
     return false;
   }
   setProjektChatStatus("loading");
@@ -6700,12 +6700,12 @@ async function loadProjectChat(pid,quiet){
     if(error) throw error;
     _projectChatCache[pid]=await Promise.all((data||[]).map(hydrateProjectChatMessage));
     setProjektChatStatus("live");
-    renderProjectChatMessages(pid);
+    renderProjektChatMessages(pid);
     return true;
   }catch(e){
     setProjektChatStatus("error",String(e.message||e));
     if(!quiet){
-      renderProjectChatMessages(pid,{cloudError:String(e.message||e)});
+      renderProjektChatMessages(pid,{cloudError:String(e.message||e)});
     }
     return false;
   }
@@ -6733,7 +6733,7 @@ function subscribeProjectChat(pid){
         _projectChatCache[pid]=arr;
       }
       const hash=location.hash||"";
-      if(hash.includes("#projekte/"+pid+"/chat")) renderProjectChatMessages(pid);
+      if(hash.includes("#projekte/"+pid+"/chat")) renderProjektChatMessages(pid);
       else if(payload.eventType==="INSERT" && payload.new && payload.new.autor_id!==S.currentUserId){
         const p=S.projekte.find(x=>x.id===pid);
         toast("💬 Neue Nachricht · "+(p?p.name:"Baustelle"),"success");
@@ -6823,7 +6823,7 @@ function renderTabProjektChat(body,p){
     </div>
   `;
   window._projektChatAttachment=null;
-  renderProjectChatMessages(p.id);
+  renderProjektChatMessages(p.id);
   loadProjectChat(p.id);
   subscribeProjectChat(p.id);
   const input=document.getElementById("pChatInput");
@@ -6892,7 +6892,7 @@ async function sendProjektChat(pid){
       const arr=_projectChatCache[pid]||[];
       if(!arr.some(x=>x.id===msg.id)) arr.push(msg);
       _projectChatCache[pid]=arr;
-      renderProjectChatMessages(pid);
+      renderProjektChatMessages(pid);
     }
     if(input) input.value="";
     clearProjektChatAttachment();
@@ -6925,7 +6925,7 @@ async function deleteProjektChatMessage(pid,mid){
       if(msg.attachment_path){
         sb.storage.from(PROJECT_CHAT_BUCKET).remove([msg.attachment_path]).catch(()=>{});
       }
-      renderProjectChatMessages(pid);
+      renderProjektChatMessages(pid);
     }catch(e){toast("Nachricht konnte nicht gelöscht werden: "+String(e.message||e).slice(0,160),"error");}
   });
 }
