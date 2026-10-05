@@ -4043,7 +4043,11 @@ function saveProjekt(id, isEdit){
   let p = isEdit ? S.projekte.find(x=>x.id===id) : window._newProjektDraft;
   const previousStatus=isEdit?p.status:null;
   const requestedStatus=document.getElementById("pStatus").value;
-  if(isEdit && requestedStatus==="Abgeschlossen" && previousStatus!=="Abgeschlossen"){
+  if(requestedStatus==="Abgeschlossen" && (!isEdit || previousStatus!=="Abgeschlossen")){
+    if(!isEdit){
+      toast("Ein neues Projekt kann nicht direkt als abgeschlossen angelegt werden.","warn");
+      return;
+    }
     closeModal();
     openProjektAbschlussCheck(id);
     return;
@@ -4571,11 +4575,11 @@ function renderTabUebersicht(body, p){
     pushAttention("","✎","Heutiger Bautagesbericht fehlt","Ausführung für heute noch nicht dokumentiert","uebersicht","Heute dokumentieren");
 
   const abschlussChecks=projektAbschlussChecks(p);
-  const abschlussOffen=abschlussChecks.filter(x=>!x[1]);
+  const abschlussOffen=abschlussChecks.filter(x=>!x.ok);
   if(effectiveStatus==="Aktiv" && abschlussOffen.length===0)
     pushAttention("","✓","Projekt ist abschlussbereit","Alle Abschluss-Prüfpunkte sind erfüllt","checkliste","Abnahme / Abschluss öffnen");
   else if(effectiveStatus==="Aktiv" && abschlussOffen.length<=2)
-    pushAttention("warn","✓","Abschluss fast möglich",abschlussOffen.map(x=>x[0]).join(" · "),"checkliste","Abschluss prüfen");
+    pushAttention("warn","✓","Abschluss fast möglich",abschlussOffen.map(x=>x.label).join(" · "),"checkliste","Abschluss prüfen");
 
   if(!attention.length)
     pushAttention("","✓","Aktuell kein Handlungsbedarf","Projekt ist für den aktuellen Stand vollständig gepflegt","chronik","Chronik ansehen");
@@ -5377,7 +5381,16 @@ function openProjektAbschlussCheck(pid){
 }
 function completeProjektFromCheck(pid){
   const p=S.projekte.find(x=>x.id===pid);if(!p)return;
-  p.status="Abgeschlossen";p.archiviert=true;addProjektChronik(pid,"abschluss","Projekt über Abschluss-Check abgeschlossen und archiviert");
+  const checks=projektAbschlussChecks(p);
+  if(!checks.every(x=>x.ok)){
+    toast("Projekt kann noch nicht abgeschlossen werden. Bitte offene Punkte zuerst erledigen.","warn");
+    openProjektAbschlussCheck(pid);
+    return;
+  }
+  p.status="Abgeschlossen";
+  p.archiviert=true;
+  p.fortschritt=100;
+  addProjektChronik(pid,"abschluss","Projekt über Abschluss-Check abgeschlossen und archiviert");
   saveState();closeModal();goTo("#projekte");toast("Projekt abgeschlossen und archiviert.","success");
 }
 
