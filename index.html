@@ -4307,22 +4307,57 @@ function renderTabUebersicht(body, p){
   if(!p.deadline) missing.push("Fertigstellung");
 
   const attention=[];
-  if(ueberfaelligeAufgaben.length) attention.push({cls:"danger",icon:"⚠",html:`<b>${ueberfaelligeAufgaben.length} Aufgabe${ueberfaelligeAufgaben.length===1?"":"n"} überfällig</b><br>Direkt unten erledigen`});
-  else if(offeneAufgaben.length) attention.push({cls:"",icon:"📝",html:`<b>${offeneAufgaben.length} Aufgabe${offeneAufgaben.length===1?"":"n"} offen</b><br>Im Projekt zu erledigen`});
-  else attention.push({cls:"",icon:"✓",html:`<b>Keine offenen Aufgaben</b><br>Aktuell nichts fällig`});
+  const pushAttention=(cls,icon,title,detail,route,action)=>{
+    attention.push({cls,icon,title,detail,route,action:action||"Öffnen"});
+  };
 
-  if(ueberfaelligeMaengel.length) attention.push({cls:"danger",icon:"⚠",html:`<b>${ueberfaelligeMaengel.length} Mangel${ueberfaelligeMaengel.length===1?"":"mängel"} überfällig</b><br>Mängel prüfen`});
-  else if(offeneMaengel.length) attention.push({cls:"warn",icon:"!",html:`<b>${offeneMaengel.length} offene Mängel</b><br>Im Projekt bearbeiten`});
+  if(!(p.besichtigungen||[]).length && effectiveStatus==="In Planung")
+    pushAttention("warn","⌖","Besichtigung fehlt","Bestand, Maße und Kundenwünsche noch nicht aufgenommen","besichtigung","Besichtigung starten");
 
-  if(offeneBlocker.length) attention.push({cls:"danger",icon:"⛔",html:`<b>${offeneBlocker.length} Blocker</b><br>Baustelle kann behindert sein`});
-  else if(offeneEntscheidungen.length) attention.push({cls:"warn",icon:"?",html:`<b>${offeneEntscheidungen.length} Entscheidung${offeneEntscheidungen.length===1?"":"en"} offen</b><br>Freigaben prüfen`});
-  else if(verspaeteteLieferungen.length) attention.push({cls:"warn",icon:"▤",html:`<b>${verspaeteteLieferungen.length} Lieferung${verspaeteteLieferungen.length===1?"":"en"} verspätet</b><br>Material prüfen`});
+  if(!(p.lvPositionen||[]).length)
+    pushAttention("warn","%","LV fehlt","Noch keine Leistungen für das Projekt hinterlegt","lv","LV einlesen");
 
-  if(deadlineLate) attention.push({cls:"danger",icon:"⏱",html:`<b>Termin überschritten</b><br>${fmtDate(p.deadline)}`});
-  else attention.push({cls:"",icon:"📅",html:`<b>${p.deadline?fmtDate(p.deadline):"Kein Endtermin"}</b><br>Fertigstellung`});
+  if(!p.beginn || !p.deadline)
+    pushAttention("warn","📅","Projektzeitraum unvollständig",[!p.beginn?"Beginn fehlt":"",!p.deadline?"Fertigstellung fehlt":""].filter(Boolean).join(" · "),"uebersicht","Projektdaten bearbeiten");
 
-  if(missing.length) attention.push({cls:"warn",icon:"!",html:`<b>${missing.length} Angabe${missing.length===1?" fehlt":"n fehlen"}</b><br>${escHtml(missing.join(", "))}`});
-  else attention.push({cls:"",icon:"✓",html:`<b>Stammdaten vollständig</b><br>Beginn und Ende gepflegt`});
+  if(!(p.team||[]).length && !S.planung.some(x=>x.projektId===p.id))
+    pushAttention("warn","👷","Team noch nicht geplant","Für das Projekt ist noch kein Mitarbeiter oder Einsatz zugeordnet","team","Team planen");
+
+  if(ueberfaelligeAufgaben.length)
+    pushAttention("danger","⚠",ueberfaelligeAufgaben.length+" überfällige Aufgabe"+(ueberfaelligeAufgaben.length===1?"":"n"),"Fällige Punkte zuerst erledigen","uebersicht","Aufgaben prüfen");
+  else if(offeneAufgaben.length)
+    pushAttention("","📝",offeneAufgaben.length+" offene Aufgabe"+(offeneAufgaben.length===1?"":"n"),"Im Projekt noch zu erledigen","uebersicht","Aufgaben prüfen");
+
+  if(ueberfaelligeMaengel.length)
+    pushAttention("danger","⚠",ueberfaelligeMaengel.length+" überfällige"+(ueberfaelligeMaengel.length===1?"r Mangel":" Mängel"),"Frist ist bereits überschritten","maengel","Mängel prüfen");
+  else if(offeneMaengel.length)
+    pushAttention("warn","⚠",offeneMaengel.length+" offene"+(offeneMaengel.length===1?"r Mangel":" Mängel"),"Vor Abnahme klären","maengel","Mängel öffnen");
+
+  if(offeneBlocker.length)
+    pushAttention("danger","⛔",offeneBlocker.length+" Blocker","Kann den Baufortschritt behindern","steuerung","Blocker klären");
+
+  if(offeneEntscheidungen.length)
+    pushAttention("warn","?",offeneEntscheidungen.length+" offene Entscheidung"+(offeneEntscheidungen.length===1?"":"en"),"Freigaben oder Vorgaben fehlen","steuerung","Freigaben prüfen");
+
+  if(verspaeteteLieferungen.length)
+    pushAttention("warn","▤",verspaeteteLieferungen.length+" verspätete Lieferung"+(verspaeteteLieferungen.length===1?"":"en"),"Liefertermin ist überschritten","material","Material prüfen");
+
+  if(deadlineLate)
+    pushAttention("danger","⏱","Fertigstellung überschritten","Geplant war "+fmtDate(p.deadline),"bauzeitenplan","Bauablauf prüfen");
+
+  const heuteDiary=(p.bautagebuch||[]).some(x=>x.datum===todayISO());
+  if(effectiveStatus==="Aktiv" && !heuteDiary)
+    pushAttention("","✎","Heutiger Bautagesbericht fehlt","Ausführung für heute noch nicht dokumentiert","uebersicht","Heute dokumentieren");
+
+  const abschlussChecks=projektAbschlussChecks(p);
+  const abschlussOffen=abschlussChecks.filter(x=>!x[1]);
+  if(effectiveStatus==="Aktiv" && abschlussOffen.length===0)
+    pushAttention("","✓","Projekt ist abschlussbereit","Alle Abschluss-Prüfpunkte sind erfüllt","checkliste","Abnahme / Abschluss öffnen");
+  else if(effectiveStatus==="Aktiv" && abschlussOffen.length<=2)
+    pushAttention("warn","✓","Abschluss fast möglich",abschlussOffen.map(x=>x[0]).join(" · "),"checkliste","Abschluss prüfen");
+
+  if(!attention.length)
+    pushAttention("","✓","Aktuell kein Handlungsbedarf","Projekt ist für den aktuellen Stand vollständig gepflegt","chronik","Chronik ansehen");
 
   body.innerHTML=`
     ${projektWorkflowCard(p)}
@@ -4341,7 +4376,11 @@ function renderTabUebersicht(body, p){
       </div>`:""}
     <div class="compactSectionTitle">Heute wichtig</div>
     <div class="projectAttention">
-      ${attention.map(a=>`<div class="projectAttentionItem ${a.cls}"><div class="projectAttentionIcon">${a.icon}</div><div class="projectAttentionText">${a.html}</div></div>`).join("")}
+      ${attention.slice(0,8).map(a=>`<button type="button" class="projectAttentionItem ${a.cls}" onclick="${a.route==="uebersicht"&&a.action==="Projektdaten bearbeiten"?`openProjektForm('${escAttr(p.id)}')`:`goTo('#projekte/${escAttr(p.id)}/${escAttr(a.route)}')`}" style="width:100%;text-align:left;cursor:pointer;">
+        <div class="projectAttentionIcon">${a.icon}</div>
+        <div class="projectAttentionText" style="flex:1;"><b>${escHtml(a.title)}</b><br>${escHtml(a.detail)}</div>
+        <span class="pageSub" style="white-space:nowrap;">${escHtml(a.action)} ›</span>
+      </button>`).join("")}
     </div>
 
     <div class="compactSectionTitle">Schnell hinzufügen</div>
