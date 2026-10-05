@@ -1949,6 +1949,11 @@ function mitarbeiterPersonalWarnungen(m){
   const dueFristen=(m.fristen||[]).filter(x=>x.faellig&&x.faellig<=grenze).length;
   return {expiredQual,dueQual,dueUnter,dueFristen,total:expiredQual+dueQual+dueUnter+dueFristen};
 }
+function mitarbeiterPersonalWarnBadge(m){
+  const w=mitarbeiterPersonalWarnungen(m);
+  if(!w.total) return '<span class="badge green">OK</span>';
+  return '<span class="badge '+(w.expiredQual?"red":"amber")+'">'+w.total+' Hinweis'+(w.total===1?"":"e")+'</span>';
+}
 function renderMitarbeiter(view){
   view.innerHTML = `
     <div class="pageHead">
@@ -1966,7 +1971,7 @@ function renderMitarbeiter(view){
             <td>${escHtml(m.tel||"–")}</td>
             <td>${escHtml(m.email||"–")}</td>
             <td>${fmtDate(m.eintritt)}</td>
-            <td>${(()=>{const w=mitarbeiterPersonalWarnungen(m);return w.total?\'<span class="badge \'+(w.expiredQual?"red":"amber")+\'">\'+w.total+\' Hinweis\'+(w.total===1?"":"e")+\'</span>\':\'<span class="badge green">OK</span>\';})()}</td>
+            <td>${mitarbeiterPersonalWarnBadge(m)}</td>
             <td>${statusBadge(m.status)}</td>
             <td style="text-align:right; white-space:nowrap;" onclick="event.stopPropagation()">
               <button class="iconBtn" onclick="openMitarbeiterForm('${escAttr(m.id)}')" title="Personalakte öffnen">📋</button>
