@@ -659,6 +659,7 @@ function defaultState(){
     mitarbeiter: [],
     zeiterfassung: [],
     urlaubsantraege: [],
+    kalenderTermine: [],
     onboarding: [],
     onboardingVorlagen: [],
     kunden: [],
@@ -752,6 +753,13 @@ function ensureShape(s){
   if(s.einstellungen.pflichtdokumenteDefs && Array.isArray(s.einstellungen.pflichtdokumenteDefs.subunternehmer)){
     s.einstellungen.pflichtdokumenteDefs.subunternehmer = s.einstellungen.pflichtdokumenteDefs.subunternehmer.filter(d=>!["Personalausweis / Reisepass","Aufenthalts-/Arbeitstitel"].includes(d.name));
   }
+  if(!s.kalenderTermine) s.kalenderTermine=[];
+  s.kalenderTermine.forEach(t=>{
+    if(!t.id) t.id=uid();
+    if(t.notiz==null) t.notiz="";
+    if(t.uhrzeit==null) t.uhrzeit="";
+    if(t.typ==null) t.typ="Termin";
+  });
   s.mitarbeiter.forEach(m=>{
     if(!m.dokumente) m.dokumente=[];
     if(!m.status) m.status="aktiv";
@@ -2827,87 +2835,128 @@ function exportOnboardingPDF(id){
 }
 
 /* =========================================================
-   MODULE: KALENDER (Urlaub + Plantafel-Einsätze im Monatsüberblick)
+   MODULE: KALENDER (persönlicher Mitarbeiterkalender)
 ========================================================= */
+function persoKalenderItems(mid,dateStr){
+  const items=[];
+  S.urlaubsantraege.filter(u=>u.mitarbeiterId===mid&&u.von<=dateStr&&u.bis>=dateStr&&u.status!=="abgelehnt").forEach(u=>{
+    items.push({kind:"urlaub",icon:"🏖️",text:u.status==="genehmigt"?"Urlaub":"Urlaub beantragt",sub:u.status});
+  });
+  const m=S.mitarbeiter.find(x=>x.id===mid);
+  if(m){
+    (m.abwesenheiten||[]).filter(a=>a.von&&a.von<=dateStr&&(a.bis||a.von)>=dateStr).forEach(a=>{
+      items.push({kind:"abwesenheit",icon:"⛔",text:a.typ||"Abwesend",sub:a.notiz||""});
+    });
+    if(m.status==="krank") items.push({kind:"abwesenheit",icon:"🤒",text:"Krank",sub:""});
+  }
+  S.planung.filter(pl=>pl.mitarbeiterId===mid&&pl.datum===dateStr).forEach(pl=>{
+    const p=S.projekte.find(x=>x.id===pl.projektId);
+    items.push({kind:"einsatz",id:pl.id,projektId:pl.projektId,icon:"🏢",text:p?p.name:"Projekteinsatz",sub:[ptSlotLabel(pl.slot),p&&p.adresse,pl.notiz].filter(Boolean).join(" · ")});
+  });
+  (S.kalenderTermine||[]).filter(t=>t.mitarbeiterId===mid&&t.datum===dateStr).sort((a,b)=>(a.uhrzeit||"99:99").localeCompare(b.uhrzeit||"99:99")).forEach(t=>{
+    items.push({kind:"termin",id:t.id,icon:"📌",text:t.titel||"Termin",sub:[t.uhrzeit,t.typ,t.notiz].filter(Boolean).join(" · ")});
+  });
+  return items;
+}
 function renderKalender(view){
-  if(!window._calMonth) window._calMonth = todayISO().slice(0,7);
-  const [year, month] = window._calMonth.split("-").map(Number);
-  const firstDay = new Date(year, month-1, 1);
-  const startWeekday = (firstDay.getDay()+6)%7;
-  const daysInMonth = new Date(year, month, 0).getDate();
-  const monthName = firstDay.toLocaleDateString("de-DE",{month:"long",year:"numeric"});
-  const cells = [];
+  const u=currentUser();
+  if(!u){ view.innerHTML='<div class="empty">Kein Mitarbeiterprofil für dieses Konto gefunden.</div>'; return; }
+  if(!window._calMonth) window._calMonth=todayISO().slice(0,7);
+  const [year,month]=window._calMonth.split("-").map(Number);
+  const firstDay=new Date(year,month-1,1);
+  const startWeekday=(firstDay.getDay()+6)%7;
+  const daysInMonth=new Date(year,month,0).getDate();
+  const monthName=firstDay.toLocaleDateString("de-DE",{month:"long",year:"numeric"});
+  const cells=[];
   for(let i=0;i<startWeekday;i++) cells.push(null);
-  for(let d=1; d<=daysInMonth; d++) cells.push(d);
-  while(cells.length % 7 !== 0) cells.push(null);
+  for(let d=1;d<=daysInMonth;d++) cells.push(d);
+  while(cells.length%7!==0) cells.push(null);
+  const prefix=String(year)+"-"+String(month).padStart(2,"0");
+  const einsaetze=S.planung.filter(x=>x.mitarbeiterId===u.id&&x.datum.startsWith(prefix)).length;
+  const termine=(S.kalenderTermine||[]).filter(x=>x.mitarbeiterId===u.id&&x.datum.startsWith(prefix)).length;
 
-  view.innerHTML = `
+  view.innerHTML=`
     <div class="pageHead">
-      <div><div class="pageTitle">Kalender</div><div class="pageSub">${escHtml(monthName)}</div></div>
-      <div style="display:flex; gap:8px;">
+      <div><div class="pageTitle">Mein Kalender</div><div class="pageSub">${escHtml(u.name)} · ${escHtml(monthName)}</div></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
         <button class="btn" onclick="calShiftMonth(-1)">◀</button>
         <button class="btn" onclick="calGoToday()">Heute</button>
         <button class="btn" onclick="calShiftMonth(1)">▶</button>
+        <button class="btn primary" onclick="openPersoTerminForm('${todayISO()}')">＋ Termin</button>
       </div>
     </div>
+    <div class="grid cols-2" style="margin-bottom:12px;">
+      <div class="kpi"><div class="kpiIcon">🏢</div><div class="kpiVal">${einsaetze}</div><div class="kpiLabel">Eigene Einsätze im Monat</div></div>
+      <div class="kpi"><div class="kpiIcon">📌</div><div class="kpiVal">${termine}</div><div class="kpiLabel">Eigene Termine</div></div>
+    </div>
     <div class="card">
-      <div style="display:grid; grid-template-columns:repeat(7,1fr); gap:1px; background:var(--border); border-radius:10px; overflow:hidden;">
-        ${["Mo","Di","Mi","Do","Fr","Sa","So"].map(d=>`<div style="background:var(--card2); padding:8px; text-align:center; font-size:11px; font-weight:700; color:var(--text-dim);">${d}</div>`).join("")}
+      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:var(--border);border-radius:10px;overflow:hidden;">
+        ${["Mo","Di","Mi","Do","Fr","Sa","So"].map(d=>`<div style="background:var(--card2);padding:8px;text-align:center;font-size:11px;font-weight:700;color:var(--text-dim);">${d}</div>`).join("")}
         ${cells.map(d=>{
-          if(!d) return `<div style="background:var(--bg2); min-height:92px;"></div>`;
-          const dateStr = `${year}-${String(month).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
-          const isToday = dateStr===todayISO();
-          const urlaube = S.urlaubsantraege.filter(u=>u.von<=dateStr && u.bis>=dateStr && u.status!=="abgelehnt");
-          const planungen = S.planung.filter(pl=>pl.datum===dateStr);
-          const items = [
-            ...urlaube.map(u=>({icon:"🏖️", text:mitarbeiterName(u.mitarbeiterId), bg: u.status==="genehmigt"?"var(--green-bg)":"var(--amber-bg)", fg: u.status==="genehmigt"?"var(--green)":"var(--amber)"})),
-            ...planungen.map(pl=>({icon:"🏢", text:mitarbeiterName(pl.mitarbeiterId), bg:"var(--primary-bg)", fg:"var(--primary)"})),
-          ];
-          return `<div style="background:var(--card); min-height:92px; padding:6px; cursor:pointer; ${isToday?"box-shadow:inset 0 0 0 2px var(--primary);":""}" onclick="openKalenderTag('${dateStr}')">
-            <div style="font-size:11px; font-weight:700; color:${isToday?"var(--primary)":"var(--text-dim)"}; margin-bottom:4px;">${d}</div>
-            <div style="display:flex; flex-direction:column; gap:2px;">
-              ${items.slice(0,3).map(it=>`<div style="background:${it.bg}; color:${it.fg}; font-size:9.5px; padding:2px 4px; border-radius:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${it.icon} ${escHtml(it.text)}</div>`).join("")}
-              ${items.length>3?`<div style="font-size:9px; color:var(--text-dim2);">+${items.length-3} mehr</div>`:""}
+          if(!d) return '<div style="background:var(--bg2);min-height:96px;"></div>';
+          const dateStr=String(year)+"-"+String(month).padStart(2,"0")+"-"+String(d).padStart(2,"0");
+          const isToday=dateStr===todayISO();
+          const items=persoKalenderItems(u.id,dateStr);
+          return `<div style="background:var(--card);min-height:96px;padding:6px;cursor:pointer;${isToday?"box-shadow:inset 0 0 0 2px var(--primary);":""}" onclick="openKalenderTag('${dateStr}')">
+            <div style="font-size:11px;font-weight:700;color:${isToday?"var(--primary)":"var(--text-dim)"};margin-bottom:4px;">${d}</div>
+            <div style="display:flex;flex-direction:column;gap:2px;">
+              ${items.slice(0,3).map(it=>`<div style="font-size:9.5px;padding:2px 4px;border-radius:4px;background:var(--card2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${it.icon} ${escHtml(it.text)}</div>`).join("")}
+              ${items.length>3?`<div style="font-size:9px;color:var(--text-dim2);">+${items.length-3} mehr</div>`:""}
             </div>
           </div>`;
         }).join("")}
       </div>
-      <div style="display:flex; gap:18px; margin-top:14px; font-size:12px; color:var(--text-dim); flex-wrap:wrap;">
-        <div>🏖️ <span style="color:var(--green);">grün</span> = genehmigter Urlaub · <span style="color:var(--amber);">gelb</span> = offener Antrag</div>
-        <div>🏢 <span style="color:var(--primary);">blau</span> = Projekteinsatz (Plantafel)</div>
-      </div>
-    </div>
-  `;
+      <div class="pageSub" style="margin-top:12px;">🏢 Einsatz · 🏖️ Urlaub · ⛔ Abwesenheit · 📌 eigener Termin</div>
+    </div>`;
 }
 function calShiftMonth(dir){
-  const [y,m] = window._calMonth.split("-").map(Number);
-  const d = new Date(y, m-1+dir, 1);
-  window._calMonth = d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");
+  const [y,m]=window._calMonth.split("-").map(Number);
+  const d=new Date(y,m-1+dir,1);
+  window._calMonth=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");
   route(location.hash);
 }
-function calGoToday(){
-  window._calMonth = todayISO().slice(0,7);
-  route(location.hash);
-}
+function calGoToday(){ window._calMonth=todayISO().slice(0,7); route(location.hash); }
 function openKalenderTag(dateStr){
-  const urlaube = S.urlaubsantraege.filter(u=>u.von<=dateStr && u.bis>=dateStr && u.status!=="abgelehnt");
-  const planungen = S.planung.filter(pl=>pl.datum===dateStr);
+  const u=currentUser(); if(!u) return;
+  const items=persoKalenderItems(u.id,dateStr);
   openModal(`
     <div class="modalHead"><div class="modalTitle">${fmtDate(dateStr)}</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
-    <div style="margin-bottom:16px;">
-      <b>🏖️ Urlaub</b>
-      <div style="display:flex; flex-direction:column; gap:6px; margin-top:8px;">
-        ${urlaube.map(u=>`<div style="display:flex; justify-content:space-between; align-items:center; background:var(--card2); padding:8px 12px; border-radius:8px; font-size:13px;"><span>${escHtml(mitarbeiterName(u.mitarbeiterId))}</span>${statusBadgeUrlaub(u.status)}</div>`).join("") || `<div class="empty" style="padding:10px;">Kein Urlaub an diesem Tag.</div>`}
-      </div>
+    <div class="simpleList">
+      ${items.map(it=>`<div class="simpleRow"><div class="simpleRowMain"><b>${it.icon} ${escHtml(it.text)}</b>${it.sub?`<div class="pageSub">${escHtml(it.sub)}</div>`:""}</div>${it.kind==="termin"?`<div style="display:flex;gap:6px;"><button class="iconBtn" onclick="openPersoTerminForm('${dateStr}','${escAttr(it.id)}')">✎</button><button class="iconBtn" onclick="deletePersoTermin('${escAttr(it.id)}')">×</button></div>`:""}</div>`).join("")||'<div class="empty" style="padding:14px;">Keine Einträge an diesem Tag.</div>'}
     </div>
-    <div>
-      <b>🏢 Projekteinsatz</b>
-      <div style="display:flex; flex-direction:column; gap:6px; margin-top:8px;">
-        ${planungen.map(pl=>`<div style="display:flex; justify-content:space-between; align-items:center; background:var(--card2); padding:8px 12px; border-radius:8px; font-size:13px;"><span>${escHtml(mitarbeiterName(pl.mitarbeiterId))}</span><span class="badge blue">${escHtml(projektName(pl.projektId))}</span></div>`).join("") || `<div class="empty" style="padding:10px;">Keine Einsätze geplant.</div>`}
-      </div>
+    <div class="modalFoot"><button class="btn" onclick="closeModal()">Schließen</button><button class="btn primary" onclick="openPersoTerminForm('${dateStr}')">＋ Termin</button></div>`);
+}
+function openPersoTerminForm(dateStr,id){
+  const u=currentUser(); if(!u) return;
+  const t=id?(S.kalenderTermine||[]).find(x=>x.id===id&&x.mitarbeiterId===u.id):null;
+  openModal(`
+    <div class="modalHead"><div class="modalTitle">${t?"Termin bearbeiten":"Termin anlegen"}</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
+    <div class="grid cols-2">
+      <div class="formRow"><label>Datum</label><input id="pkDatum" type="date" value="${escAttr(t?t.datum:(dateStr||todayISO()))}"></div>
+      <div class="formRow"><label>Uhrzeit</label><input id="pkZeit" type="time" value="${escAttr(t?t.uhrzeit:"")}"></div>
     </div>
-    <div class="modalFoot"><button class="btn" onclick="closeModal()">Schließen</button></div>
-  `);
+    <div class="formRow"><label>Titel</label><input id="pkTitel" type="text" value="${escAttr(t?t.titel:"")}"></div>
+    <div class="formRow"><label>Typ</label><select id="pkTyp">${["Termin","Arzt","Schulung","Besprechung","Privat","Sonstiges"].map(x=>`<option ${t&&t.typ===x?"selected":""}>${x}</option>`).join("")}</select></div>
+    <div class="formRow"><label>Notiz</label><textarea id="pkNotiz">${escHtml(t?t.notiz:"")}</textarea></div>
+    <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="savePersoTermin('${escAttr(id||"")}')">Speichern</button></div>`);
+}
+function savePersoTermin(id){
+  const u=currentUser(); if(!u) return;
+  const datum=document.getElementById("pkDatum").value;
+  const titel=document.getElementById("pkTitel").value.trim();
+  if(!datum||!titel){toast("Datum und Titel erforderlich.","warn");return;}
+  let t=id?(S.kalenderTermine||[]).find(x=>x.id===id&&x.mitarbeiterId===u.id):null;
+  if(!t){ t={id:uid(),mitarbeiterId:u.id}; S.kalenderTermine.push(t); }
+  t.datum=datum;t.uhrzeit=document.getElementById("pkZeit").value;t.titel=titel;t.typ=document.getElementById("pkTyp").value;t.notiz=document.getElementById("pkNotiz").value.trim();
+  saveState();closeModal();route(location.hash);toast("Termin gespeichert.","success");
+}
+function deletePersoTermin(id){
+  const u=currentUser(); if(!u) return;
+  const t=(S.kalenderTermine||[]).find(x=>x.id===id&&x.mitarbeiterId===u.id); if(!t) return;
+  confirmDelete("Termin „"+t.titel+"“ wirklich löschen?",()=>{
+    S.kalenderTermine=S.kalenderTermine.filter(x=>x.id!==id);
+    saveState();closeModal();route(location.hash);
+  });
 }
 
 reg("dashboard","Dashboard","🏠","",renderDashboard);
