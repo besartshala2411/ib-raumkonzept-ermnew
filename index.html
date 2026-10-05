@@ -766,6 +766,11 @@ function ensureShape(s){
     if(m.vertragstyp==null) m.vertragstyp = "Vollzeit";
     if(!m.rolle) m.rolle = "Mitarbeiter";
     if(m.authUserId===undefined) m.authUserId = null;
+    if(!m.qualifikationen) m.qualifikationen=[];
+    if(!m.unterweisungen) m.unterweisungen=[];
+    if(!m.ausstattung) m.ausstattung=[];
+    if(!m.fristen) m.fristen=[];
+    if(!m.abwesenheiten) m.abwesenheiten=[];
   });
   s.kunden.forEach(k=>{
     if(!k.dokumente) k.dokumente=[];
@@ -1924,8 +1929,13 @@ const MITARBEITER_ROLLEN = ["Mitarbeiter","Bauleiter","Geschäftsführer"];
 const MITARBEITER_VERTRAGSTYPEN = ["Vollzeit","Teilzeit","Minijob","Ausbildung","Werkstudent"];
 const PERSONALAKTE_TABS = [
   {id:"stammdaten", label:"Stammdaten", icon:"🧾"},
+  {id:"qualifikationen", label:"Qualifikationen", icon:"🎓"},
+  {id:"unterweisungen", label:"Unterweisungen", icon:"🦺"},
+  {id:"ausstattung", label:"Ausstattung", icon:"🧰"},
+  {id:"abwesenheiten", label:"Abwesenheiten", icon:"📅"},
+  {id:"fristen", label:"Fristen", icon:"⏳"},
   {id:"dokumente", label:"Dokumente", icon:"📁"},
-  {id:"stundenzettel", label:"Stundenzettel", icon:"⏱️"},
+  {id:"stundenzettel", label:"Stunden", icon:"⏱️"},
   {id:"urlaub", label:"Urlaub", icon:"🏖️"},
   {id:"lohn", label:"Lohn", icon:"💶"},
 ];
@@ -1964,7 +1974,7 @@ function statusBadge(status){
 }
 function openMitarbeiterForm(id){
   if(!id){
-    const m = {id:uid(), vorname:"", nachname:"", name:"", position:"", abteilung:"", rolle:"Mitarbeiter", tel:"", email:"", adresse:"", geburtstag:"", eintritt:todayISO(), brutto:0, urlaubstageJahr:30, stundenlohn:0, vertragstyp:"Vollzeit", status:"aktiv", dokumente:[]};
+    const m = {id:uid(), vorname:"", nachname:"", name:"", position:"", abteilung:"", rolle:"Mitarbeiter", tel:"", email:"", adresse:"", geburtstag:"", eintritt:todayISO(), brutto:0, urlaubstageJahr:30, stundenlohn:0, vertragstyp:"Vollzeit", status:"aktiv", dokumente:[], qualifikationen:[], unterweisungen:[], ausstattung:[], fristen:[], abwesenheiten:[]};
     window._newMitarbeiterDraft = m;
     openModal(`
       <div class="modalHead"><div class="modalTitle">Mitarbeiter anlegen</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
@@ -2003,6 +2013,11 @@ function renderPersonalakteTab(id, tab){
   if(!body || !m) return;
   if(tab==="lohn" && !hasAdminAccess()) tab = "stammdaten";
   if(tab==="dokumente") body.innerHTML = renderPflichtChecklist("mitarbeiter", id) + renderMitarbeiterFreieDokumente(m);
+  else if(tab==="qualifikationen") body.innerHTML = renderMitarbeiterQualifikationenTab(m);
+  else if(tab==="unterweisungen") body.innerHTML = renderMitarbeiterUnterweisungenTab(m);
+  else if(tab==="ausstattung") body.innerHTML = renderMitarbeiterAusstattungTab(m);
+  else if(tab==="abwesenheiten") body.innerHTML = renderMitarbeiterAbwesenheitenTab(m);
+  else if(tab==="fristen") body.innerHTML = renderMitarbeiterFristenTab(m);
   else if(tab==="stundenzettel") body.innerHTML = renderMitarbeiterStundenzettelTab(m);
   else if(tab==="urlaub") body.innerHTML = renderMitarbeiterUrlaubTab(m);
   else if(tab==="lohn") body.innerHTML = renderMitarbeiterLohnTab(m);
@@ -2144,6 +2159,87 @@ function initMitarbeiterSigPad(m){
   window._mitarbeiterSigDraft = m.unterschrift || "";
   initSigPad("mSig", m.unterschrift || "", v=>window._mitarbeiterSigDraft=v);
 }
+
+function mitarbeiterFristStatus(datum){
+  if(!datum) return {label:"ohne Frist",color:"gray"};
+  const heute=todayISO();
+  if(datum<heute) return {label:"abgelaufen",color:"red"};
+  const diff=Math.ceil((new Date(datum+"T12:00:00")-new Date(heute+"T12:00:00"))/86400000);
+  if(diff<=30) return {label:"bald fällig",color:"amber"};
+  return {label:"gültig",color:"green"};
+}
+function renderMitarbeiterQualifikationenTab(m){
+  const list=m.qualifikationen||[];
+  return \`
+    <div class="card">
+      <div class="projectSectionHead"><div><b>Qualifikationen & Berechtigungen</b><div class="pageSub">Schulungen, Führerscheine, Scheine und fachliche Nachweise</div></div><button class="btn sm primary" onclick="openMitarbeiterQualifikationForm('\${escAttr(m.id)}')">＋ Qualifikation</button></div>
+      <div class="simpleList">\${list.map(q=>{const st=mitarbeiterFristStatus(q.gueltigBis);return \`<div class="simpleRow"><div class="simpleRowMain"><b>\${escHtml(q.bezeichnung)}</b><div class="pageSub">\${[q.typ,q.ausgestelltVon,q.gueltigBis?"gültig bis "+fmtDate(q.gueltigBis):""].filter(Boolean).map(escHtml).join(" · ")}</div></div><div style="display:flex;gap:7px;align-items:center;"><span class="badge \${st.color}">\${st.label}</span><button class="iconBtn" onclick="openMitarbeiterQualifikationForm('\${escAttr(m.id)}','\${escAttr(q.id)}')">✎</button><button class="iconBtn" onclick="deleteMitarbeiterPersonalItem('\${escAttr(m.id)}','qualifikationen','\${escAttr(q.id)}')">×</button></div></div>\`;}).join("")||'<div class="empty" style="padding:18px;">Noch keine Qualifikationen hinterlegt.</div>'}</div>
+    </div>\`;
+}
+function openMitarbeiterQualifikationForm(mid,id){
+  const m=S.mitarbeiter.find(x=>x.id===mid),q=id?(m.qualifikationen||[]).find(x=>x.id===id):{id:uid(),bezeichnung:"",typ:"",ausgestelltVon:"",datum:"",gueltigBis:"",notiz:""};
+  openModal(\`<div class="modalHead"><div class="modalTitle">\${id?"Qualifikation bearbeiten":"Qualifikation hinzufügen"}</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
+    <div class="formRow"><label>Bezeichnung</label><input id="mqBez" value="\${escAttr(q.bezeichnung)}" placeholder="z. B. Führerschein Klasse B"></div>
+    <div class="grid cols-2"><div class="formRow"><label>Typ</label><input id="mqTyp" value="\${escAttr(q.typ)}" placeholder="Führerschein, Zertifikat, Schulung …"></div><div class="formRow"><label>Aussteller</label><input id="mqAussteller" value="\${escAttr(q.ausgestelltVon)}"></div><div class="formRow"><label>Erworben am</label><input id="mqDatum" type="date" value="\${escAttr(q.datum)}"></div><div class="formRow"><label>Gültig bis</label><input id="mqBis" type="date" value="\${escAttr(q.gueltigBis)}"></div></div>
+    <div class="formRow"><label>Notiz</label><textarea id="mqNotiz">\${escHtml(q.notiz||"")}</textarea></div>
+    <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="saveMitarbeiterQualifikation('\${escAttr(mid)}','\${escAttr(q.id)}',\${id?"true":"false"})">Speichern</button></div>\`);
+}
+function saveMitarbeiterQualifikation(mid,id,isEdit){
+  const m=S.mitarbeiter.find(x=>x.id===mid),bezeichnung=document.getElementById("mqBez").value.trim(); if(!bezeichnung){toast("Bezeichnung erforderlich.","warn");return;}
+  let q=isEdit?m.qualifikationen.find(x=>x.id===id):{id}; q.bezeichnung=bezeichnung;q.typ=document.getElementById("mqTyp").value.trim();q.ausgestelltVon=document.getElementById("mqAussteller").value.trim();q.datum=document.getElementById("mqDatum").value;q.gueltigBis=document.getElementById("mqBis").value;q.notiz=document.getElementById("mqNotiz").value.trim();if(!isEdit)m.qualifikationen.push(q);saveState();closeModal();renderPersonalakteTab(mid,"qualifikationen");toast("Qualifikation gespeichert.","success");
+}
+function renderMitarbeiterUnterweisungenTab(m){
+  const list=(m.unterweisungen||[]).slice().sort((a,b)=>String(b.datum||"").localeCompare(String(a.datum||"")));
+  return \`<div class="card"><div class="projectSectionHead"><div><b>Unterweisungen</b><div class="pageSub">Arbeitsschutz, Baustellenregeln, Geräte und wiederkehrende Unterweisungen</div></div><button class="btn sm primary" onclick="openMitarbeiterUnterweisungForm('\${escAttr(m.id)}')">＋ Unterweisung</button></div>
+    <div class="simpleList">\${list.map(u=>{const st=mitarbeiterFristStatus(u.naechsteFaellig);return \`<div class="simpleRow"><div class="simpleRowMain"><b>\${escHtml(u.thema)}</b><div class="pageSub">\${fmtDate(u.datum)}\${u.durchgefuehrtVon?" · "+escHtml(u.durchgefuehrtVon):""}\${u.naechsteFaellig?" · nächste "+fmtDate(u.naechsteFaellig):""}</div></div><div style="display:flex;gap:7px;align-items:center;"><span class="badge \${u.naechsteFaellig?st.color:"gray"}">\${u.naechsteFaellig?st.label:"einmalig"}</span><button class="iconBtn" onclick="openMitarbeiterUnterweisungForm('\${escAttr(m.id)}','\${escAttr(u.id)}')">✎</button><button class="iconBtn" onclick="deleteMitarbeiterPersonalItem('\${escAttr(m.id)}','unterweisungen','\${escAttr(u.id)}')">×</button></div></div>\`;}).join("")||'<div class="empty" style="padding:18px;">Noch keine Unterweisungen dokumentiert.</div>'}</div></div>\`;
+}
+function openMitarbeiterUnterweisungForm(mid,id){
+  const m=S.mitarbeiter.find(x=>x.id===mid),u=id?(m.unterweisungen||[]).find(x=>x.id===id):{id:uid(),thema:"",datum:todayISO(),durchgefuehrtVon:"",naechsteFaellig:"",notiz:""};
+  openModal(\`<div class="modalHead"><div class="modalTitle">\${id?"Unterweisung bearbeiten":"Unterweisung dokumentieren"}</div><button class="iconBtn" onclick="closeModal()">✖</button></div><div class="formRow"><label>Thema</label><input id="muThema" value="\${escAttr(u.thema)}" placeholder="z. B. Arbeitsschutz Baustelle"></div><div class="grid cols-2"><div class="formRow"><label>Datum</label><input id="muDatum" type="date" value="\${escAttr(u.datum)}"></div><div class="formRow"><label>Durchgeführt von</label><input id="muVon" value="\${escAttr(u.durchgefuehrtVon)}"></div><div class="formRow"><label>Nächste Fälligkeit</label><input id="muNext" type="date" value="\${escAttr(u.naechsteFaellig)}"></div></div><div class="formRow"><label>Notiz</label><textarea id="muNotiz">\${escHtml(u.notiz||"")}</textarea></div><div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="saveMitarbeiterUnterweisung('\${escAttr(mid)}','\${escAttr(u.id)}',\${id?"true":"false"})">Speichern</button></div>\`);
+}
+function saveMitarbeiterUnterweisung(mid,id,isEdit){
+  const m=S.mitarbeiter.find(x=>x.id===mid),thema=document.getElementById("muThema").value.trim();if(!thema){toast("Thema erforderlich.","warn");return;}let u=isEdit?m.unterweisungen.find(x=>x.id===id):{id};u.thema=thema;u.datum=document.getElementById("muDatum").value;u.durchgefuehrtVon=document.getElementById("muVon").value.trim();u.naechsteFaellig=document.getElementById("muNext").value;u.notiz=document.getElementById("muNotiz").value.trim();if(!isEdit)m.unterweisungen.push(u);saveState();closeModal();renderPersonalakteTab(mid,"unterweisungen");toast("Unterweisung gespeichert.","success");
+}
+function renderMitarbeiterAusstattungTab(m){
+  const list=m.ausstattung||[];
+  return \`<div class="card"><div class="projectSectionHead"><div><b>Ausstattung & Geräte</b><div class="pageSub">Arbeitskleidung, PSA, Werkzeuge, Schlüssel, Geräte und Fahrzeuge</div></div><button class="btn sm primary" onclick="openMitarbeiterAusstattungForm('\${escAttr(m.id)}')">＋ Ausgabe</button></div><div class="simpleList">\${list.map(a=>\`<div class="simpleRow"><div class="simpleRowMain"><b>\${escHtml(a.bezeichnung)}</b><div class="pageSub">\${[a.kategorie,a.inventarNr,a.ausgegebenAm?"ausgegeben "+fmtDate(a.ausgegebenAm):"",a.status].filter(Boolean).map(escHtml).join(" · ")}</div></div><div style="display:flex;gap:7px;align-items:center;"><span class="badge \${a.status==="zurückgegeben"?"green":a.status==="defekt"?"red":"blue"}">\${escHtml(a.status||"ausgegeben")}</span><button class="iconBtn" onclick="openMitarbeiterAusstattungForm('\${escAttr(m.id)}','\${escAttr(a.id)}')">✎</button><button class="iconBtn" onclick="deleteMitarbeiterPersonalItem('\${escAttr(m.id)}','ausstattung','\${escAttr(a.id)}')">×</button></div></div>\`).join("")||'<div class="empty" style="padding:18px;">Keine Ausstattung ausgegeben.</div>'}</div></div>\`;
+}
+function openMitarbeiterAusstattungForm(mid,id){
+  const m=S.mitarbeiter.find(x=>x.id===mid),a=id?(m.ausstattung||[]).find(x=>x.id===id):{id:uid(),bezeichnung:"",kategorie:"Werkzeug",inventarNr:"",ausgegebenAm:todayISO(),rueckgabeAm:"",status:"ausgegeben",notiz:""};
+  openModal(\`<div class="modalHead"><div class="modalTitle">\${id?"Ausstattung bearbeiten":"Ausstattung ausgeben"}</div><button class="iconBtn" onclick="closeModal()">✖</button></div><div class="grid cols-2"><div class="formRow"><label>Bezeichnung</label><input id="maBez" value="\${escAttr(a.bezeichnung)}"></div><div class="formRow"><label>Kategorie</label><select id="maKat">\${["Werkzeug","Gerät","PSA","Arbeitskleidung","Schlüssel","Fahrzeug","Sonstiges"].map(x=>\`<option \${a.kategorie===x?"selected":""}>\${x}</option>\`).join("")}</select></div><div class="formRow"><label>Inventar-/Seriennummer</label><input id="maNr" value="\${escAttr(a.inventarNr)}"></div><div class="formRow"><label>Ausgegeben am</label><input id="maAus" type="date" value="\${escAttr(a.ausgegebenAm)}"></div><div class="formRow"><label>Rückgabe am</label><input id="maRueck" type="date" value="\${escAttr(a.rueckgabeAm)}"></div><div class="formRow"><label>Status</label><select id="maStatus">\${["ausgegeben","zurückgegeben","defekt","verloren"].map(x=>\`<option \${a.status===x?"selected":""}>\${x}</option>\`).join("")}</select></div></div><div class="formRow"><label>Notiz</label><textarea id="maNotiz">\${escHtml(a.notiz||"")}</textarea></div><div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="saveMitarbeiterAusstattung('\${escAttr(mid)}','\${escAttr(a.id)}',\${id?"true":"false"})">Speichern</button></div>\`);
+}
+function saveMitarbeiterAusstattung(mid,id,isEdit){
+  const m=S.mitarbeiter.find(x=>x.id===mid),bez=document.getElementById("maBez").value.trim();if(!bez){toast("Bezeichnung erforderlich.","warn");return;}let a=isEdit?m.ausstattung.find(x=>x.id===id):{id};a.bezeichnung=bez;a.kategorie=document.getElementById("maKat").value;a.inventarNr=document.getElementById("maNr").value.trim();a.ausgegebenAm=document.getElementById("maAus").value;a.rueckgabeAm=document.getElementById("maRueck").value;a.status=document.getElementById("maStatus").value;a.notiz=document.getElementById("maNotiz").value.trim();if(!isEdit)m.ausstattung.push(a);saveState();closeModal();renderPersonalakteTab(mid,"ausstattung");toast("Ausstattung gespeichert.","success");
+}
+function renderMitarbeiterFristenTab(m){
+  const list=(m.fristen||[]).slice().sort((a,b)=>(a.faellig||"9999").localeCompare(b.faellig||"9999"));
+  return \`<div class="card"><div class="projectSectionHead"><div><b>Fristen & Termine</b><div class="pageSub">Probezeit, Verträge, Untersuchungen, Nachweise und individuelle Wiedervorlagen</div></div><button class="btn sm primary" onclick="openMitarbeiterFristForm('\${escAttr(m.id)}')">＋ Frist</button></div><div class="simpleList">\${list.map(x=>{const st=mitarbeiterFristStatus(x.faellig);return \`<div class="simpleRow"><div class="simpleRowMain"><b>\${escHtml(x.titel)}</b><div class="pageSub">\${[x.kategorie,x.faellig?fmtDate(x.faellig):"",x.notiz].filter(Boolean).map(escHtml).join(" · ")}</div></div><div style="display:flex;gap:7px;align-items:center;"><span class="badge \${st.color}">\${st.label}</span><button class="iconBtn" onclick="openMitarbeiterFristForm('\${escAttr(m.id)}','\${escAttr(x.id)}')">✎</button><button class="iconBtn" onclick="deleteMitarbeiterPersonalItem('\${escAttr(m.id)}','fristen','\${escAttr(x.id)}')">×</button></div></div>\`;}).join("")||'<div class="empty" style="padding:18px;">Keine Fristen hinterlegt.</div>'}</div></div>\`;
+}
+function openMitarbeiterFristForm(mid,id){
+  const m=S.mitarbeiter.find(x=>x.id===mid),x=id?(m.fristen||[]).find(v=>v.id===id):{id:uid(),titel:"",kategorie:"Vertrag",faellig:"",notiz:""};
+  openModal(\`<div class="modalHead"><div class="modalTitle">\${id?"Frist bearbeiten":"Frist hinzufügen"}</div><button class="iconBtn" onclick="closeModal()">✖</button></div><div class="grid cols-2"><div class="formRow"><label>Titel</label><input id="mfTitel" value="\${escAttr(x.titel)}" placeholder="z. B. Ende Probezeit"></div><div class="formRow"><label>Kategorie</label><select id="mfKat">\${["Vertrag","Probezeit","Gesundheit","Qualifikation","Unterweisung","Dokument","Sonstiges"].map(v=>\`<option \${x.kategorie===v?"selected":""}>\${v}</option>\`).join("")}</select></div><div class="formRow"><label>Fällig am</label><input id="mfDatum" type="date" value="\${escAttr(x.faellig)}"></div></div><div class="formRow"><label>Notiz</label><textarea id="mfNotiz">\${escHtml(x.notiz||"")}</textarea></div><div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="saveMitarbeiterFrist('\${escAttr(mid)}','\${escAttr(x.id)}',\${id?"true":"false"})">Speichern</button></div>\`);
+}
+function saveMitarbeiterFrist(mid,id,isEdit){
+  const m=S.mitarbeiter.find(x=>x.id===mid),titel=document.getElementById("mfTitel").value.trim();if(!titel){toast("Titel erforderlich.","warn");return;}let x=isEdit?m.fristen.find(v=>v.id===id):{id};x.titel=titel;x.kategorie=document.getElementById("mfKat").value;x.faellig=document.getElementById("mfDatum").value;x.notiz=document.getElementById("mfNotiz").value.trim();if(!isEdit)m.fristen.push(x);saveState();closeModal();renderPersonalakteTab(mid,"fristen");toast("Frist gespeichert.","success");
+}
+function renderMitarbeiterAbwesenheitenTab(m){
+  const urlaub=S.urlaubsantraege.filter(u=>u.mitarbeiterId===m.id).map(u=>({id:"urlaub-"+u.id,typ:"Urlaub",von:u.von,bis:u.bis,status:u.status,notiz:u.tage+" Tag(e)"}));
+  const sonst=(m.abwesenheiten||[]).map(a=>({...a,status:a.status||"erfasst"}));
+  const list=[...urlaub,...sonst].sort((a,b)=>String(b.von||"").localeCompare(String(a.von||"")));
+  return \`<div class="card"><div class="projectSectionHead"><div><b>Abwesenheiten</b><div class="pageSub">Urlaub, Krankheit, Arzt, Fortbildung und sonstige Abwesenheiten</div></div><button class="btn sm primary" onclick="openMitarbeiterAbwesenheitForm('\${escAttr(m.id)}')">＋ Abwesenheit</button></div><div class="simpleList">\${list.map(a=>\`<div class="simpleRow"><div class="simpleRowMain"><b>\${escHtml(a.typ)}</b><div class="pageSub">\${[a.von?fmtDate(a.von):"",a.bis&&a.bis!==a.von?"bis "+fmtDate(a.bis):"",a.notiz].filter(Boolean).map(escHtml).join(" · ")}</div></div><div style="display:flex;gap:7px;align-items:center;"><span class="badge \${a.status==="genehmigt"||a.status==="erfasst"?"green":a.status==="offen"?"amber":"gray"}">\${escHtml(a.status||"")}</span>\${String(a.id).startsWith("urlaub-")?"":\`<button class="iconBtn" onclick="openMitarbeiterAbwesenheitForm('\${escAttr(m.id)}','\${escAttr(a.id)}')">✎</button><button class="iconBtn" onclick="deleteMitarbeiterPersonalItem('\${escAttr(m.id)}','abwesenheiten','\${escAttr(a.id)}')">×</button>\`}</div></div>\`).join("")||'<div class="empty" style="padding:18px;">Keine Abwesenheiten erfasst.</div>'}</div></div>\`;
+}
+function openMitarbeiterAbwesenheitForm(mid,id){
+  const m=S.mitarbeiter.find(x=>x.id===mid),a=id?(m.abwesenheiten||[]).find(x=>x.id===id):{id:uid(),typ:"Krank",von:todayISO(),bis:todayISO(),notiz:"",status:"erfasst"};
+  openModal(\`<div class="modalHead"><div class="modalTitle">\${id?"Abwesenheit bearbeiten":"Abwesenheit erfassen"}</div><button class="iconBtn" onclick="closeModal()">✖</button></div><div class="grid cols-2"><div class="formRow"><label>Art</label><select id="mabTyp">\${["Krank","Arzt","Fortbildung","Berufsschule","Freistellung","Sonstiges"].map(v=>\`<option \${a.typ===v?"selected":""}>\${v}</option>\`).join("")}</select></div><div></div><div class="formRow"><label>Von</label><input id="mabVon" type="date" value="\${escAttr(a.von)}"></div><div class="formRow"><label>Bis</label><input id="mabBis" type="date" value="\${escAttr(a.bis)}"></div></div><div class="formRow"><label>Notiz</label><textarea id="mabNotiz">\${escHtml(a.notiz||"")}</textarea></div><div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="saveMitarbeiterAbwesenheit('\${escAttr(mid)}','\${escAttr(a.id)}',\${id?"true":"false"})">Speichern</button></div>\`);
+}
+function saveMitarbeiterAbwesenheit(mid,id,isEdit){
+  const m=S.mitarbeiter.find(x=>x.id===mid),von=document.getElementById("mabVon").value,bis=document.getElementById("mabBis").value;if(von&&bis&&bis<von){toast("Bis darf nicht vor Von liegen.","warn");return;}let a=isEdit?m.abwesenheiten.find(x=>x.id===id):{id,status:"erfasst"};a.typ=document.getElementById("mabTyp").value;a.von=von;a.bis=bis;a.notiz=document.getElementById("mabNotiz").value.trim();if(!isEdit)m.abwesenheiten.push(a);saveState();closeModal();renderPersonalakteTab(mid,"abwesenheiten");toast("Abwesenheit gespeichert.","success");
+}
+function deleteMitarbeiterPersonalItem(mid,field,id){
+  const m=S.mitarbeiter.find(x=>x.id===mid); if(!m||!Array.isArray(m[field])) return;
+  m[field]=m[field].filter(x=>x.id!==id); saveState(); renderPersonalakteTab(mid,window._pkTab||"stammdaten");
+}
+
 function renderMitarbeiterFreieDokumente(m){
   const freie = (m.dokumente||[]).filter(d=>!d.pflichttyp);
   return `
@@ -2260,7 +2356,15 @@ function saveMitarbeiter(id, isEdit){
   const wasActive = m.status !== "inaktiv";
   m.status = document.getElementById("mStatus").value;
   m.unterschrift = window._mitarbeiterSigDraft || m.unterschrift || "";
-  if(!isEdit){ if(!m.dokumente) m.dokumente=[]; S.mitarbeiter.push(m); window._newMitarbeiterDraft=null; }
+  if(!isEdit){
+    if(!m.dokumente) m.dokumente=[];
+    if(!m.qualifikationen) m.qualifikationen=[];
+    if(!m.unterweisungen) m.unterweisungen=[];
+    if(!m.ausstattung) m.ausstattung=[];
+    if(!m.fristen) m.fristen=[];
+    if(!m.abwesenheiten) m.abwesenheiten=[];
+    S.mitarbeiter.push(m); window._newMitarbeiterDraft=null;
+  }
   saveState();
   closeModal();
   route(location.hash);
