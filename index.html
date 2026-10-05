@@ -5967,12 +5967,12 @@ function renderBesichtigungDetail(body,p,b){
     </div>
 
     <div class="grid cols-2">
-      ${renderBesichtigungListCard("Offene Fragen",b.fragen||[],"frage")}
-      ${renderBesichtigungListCard("Kundenwünsche",b.wuensche||[],"wunsch")}
-      ${renderBesichtigungListCard("Entscheidungen / Freigaben",b.entscheidungen||[],"entscheidung")}
-      ${renderBesichtigungListCard("Feststellungen / Besonderheiten",b.feststellungen||[],"feststellung")}
-      ${renderBesichtigungListCard("Materialbedarf",b.materialbedarf||[],"material")}
-      ${renderBesichtigungListCard("Zugang / Schlüssel",b.zugaenge||[],"zugang")}
+      ${renderBesichtigungListCard(p,b,"Offene Fragen",b.fragen||[],"frage")}
+      ${renderBesichtigungListCard(p,b,"Kundenwünsche",b.wuensche||[],"wunsch")}
+      ${renderBesichtigungListCard(p,b,"Entscheidungen / Freigaben",b.entscheidungen||[],"entscheidung")}
+      ${renderBesichtigungListCard(p,b,"Feststellungen / Besonderheiten",b.feststellungen||[],"feststellung")}
+      ${renderBesichtigungListCard(p,b,"Materialbedarf",b.materialbedarf||[],"material")}
+      ${renderBesichtigungListCard(p,b,"Zugang / Schlüssel",b.zugaenge||[],"zugang")}
     </div>
 
     ${b.abschlussNotiz?`<div class="card" style="margin-top:12px;"><div class="projectSectionHead"><b>Zusammenfassung</b><span class="badge green">erstellt</span></div><div style="font-size:13px;line-height:1.55;white-space:pre-wrap;">${escHtml(b.abschlussNotiz)}</div></div>`:""}
@@ -5980,7 +5980,7 @@ function renderBesichtigungDetail(body,p,b){
     <div class="card" style="margin-top:12px;">
       <div class="projectSectionHead"><b>Aufgaben aus der Besichtigung</b><span class="pageSub">Werden beim Abschließen ins Projekt übernommen</span></div>
       <div class="simpleList">
-        ${(b.aufgaben||[]).map(a=>`<div class="simpleRow"><div class="simpleRowMain"><b>${escHtml(a.titel)}</b><div class="pageSub">${escHtml(a.verantwortlich||"")}${a.faellig?" · "+fmtDate(a.faellig):""}</div></div>${a.uebernommenId?'<span class="badge green">übernommen</span>':'<span class="badge blue">Entwurf</span>'}</div>`).join("")||'<div class="empty" style="padding:12px;">Keine Aufgaben erfasst.</div>'}
+        ${(b.aufgaben||[]).map(a=>`<div class="simpleRow"><div class="simpleRowMain"><b>${escHtml(a.titel)}</b><div class="pageSub">${escHtml(a.verantwortlich||"")}${a.faellig?" · "+fmtDate(a.faellig):""}</div></div><div style="display:flex;gap:6px;align-items:center;">${a.uebernommenId?'<span class="badge green">übernommen</span>':'<span class="badge blue">Entwurf</span>'}<button class="iconBtn" title="Bearbeiten" onclick="editBesichtigungQuickItem(\'${escAttr(p.id)}\',\'${escAttr(b.id)}\',\'aufgabe\',\'${escAttr(a.id)}\')">✎</button><button class="iconBtn" title="Löschen" onclick="deleteBesichtigungQuickItem(\'${escAttr(p.id)}\',\'${escAttr(b.id)}\',\'aufgabe\',\'${escAttr(a.id)}\')">×</button></div></div>`).join("")||'<div class="empty" style="padding:12px;">Keine Aufgaben erfasst.</div>'}
       </div>
     </div>
   `;
@@ -6050,57 +6050,127 @@ function deleteBesichtigungFoto(pid,bid,brid,fid){
   addProjektChronik(pid,"besichtigung","Besichtigungsfoto gelöscht: "+br.name);
   saveState();route(location.hash);
 }
-function renderBesichtigungListCard(title,list,type){
-  return `<div class="card"><div class="projectSectionHead"><b>${escHtml(title)}</b><span class="pageSub">${list.length}</span></div><div class="simpleList">${list.map(x=>`<div class="simpleRow"><div class="simpleRowMain"><b>${escHtml(x.text||x.titel||"Eintrag")}</b>${x.notiz?`<div class="pageSub">${escHtml(x.notiz)}</div>`:""}</div>${x.uebernommenId?'<span class="badge green">übernommen</span>':""}</div>`).join("")||'<div class="empty" style="padding:10px;">Keine Einträge.</div>'}</div></div>`;
+function renderBesichtigungListCard(p,b,title,list,type){
+  return `<div class="card"><div class="projectSectionHead"><b>${escHtml(title)}</b><span class="pageSub">${list.length}</span></div><div class="simpleList">${list.map(x=>`<div class="simpleRow"><div class="simpleRowMain"><b>${escHtml(x.text||x.titel||"Eintrag")}</b>${x.notiz?`<div class="pageSub">${escHtml(x.notiz)}</div>`:""}</div><div style="display:flex;gap:6px;align-items:center;">${x.uebernommenId?'<span class="badge green">übernommen</span>':""}<button class="iconBtn" title="Bearbeiten" onclick="editBesichtigungQuickItem('${escAttr(p.id)}','${escAttr(b.id)}','${escAttr(type)}','${escAttr(x.id)}')">✎</button><button class="iconBtn" title="Löschen" onclick="deleteBesichtigungQuickItem('${escAttr(p.id)}','${escAttr(b.id)}','${escAttr(type)}','${escAttr(x.id)}')">×</button></div></div>`).join("")||'<div class="empty" style="padding:10px;">Keine Einträge.</div>'}</div></div>`;
 }
-function openBesichtigungTextItem(pid,bid,type){
+function openBesichtigungTextItem(pid,bid,type,itemId){
+  const p=S.projekte.find(x=>x.id===pid),b=besichtigungById(p,bid);
+  const map={frage:"fragen",wunsch:"wuensche",entscheidung:"entscheidungen",feststellung:"feststellungen"},key=map[type];
+  const item=itemId&&b?(b[key]||[]).find(x=>x.id===itemId):null;
   const labels={frage:"Offene Frage",wunsch:"Kundenwunsch",entscheidung:"Entscheidung / Freigabe",feststellung:"Feststellung / Besonderheit"};
-  openModal(`<div class="modalHead"><div class="modalTitle">${labels[type]||"Eintrag"}</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
-  <div class="formRow"><label>Text</label><div class="micWrap"><textarea id="biText" style="min-height:110px;"></textarea>${fieldMic("biText")}</div></div>
-  <div class="formRow"><label>Notiz / Ansprechpartner optional</label><input id="biNotiz" type="text"></div>
-  <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="saveBesichtigungTextItem('${escAttr(pid)}','${escAttr(bid)}','${escAttr(type)}')">Speichern</button></div>`);
+  openModal(`<div class="modalHead"><div class="modalTitle">${item?"Bearbeiten – ":""}${labels[type]||"Eintrag"}</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
+  <div class="formRow"><label>Text</label><div class="micWrap"><textarea id="biText" style="min-height:110px;">${escHtml(item?item.text:"")}</textarea>${fieldMic("biText")}</div></div>
+  <div class="formRow"><label>Notiz / Ansprechpartner optional</label><input id="biNotiz" type="text" value="${escAttr(item?item.notiz:"")}"></div>
+  <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="saveBesichtigungTextItem('${escAttr(pid)}','${escAttr(bid)}','${escAttr(type)}','${escAttr(itemId||"")}')">Speichern</button></div>`);
 }
-function saveBesichtigungTextItem(pid,bid,type){
+function saveBesichtigungTextItem(pid,bid,type,itemId){
   const p=S.projekte.find(x=>x.id===pid),b=besichtigungById(p,bid),text=document.getElementById("biText").value.trim();if(!text){toast("Text erforderlich.","warn");return;}
   const map={frage:"fragen",wunsch:"wuensche",entscheidung:"entscheidungen",feststellung:"feststellungen"},key=map[type];
-  b[key].push({id:uid(),text,notiz:document.getElementById("biNotiz").value.trim(),uebernommenId:""});
-  addProjektChronik(pid,"besichtigung",(type==="wunsch"?"Kundenwunsch":type==="frage"?"Offene Frage":type==="entscheidung"?"Freigabe/Entscheidung":"Feststellung")+" erfasst: "+text.slice(0,80));
+  const notiz=document.getElementById("biNotiz").value.trim();
+  let item=itemId?(b[key]||[]).find(x=>x.id===itemId):null;
+  if(item){
+    item.text=text;item.notiz=notiz;
+    if(type==="entscheidung"&&item.uebernommenId){
+      const linked=(p.entscheidungen||[]).find(x=>x.id===item.uebernommenId);
+      if(linked){linked.titel=text;linked.ansprechpartner=notiz||b.ansprechpartner||"";}
+    }
+  }else{
+    item={id:uid(),text,notiz,uebernommenId:""};b[key].push(item);
+  }
+  const label=type==="wunsch"?"Kundenwunsch":type==="frage"?"Offene Frage":type==="entscheidung"?"Freigabe/Entscheidung":"Feststellung";
+  addProjektChronik(pid,"besichtigung",label+(itemId?" bearbeitet: ":" erfasst: ")+text.slice(0,80));
   saveState();closeModal();route(location.hash);
 }
-function openBesichtigungAufgabeForm(pid,bid){
-  openModal(`<div class="modalHead"><div class="modalTitle">Aufgabe aus Besichtigung</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
-  <div class="formRow"><label>Aufgabe</label><input id="baTitel" type="text"></div>
-  <div class="grid cols-2"><div class="formRow"><label>Verantwortlich</label><input id="baVerantw" type="text" placeholder="Person / Gewerk"></div><div class="formRow"><label>Fällig</label><input id="baFaellig" type="date"></div></div>
-  <div class="formRow"><label>Notiz</label><textarea id="baNotiz"></textarea></div>
-  <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="saveBesichtigungAufgabe('${escAttr(pid)}','${escAttr(bid)}')">Speichern</button></div>`);
+function openBesichtigungAufgabeForm(pid,bid,itemId){
+  const p=S.projekte.find(x=>x.id===pid),b=besichtigungById(p,bid),a=itemId?(b.aufgaben||[]).find(x=>x.id===itemId):null;
+  openModal(`<div class="modalHead"><div class="modalTitle">${a?"Aufgabe bearbeiten":"Aufgabe aus Besichtigung"}</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
+  <div class="formRow"><label>Aufgabe</label><input id="baTitel" type="text" value="${escAttr(a?a.titel:"")}"></div>
+  <div class="grid cols-2"><div class="formRow"><label>Verantwortlich</label><input id="baVerantw" type="text" value="${escAttr(a?a.verantwortlich:"")}" placeholder="Person / Gewerk"></div><div class="formRow"><label>Fällig</label><input id="baFaellig" type="date" value="${escAttr(a?a.faellig:"")}"></div></div>
+  <div class="formRow"><label>Notiz</label><textarea id="baNotiz">${escHtml(a?a.notiz:"")}</textarea></div>
+  <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="saveBesichtigungAufgabe('${escAttr(pid)}','${escAttr(bid)}','${escAttr(itemId||"")}')">Speichern</button></div>`);
 }
-function saveBesichtigungAufgabe(pid,bid){
+function saveBesichtigungAufgabe(pid,bid,itemId){
   const p=S.projekte.find(x=>x.id===pid),b=besichtigungById(p,bid),titel=document.getElementById("baTitel").value.trim();if(!titel){toast("Aufgabe erforderlich.","warn");return;}
-  b.aufgaben.push({id:uid(),titel,verantwortlich:document.getElementById("baVerantw").value.trim(),faellig:document.getElementById("baFaellig").value,notiz:document.getElementById("baNotiz").value.trim(),uebernommenId:""});
-  addProjektChronik(pid,"besichtigung","Aufgabe aus Besichtigung erfasst: "+titel);
+  const verantwortlich=document.getElementById("baVerantw").value.trim(),faellig=document.getElementById("baFaellig").value,notiz=document.getElementById("baNotiz").value.trim();
+  let a=itemId?(b.aufgaben||[]).find(x=>x.id===itemId):null;
+  if(a){
+    a.titel=titel;a.verantwortlich=verantwortlich;a.faellig=faellig;a.notiz=notiz;
+    if(a.uebernommenId){
+      const linked=S.aufgaben.find(x=>x.id===a.uebernommenId);
+      if(linked){linked.titel=titel;linked.beschreibung=[notiz,verantwortlich?"Verantwortlich: "+verantwortlich:""].filter(Boolean).join("\n");linked.faellig=faellig;}
+    }
+  }else{
+    a={id:uid(),titel,verantwortlich,faellig,notiz,uebernommenId:""};b.aufgaben.push(a);
+  }
+  addProjektChronik(pid,"besichtigung","Aufgabe aus Besichtigung "+(itemId?"bearbeitet: ":"erfasst: ")+titel);
   saveState();closeModal();route(location.hash);
 }
-function openBesichtigungMaterialForm(pid,bid){
-  openModal(`<div class="modalHead"><div class="modalTitle">Materialbedarf erfassen</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
-  <div class="grid cols-3"><div class="formRow"><label>Material</label><input id="bmatText" type="text" placeholder="z. B. Gipskarton"></div><div class="formRow"><label>Menge</label><input id="bmatMenge" type="number" step="0.01"></div><div class="formRow"><label>Einheit</label><input id="bmatEinheit" type="text" placeholder="Stk., m²"></div></div>
-  <div class="formRow"><label>Notiz</label><input id="bmatNotiz" type="text" placeholder="optional"></div>
-  <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="saveBesichtigungMaterial('${escAttr(pid)}','${escAttr(bid)}')">Speichern</button></div>`);
+function openBesichtigungMaterialForm(pid,bid,itemId){
+  const p=S.projekte.find(x=>x.id===pid),b=besichtigungById(p,bid),m=itemId?(b.materialbedarf||[]).find(x=>x.id===itemId):null;
+  openModal(`<div class="modalHead"><div class="modalTitle">${m?"Materialbedarf bearbeiten":"Materialbedarf erfassen"}</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
+  <div class="grid cols-3"><div class="formRow"><label>Material</label><input id="bmatText" type="text" value="${escAttr(m?m.text:"")}" placeholder="z. B. Gipskarton"></div><div class="formRow"><label>Menge</label><input id="bmatMenge" type="number" step="0.01" value="${escAttr(m?m.menge:"")}"></div><div class="formRow"><label>Einheit</label><input id="bmatEinheit" type="text" value="${escAttr(m?m.einheit:"")}" placeholder="Stk., m²"></div></div>
+  <div class="formRow"><label>Notiz</label><input id="bmatNotiz" type="text" value="${escAttr(m?m.notiz:"")}" placeholder="optional"></div>
+  <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="saveBesichtigungMaterial('${escAttr(pid)}','${escAttr(bid)}','${escAttr(itemId||"")}')">Speichern</button></div>`);
 }
-function saveBesichtigungMaterial(pid,bid){
+function saveBesichtigungMaterial(pid,bid,itemId){
   const p=S.projekte.find(x=>x.id===pid),b=besichtigungById(p,bid),text=document.getElementById("bmatText").value.trim();if(!text){toast("Material erforderlich.","warn");return;}
-  b.materialbedarf.push({id:uid(),text,menge:document.getElementById("bmatMenge").value,einheit:document.getElementById("bmatEinheit").value.trim(),notiz:document.getElementById("bmatNotiz").value.trim(),uebernommenId:""});
-  addProjektChronik(pid,"besichtigung","Materialbedarf erfasst: "+text);saveState();closeModal();route(location.hash);
+  const menge=document.getElementById("bmatMenge").value,einheit=document.getElementById("bmatEinheit").value.trim(),notiz=document.getElementById("bmatNotiz").value.trim();
+  let m=itemId?(b.materialbedarf||[]).find(x=>x.id===itemId):null;
+  if(m){
+    m.text=text;m.menge=menge;m.einheit=einheit;m.notiz=notiz;
+    if(m.uebernommenId){
+      const linked=(p.material||[]).find(x=>x.id===m.uebernommenId);
+      if(linked){linked.bezeichnung=text;linked.menge=menge;linked.einheit=einheit;linked.beschreibung=notiz;}
+    }
+  }else{
+    m={id:uid(),text,menge,einheit,notiz,uebernommenId:""};b.materialbedarf.push(m);
+  }
+  addProjektChronik(pid,"besichtigung","Materialbedarf "+(itemId?"bearbeitet: ":"erfasst: ")+text);saveState();closeModal();route(location.hash);
 }
-function openBesichtigungZugangForm(pid,bid){
-  openModal(`<div class="modalHead"><div class="modalTitle">Zugang / Schlüssel erfassen</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
-  <div class="formRow"><label>Bezeichnung</label><input id="bzugText" type="text" placeholder="z. B. Haustür, Bauzaun, Schlüssel"></div>
-  <div class="formRow"><label>Information</label><textarea id="bzugNotiz" placeholder="Code, Übergabe, Ansprechpartner …"></textarea></div>
-  <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="saveBesichtigungZugang('${escAttr(pid)}','${escAttr(bid)}')">Speichern</button></div>`);
+function openBesichtigungZugangForm(pid,bid,itemId){
+  const p=S.projekte.find(x=>x.id===pid),b=besichtigungById(p,bid),z=itemId?(b.zugaenge||[]).find(x=>x.id===itemId):null;
+  openModal(`<div class="modalHead"><div class="modalTitle">${z?"Zugang / Schlüssel bearbeiten":"Zugang / Schlüssel erfassen"}</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
+  <div class="formRow"><label>Bezeichnung</label><input id="bzugText" type="text" value="${escAttr(z?z.text:"")}" placeholder="z. B. Haustür, Bauzaun, Schlüssel"></div>
+  <div class="formRow"><label>Information</label><textarea id="bzugNotiz" placeholder="Code, Übergabe, Ansprechpartner …">${escHtml(z?z.notiz:"")}</textarea></div>
+  <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="saveBesichtigungZugang('${escAttr(pid)}','${escAttr(bid)}','${escAttr(itemId||"")}')">Speichern</button></div>`);
 }
-function saveBesichtigungZugang(pid,bid){
+function saveBesichtigungZugang(pid,bid,itemId){
   const p=S.projekte.find(x=>x.id===pid),b=besichtigungById(p,bid),text=document.getElementById("bzugText").value.trim();if(!text){toast("Bezeichnung erforderlich.","warn");return;}
-  b.zugaenge.push({id:uid(),text,notiz:document.getElementById("bzugNotiz").value.trim(),uebernommenId:""});
-  addProjektChronik(pid,"besichtigung","Zugang erfasst: "+text);saveState();closeModal();route(location.hash);
+  const notiz=document.getElementById("bzugNotiz").value.trim();
+  let z=itemId?(b.zugaenge||[]).find(x=>x.id===itemId):null;
+  if(z){
+    z.text=text;z.notiz=notiz;
+    if(z.uebernommenId){
+      const linked=(p.zugaenge||[]).find(x=>x.id===z.uebernommenId);
+      if(linked){linked.bezeichnung=text;linked.info=notiz;}
+    }
+  }else{
+    z={id:uid(),text,notiz,uebernommenId:""};b.zugaenge.push(z);
+  }
+  addProjektChronik(pid,"besichtigung","Zugang "+(itemId?"bearbeitet: ":"erfasst: ")+text);saveState();closeModal();route(location.hash);
+}
+function editBesichtigungQuickItem(pid,bid,type,itemId){
+  if(["frage","wunsch","entscheidung","feststellung"].includes(type)) return openBesichtigungTextItem(pid,bid,type,itemId);
+  if(type==="material") return openBesichtigungMaterialForm(pid,bid,itemId);
+  if(type==="zugang") return openBesichtigungZugangForm(pid,bid,itemId);
+  if(type==="aufgabe") return openBesichtigungAufgabeForm(pid,bid,itemId);
+}
+function deleteBesichtigungQuickItem(pid,bid,type,itemId){
+  const p=S.projekte.find(x=>x.id===pid),b=besichtigungById(p,bid);if(!p||!b)return;
+  const map={frage:"fragen",wunsch:"wuensche",entscheidung:"entscheidungen",feststellung:"feststellungen",material:"materialbedarf",zugang:"zugaenge",aufgabe:"aufgaben"};
+  const key=map[type],list=b[key]||[],item=list.find(x=>x.id===itemId);if(!item)return;
+  const label=item.text||item.titel||"Eintrag";
+  confirmDelete("„"+label+"“ wirklich löschen?",()=>{
+    if(item.uebernommenId){
+      if(type==="entscheidung") p.entscheidungen=(p.entscheidungen||[]).filter(x=>x.id!==item.uebernommenId);
+      if(type==="material") p.material=(p.material||[]).filter(x=>x.id!==item.uebernommenId);
+      if(type==="zugang") p.zugaenge=(p.zugaenge||[]).filter(x=>x.id!==item.uebernommenId);
+      if(type==="aufgabe") S.aufgaben=S.aufgaben.filter(x=>x.id!==item.uebernommenId);
+    }
+    b[key]=list.filter(x=>x.id!==itemId);
+    addProjektChronik(pid,"besichtigung","Schnellerfassung gelöscht: "+label);
+    saveState();route(location.hash);
+  });
 }
 function besichtigungZusammenfassung(b){
   const fotos=(b.bereiche||[]).reduce((n,x)=>n+(x.fotos||[]).length,0);
