@@ -4042,6 +4042,12 @@ function saveProjekt(id, isEdit){
   if(!name){ toast("Projektname erforderlich.", "warn"); return; }
   let p = isEdit ? S.projekte.find(x=>x.id===id) : window._newProjektDraft;
   const previousStatus=isEdit?p.status:null;
+  const requestedStatus=document.getElementById("pStatus").value;
+  if(isEdit && requestedStatus==="Abgeschlossen" && previousStatus!=="Abgeschlossen"){
+    closeModal();
+    openProjektAbschlussCheck(id);
+    return;
+  }
   const before=isEdit?{
     name:p.name||"", kundeId:p.kundeId||"", adresse:p.adresse||"", status:p.status||"",
     beginn:p.beginn||"", deadline:p.deadline||"", budget:Number(p.budget)||0,
@@ -4049,7 +4055,7 @@ function saveProjekt(id, isEdit){
     fortschritt:Number(p.fortschritt)||0
   }:null;
   p.name=name; p.kundeId=document.getElementById("pKunde").value;
-  p.status=document.getElementById("pStatus").value; p.adresse=document.getElementById("pAdresse").value.trim();
+  p.status=requestedStatus; p.adresse=document.getElementById("pAdresse").value.trim();
   const beginn=document.getElementById("pBeginn").value;
   const deadline=document.getElementById("pDeadline").value;
   if(beginn && deadline && beginn>deadline){ toast("Der Beginn darf nicht nach der Fertigstellung liegen.", "warn"); return; }
@@ -5337,26 +5343,37 @@ function projektStartChecks(p){
   ];
 }
 function projektAbschlussChecks(p){
+  const offeneAufgaben=S.aufgaben.filter(a=>a.projektId===p.id&&a.status!=="erledigt").length;
+  const offeneMaengel=(p.maengel||[]).filter(m=>m.status!=="erledigt").length;
+  const offeneBlocker=(p.blocker||[]).filter(x=>x.status!=="erledigt").length;
+  const offeneEntscheidungen=(p.entscheidungen||[]).filter(x=>!["freigegeben","erledigt"].includes(x.status)).length;
+  const offeneNachtraege=(p.nachtraege||[]).filter(x=>!["ausgeführt","abgelehnt"].includes(x.status)).length;
+  const offeneCheckliste=(p.checkliste||[]).filter(x=>!x.done).length;
   return [
-    ["Keine offenen Aufgaben",!S.aufgaben.some(a=>a.projektId===p.id&&a.status!=="erledigt")],["Keine offenen Mängel",!(p.maengel||[]).some(m=>m.status!=="erledigt")],
-    ["Keine offenen Blocker",!(p.blocker||[]).some(x=>x.status!=="erledigt")],["Entscheidungen abgeschlossen",!(p.entscheidungen||[]).some(x=>!["freigegeben","erledigt"].includes(x.status))],
-    ["Nachträge geklärt",!(p.nachtraege||[]).some(x=>!["ausgeführt","abgelehnt"].includes(x.status))],["Abnahme erfolgt",!!p.abnahmeDatum||!!p.checklisteUnterschrift],
-    ["Dokumentation vorhanden",(p.fotos||[]).length>0||(p.dokumente||[]).length>0],["Schlüssel / Zugänge geprüft",true]
+    {label:"Keine offenen Aufgaben",ok:offeneAufgaben===0,detail:offeneAufgaben?offeneAufgaben+" offen":"alles erledigt",route:"steuerung"},
+    {label:"Keine offenen Mängel",ok:offeneMaengel===0,detail:offeneMaengel?offeneMaengel+" offen":"keine offenen Mängel",route:"maengel"},
+    {label:"Keine offenen Blocker",ok:offeneBlocker===0,detail:offeneBlocker?offeneBlocker+" offen":"keine offenen Blocker",route:"steuerung"},
+    {label:"Entscheidungen abgeschlossen",ok:offeneEntscheidungen===0,detail:offeneEntscheidungen?offeneEntscheidungen+" offen":"alle geklärt",route:"steuerung"},
+    {label:"Nachträge geklärt",ok:offeneNachtraege===0,detail:offeneNachtraege?offeneNachtraege+" offen":"alle geklärt",route:"steuerung"},
+    {label:"Abnahme-Checkliste erledigt",ok:offeneCheckliste===0,detail:offeneCheckliste?offeneCheckliste+" Prüfpunkt(e) offen":"Checkliste vollständig",route:"checkliste"},
+    {label:"Abnahme erfolgt",ok:!!p.abnahmeDatum||!!p.checklisteUnterschrift,detail:(p.abnahmeDatum||p.checklisteUnterschrift)?"Abnahme dokumentiert":"Abnahmedatum oder Unterschrift fehlt",route:"checkliste"},
+    {label:"Dokumentation vorhanden",ok:(p.fotos||[]).length>0||(p.dokumente||[]).length>0,detail:(p.fotos||[]).length+" Foto(s) · "+(p.dokumente||[]).length+" Dokument(e)",route:"dokumente"}
   ];
 }
-function renderProjectCheckModal(title,checks,extra){
-  const ok=checks.filter(x=>x[1]).length;
+function renderProjectCheckModal(title,checks,extra,pid){
+  const norm=checks.map(x=>Array.isArray(x)?{label:x[0],ok:x[1],detail:"",route:""}:x);
+  const ok=norm.filter(x=>x.ok).length;
   return `<div class="modalHead"><div class="modalTitle">${escHtml(title)}</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
-  <div class="pageSub" style="margin-bottom:12px;">${ok} von ${checks.length} Punkten erfüllt</div>
-  <div class="simpleList">${checks.map(x=>`<div class="simpleRow"><div class="simpleRowMain">${escHtml(x[0])}</div><span class="badge ${x[1]?"green":"amber"}">${x[1]?"OK":"prüfen"}</span></div>`).join("")}</div>${extra||""}`;
+  <div class="pageSub" style="margin-bottom:12px;">${ok} von ${norm.length} Punkten erfüllt</div>
+  <div class="simpleList">${norm.map(x=>`<div class="simpleRow"><div class="simpleRowMain"><b>${escHtml(x.label)}</b>${x.detail?`<div class="pageSub">${escHtml(x.detail)}</div>`:""}</div><div style="display:flex;gap:7px;align-items:center;"><span class="badge ${x.ok?"green":"amber"}">${x.ok?"OK":"prüfen"}</span>${!x.ok&&x.route&&pid?`<button class="btn sm" onclick="closeModal();goTo('#projekte/${escAttr(pid)}/${escAttr(x.route)}')">Öffnen</button>`:""}</div></div>`).join("")}</div>${extra||""}`;
 }
 function openProjektStartCheck(pid){
   const p=S.projekte.find(x=>x.id===pid),checks=projektStartChecks(p);
-  openModal(renderProjectCheckModal("Baustellenstart – "+p.name,checks,`<div class="modalFoot"><button class="btn" onclick="closeModal()">Schließen</button></div>`),true);
+  openModal(renderProjectCheckModal("Baustellenstart – "+p.name,checks,`<div class="modalFoot"><button class="btn" onclick="closeModal()">Schließen</button></div>`,pid),true);
 }
 function openProjektAbschlussCheck(pid){
-  const p=S.projekte.find(x=>x.id===pid),checks=projektAbschlussChecks(p),all=checks.every(x=>x[1]);
-  openModal(renderProjectCheckModal("Projektabschluss – "+p.name,checks,`<div class="modalFoot"><button class="btn" onclick="closeModal()">Schließen</button><button class="btn primary" ${all?"":"disabled"} onclick="completeProjektFromCheck('${escAttr(pid)}')">Abschließen & archivieren</button></div>`),true);
+  const p=S.projekte.find(x=>x.id===pid),checks=projektAbschlussChecks(p),all=checks.every(x=>x.ok);
+  openModal(renderProjectCheckModal("Projektabschluss – "+p.name,checks,`<div class="compactFormNote" style="margin-top:12px;">Das Projekt kann erst abgeschlossen werden, wenn alle Pflichtpunkte erfüllt sind.</div><div class="modalFoot"><button class="btn" onclick="closeModal()">Schließen</button><button class="btn primary" ${all?"":"disabled"} onclick="completeProjektFromCheck('${escAttr(pid)}')">Abschließen & archivieren</button></div>`,pid),true);
 }
 function completeProjektFromCheck(pid){
   const p=S.projekte.find(x=>x.id===pid);if(!p)return;
@@ -6514,6 +6531,7 @@ function renderTabChecklist(body, p){
         <div><b>Abnahmeprotokoll</b><div class="pageSub">${p.checkliste.filter(c=>c.done).length} von ${p.checkliste.length} Punkten erledigt · <span class="badge ${status.color}">${status.label}</span></div></div>
         <div style="display:flex; gap:8px;">
           <button class="btn sm" onclick="exportChecklistePDF('${escAttr(p.id)}')">Protokoll als PDF</button>
+          <button class="btn sm" onclick="openProjektAbschlussCheck('${escAttr(p.id)}')">✓ Abschluss prüfen</button>
           <button class="btn primary sm" onclick="openChecklistItemForm('${escAttr(p.id)}')">＋ Prüfpunkt</button>
         </div>
       </div>
@@ -6557,13 +6575,12 @@ function saveAbnahmeMeta(pid,field,value){
 function saveChecklisteUnterschrift(pid){
   const p = S.projekte.find(x=>x.id===pid);
   p.checklisteUnterschrift = window._checklisteSigDraft || "";
-  if(p.checklisteUnterschrift){
-    p.status="Abgeschlossen";
-    p.archiviert=true;
-    addProjektChronik(pid,"abnahme","Abnahme unterschrieben – Projekt abgeschlossen und archiviert");
-  }
+  if(p.checklisteUnterschrift) addProjektChronik(pid,"abnahme","Abnahme-Unterschrift gespeichert");
   saveState();
-  toast("Unterschrift gespeichert.", "success");
+  route(location.hash);
+  const checks=projektAbschlussChecks(p);
+  const all=checks.every(x=>x.ok);
+  toast(all?"Unterschrift gespeichert – Projekt ist bereit für den Abschluss-Check.":"Unterschrift gespeichert. Vor Projektabschluss sind noch Punkte offen.",all?"success":"warn");
 }
 function buildChecklisteDoc(p){
   const doc = pdfNewDoc();
