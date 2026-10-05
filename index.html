@@ -3708,6 +3708,32 @@ function ptDropProject(event,mid,datum){
   const pid=event.dataTransfer.getData("text/plain");
   if(pid) openPlantafelCell(mid,datum,pid);
 }
+function ptPlanKonflikte(mid,datum,slot,projektId){
+  const m=S.mitarbeiter.find(x=>x.id===mid);
+  const out=[];
+  if(!m) return [{type:"error",text:"Mitarbeiter nicht gefunden"}];
+  const away=ptAbwesenheit(m,datum);
+  if(away) out.push({type:"absence",text:"Abwesend: "+away});
+  const overlaps=ptEntries(mid,datum).filter(e=>{
+    if(projektId&&e.projektId===projektId) return false;
+    return e.slot==="ganztags"||slot==="ganztags"||e.slot===slot;
+  });
+  overlaps.forEach(e=>{
+    const p=S.projekte.find(x=>x.id===e.projektId);
+    out.push({type:"double",text:"Bereits "+ptSlotLabel(e.slot)+" bei "+(p?p.name:"anderem Projekt")+" eingeplant"});
+  });
+  return out;
+}
+function ptKonfliktHinweisHTML(conflicts){
+  if(!conflicts.length) return '<div class="compactFormNote" style="border-color:var(--green);background:var(--green-bg);"><b>✓ Keine Konflikte erkannt</b></div>';
+  return '<div class="compactFormNote" style="border-color:var(--red);background:var(--red-bg);"><b>⚠ Einsatzkonflikt</b><br>'+conflicts.map(x=>escHtml(x.text)).join("<br>")+'</div>';
+}
+function updatePlantafelConflictPreview(mid,datum){
+  const slot=document.getElementById("ptSlot")?.value||"ganztags";
+  const projektId=document.getElementById("ptProjekt")?.value||"";
+  const el=document.getElementById("ptConflictPreview");
+  if(el) el.innerHTML=ptKonfliktHinweisHTML(ptPlanKonflikte(mid,datum,slot,projektId));
+}
 function openPlantafelCell(mid,datum,dragProjektId){
   const m=S.mitarbeiter.find(x=>x.id===mid);
   const away=m?ptAbwesenheit(m,datum):"";
@@ -3716,21 +3742,27 @@ function openPlantafelCell(mid,datum,dragProjektId){
   openModal(`
     <div class="modalHead"><div class="modalTitle">${escHtml(mitarbeiterName(mid))} – ${fmtDate(datum)}</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
     ${entries.length?`<div style="margin-bottom:12px;"><b>Bereits geplant</b><div class="simpleList" style="margin-top:7px;">${entries.map(e=>{const p=S.projekte.find(x=>x.id===e.projektId);return `<div class="simpleRow"><div class="simpleRowMain"><b>${escHtml(p?p.name:"Projekt")}</b><div class="pageSub">${escHtml(ptSlotLabel(e.slot))}${e.notiz?" · "+escHtml(e.notiz):""}</div></div><button class="iconBtn" onclick="deletePlantafelEntry('${escAttr(e.id)}')">×</button></div>`;}).join("")}</div></div>`:""}
-    <div class="formRow"><label>Projekt</label><select id="ptProjekt"><option value="">– auswählen –</option>${S.projekte.filter(p=>!p.archiviert&&projektEffectiveStatus(p)!=="Abgeschlossen").map(p=>`<option value="${escAttr(p.id)}" ${dragProjektId===p.id?"selected":""}>${escHtml(p.name)}</option>`).join("")}</select></div>
+    <div class="formRow"><label>Projekt</label><select id="ptProjekt" onchange="updatePlantafelConflictPreview('${escAttr(mid)}','${datum}')"><option value="">– auswählen –</option>${S.projekte.filter(p=>!p.archiviert&&projektEffectiveStatus(p)!=="Abgeschlossen").map(p=>`<option value="${escAttr(p.id)}" ${dragProjektId===p.id?"selected":""}>${escHtml(p.name)}</option>`).join("")}</select></div>
     <div class="grid cols-2">
-      <div class="formRow"><label>Einsatz</label><select id="ptSlot"><option value="ganztags">Ganztags</option><option value="vormittags">Vormittags</option><option value="nachmittags">Nachmittags</option></select></div>
+      <div class="formRow"><label>Einsatz</label><select id="ptSlot" onchange="updatePlantafelConflictPreview('${escAttr(mid)}','${datum}')"><option value="ganztags">Ganztags</option><option value="vormittags">Vormittags</option><option value="nachmittags">Nachmittags</option></select></div>
       <div class="formRow"><label>Notiz</label><input id="ptNotiz" type="text" placeholder="z. B. Material mitnehmen"></div>
     </div>
+    <div id="ptConflictPreview" style="margin-top:10px;"></div>
     <div class="modalFoot"><button class="btn" onclick="closeModal()">Schließen</button><button class="btn primary" onclick="savePlantafelCell('${escAttr(mid)}','${datum}')">Einplanen</button></div>
   `);
+  updatePlantafelConflictPreview(mid,datum);
 }
 function savePlantafelCell(mid,datum){
   const projektId=document.getElementById("ptProjekt").value;
   const slot=document.getElementById("ptSlot").value;
   const notiz=document.getElementById("ptNotiz").value.trim();
   if(!projektId){ toast("Bitte ein Projekt auswählen.","warn"); return; }
-  const conflicts=ptEntries(mid,datum).filter(e=>e.slot==="ganztags"||slot==="ganztags"||e.slot===slot);
-  if(conflicts.length){ toast("Der Mitarbeiter ist für diesen Zeitraum bereits eingeplant.","warn"); return; }
+  const conflicts=ptPlanKonflikte(mid,datum,slot,projektId);
+  if(conflicts.length){
+    toast(conflicts.map(x=>x.text).join(" · "),"warn");
+    updatePlantafelConflictPreview(mid,datum);
+    return;
+  }
   S.planung.push({id:uid(),mitarbeiterId:mid,datum,projektId,slot,notiz});
   addProjektChronik(projektId,"einsatz","Einsatz geplant: "+(mitarbeiterName(mid)||"Mitarbeiter")+" · "+fmtDate(datum)+" · "+ptSlotLabel(slot)+(notiz?" · "+notiz:""));
   saveState(); closeModal(); route(location.hash);
@@ -3745,19 +3777,23 @@ function copyPlantafelWeek(){
   const days=ptDays();
   const from=new Set(days);
   const source=S.planung.filter(x=>from.has(x.datum));
-  let copied=0;
+  let copied=0,skippedConflict=0,skippedAbsent=0;
   source.forEach(e=>{
     const d=new Date(e.datum+"T12:00:00"); d.setDate(d.getDate()+7);
     const datum=d.toISOString().slice(0,10);
-    const exists=S.planung.some(x=>x.mitarbeiterId===e.mitarbeiterId&&x.datum===datum&&x.slot===e.slot);
     const m=S.mitarbeiter.find(x=>x.id===e.mitarbeiterId);
-    if(!exists&&m&&!ptAbwesenheit(m,datum)){
-      S.planung.push({id:uid(),mitarbeiterId:e.mitarbeiterId,datum,projektId:e.projektId,slot:e.slot||"ganztags",notiz:e.notiz||""});
-      copied++;
-    }
+    if(!m) return;
+    const away=ptAbwesenheit(m,datum);
+    if(away){skippedAbsent++;return;}
+    const conflicts=ptPlanKonflikte(e.mitarbeiterId,datum,e.slot||"ganztags",e.projektId);
+    if(conflicts.length){skippedConflict++;return;}
+    S.planung.push({id:uid(),mitarbeiterId:e.mitarbeiterId,datum,projektId:e.projektId,slot:e.slot||"ganztags",notiz:e.notiz||""});
+    addProjektChronik(e.projektId,"einsatz","Einsatz aus Vorwoche kopiert: "+(mitarbeiterName(e.mitarbeiterId)||"Mitarbeiter")+" · "+fmtDate(datum)+" · "+ptSlotLabel(e.slot||"ganztags"));
+    copied++;
   });
   saveState();
-  toast(copied+" Einsatz/Einsätze in die nächste Woche kopiert.","success");
+  const extras=[skippedAbsent?skippedAbsent+" wegen Abwesenheit":"" ,skippedConflict?skippedConflict+" wegen Konflikt":""].filter(Boolean).join(" · ");
+  toast(copied+" Einsatz/Einsätze kopiert"+(extras?" · übersprungen: "+extras:"")+".",skippedAbsent||skippedConflict?"warn":"success");
 }
 reg("kunden","Kunden","🤝","Kunden & Projekte",renderKunden);
 reg("subunternehmer","Subunternehmer","🏗️","Kunden & Projekte",renderSubunternehmer);
