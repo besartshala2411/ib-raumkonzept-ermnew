@@ -3610,9 +3610,12 @@ function savePlantafelCell(mid,datum){
   const conflicts=ptEntries(mid,datum).filter(e=>e.slot==="ganztags"||slot==="ganztags"||e.slot===slot);
   if(conflicts.length){ toast("Der Mitarbeiter ist für diesen Zeitraum bereits eingeplant.","warn"); return; }
   S.planung.push({id:uid(),mitarbeiterId:mid,datum,projektId,slot,notiz});
+  addProjektChronik(projektId,"einsatz","Einsatz geplant: "+(mitarbeiterName(mid)||"Mitarbeiter")+" · "+fmtDate(datum)+" · "+ptSlotLabel(slot)+(notiz?" · "+notiz:""));
   saveState(); closeModal(); route(location.hash);
 }
 function deletePlantafelEntry(id){
+  const entry=S.planung.find(x=>x.id===id);
+  if(entry) addProjektChronik(entry.projektId,"einsatz","Einsatz entfernt: "+(mitarbeiterName(entry.mitarbeiterId)||"Mitarbeiter")+" · "+fmtDate(entry.datum)+" · "+ptSlotLabel(entry.slot));
   S.planung=S.planung.filter(x=>x.id!==id);
   saveState(); closeModal(); route(location.hash);
 }
@@ -4396,7 +4399,7 @@ function renderTabUebersicht(body, p){
   `;
 }
 function projektChronikIcon(typ){
-  const map={projekt:"✎",status:"↻",archiv:"▣",aufgabe:"✓",lv:"%",material:"▤",blocker:"⛔",entscheidung:"?",nachtrag:"+",datei:"▱",besichtigung:"⌖",info:"•"};
+  const map={projekt:"✎",status:"↻",archiv:"▣",aufgabe:"✓",lv:"%",material:"▤",blocker:"⛔",entscheidung:"?",nachtrag:"+",datei:"▱",foto:"▧",besichtigung:"⌖",mangel:"⚠",kontakt:"☎",team:"👷",einsatz:"📅",bauablauf:"◫",abnahme:"✓",subunternehmer:"🏗",info:"•"};
   return map[typ]||"•";
 }
 function renderTabProjektChronik(body,p){
@@ -4610,12 +4613,17 @@ function renderProjectSubSearch(pid,value){
 function addTeamMember(pid, mid){
   if(!mid) return;
   const p = S.projekte.find(x=>x.id===pid);
-  if(!p.team.includes(mid)) p.team.push(mid);
+  if(!p.team.includes(mid)){
+    p.team.push(mid);
+    addProjektChronik(pid,"team","Teammitglied hinzugefügt: "+(mitarbeiterName(mid)||"Mitarbeiter"));
+  }
   saveState(); route(location.hash);
 }
 function removeTeamMember(pid, mid){
   const p = S.projekte.find(x=>x.id===pid);
+  const name=mitarbeiterName(mid)||"Mitarbeiter";
   p.team = p.team.filter(x=>x!==mid);
+  addProjektChronik(pid,"team","Teammitglied entfernt: "+name);
   saveState(); route(location.hash);
 }
 
@@ -4740,6 +4748,8 @@ function saveBauphase(pid, phaseId, isEdit){
 }
 function deleteBauphase(pid, phaseId){
   const p = S.projekte.find(x=>x.id===pid);
+  const ph=p&&p.bauzeitenplan.find(x=>x.id===phaseId);
+  if(ph) addProjektChronik(pid,"bauablauf","Bauphase gelöscht: "+ph.bezeichnung);
   deleteItemWithUndo(p.bauzeitenplan, phaseId, "Phase gelöscht.");
 }
 function exportBauzeitenplanPDF(pid){
@@ -4779,6 +4789,7 @@ async function addProjektFotos(pid, input){
 }
 function deleteProjektFoto(pid, fid){
   const p = S.projekte.find(x=>x.id===pid);
+  if(p&&p.fotos.some(x=>x.id===fid)) addProjektChronik(pid,"foto","Foto gelöscht");
   deleteItemWithUndo(p.fotos, fid, "Foto gelöscht.");
 }
 const FOTO_MARK_FARBEN = ["#ef4444","#f59e0b","#22c55e","#3b82f6","#ffffff","#111111"];
@@ -4881,6 +4892,7 @@ function saveFotoMarkierung(){
   const foto = p.fotos.find(f=>f.id===fotoId);
   foto.dataURL = dataURL;
   foto.markiert = true;
+  addProjektChronik(pid,"foto","Foto markiert / kommentiert");
   saveState(); closeModal(); route(location.hash);
   toast("Foto-Markierung gespeichert.", "success");
 }
@@ -4973,6 +4985,8 @@ async function dropProjektDokumente(pid, event){
 }
 function deleteProjektDokument(pid, did){
   const p = S.projekte.find(x=>x.id===pid);
+  const d=p&&p.dokumente.find(x=>x.id===did);
+  if(d) addProjektChronik(pid,"datei","Dokument gelöscht: "+(d.name||"Dokument"));
   deleteItemWithUndo(p.dokumente, did, "Dokument gelöscht.");
 }
 
@@ -5171,6 +5185,8 @@ function saveMaterial(pid,id,isEdit){
 }
 function deleteMaterial(pid,mid){
   const p=S.projekte.find(x=>x.id===pid);
+  const m=p&&p.material.find(x=>x.id===mid);
+  if(m) addProjektChronik(pid,"material","Material/Lieferung gelöscht: "+m.bezeichnung);
   deleteItemWithUndo(p.material,mid,"Material-Eintrag gelöscht.");
 }
 function buildLvDocPositions(p, positionen, mitPreisen, subtitle){
@@ -5842,7 +5858,9 @@ function openBesichtigungBereichNotiz(pid,bid,brid){
 }
 function saveBesichtigungBereichNotiz(pid,bid,brid){
   const p=S.projekte.find(x=>x.id===pid),b=besichtigungById(p,bid),br=b.bereiche.find(x=>x.id===brid);
-  br.notiz=document.getElementById("brEditNotiz").value.trim();saveState();closeModal();route(location.hash);
+  br.notiz=document.getElementById("brEditNotiz").value.trim();
+  addProjektChronik(pid,"besichtigung","Besichtigungsnotiz aktualisiert: "+br.name);
+  saveState();closeModal();route(location.hash);
 }
 function openBesichtigungMassForm(pid,bid,brid){
   openModal(`<div class="modalHead"><div class="modalTitle">Maß erfassen</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
@@ -5852,7 +5870,10 @@ function openBesichtigungMassForm(pid,bid,brid){
 function saveBesichtigungMass(pid,bid,brid){
   const p=S.projekte.find(x=>x.id===pid),b=besichtigungById(p,bid),br=b.bereiche.find(x=>x.id===brid),label=document.getElementById("bmLabel").value.trim(),wert=document.getElementById("bmWert").value;
   if(!label||!wert){toast("Bezeichnung und Wert erforderlich.","warn");return;}
-  br.masse.push({id:uid(),label,wert,einheit:document.getElementById("bmEinheit").value});saveState();closeModal();route(location.hash);
+  const einheit=document.getElementById("bmEinheit").value;
+  br.masse.push({id:uid(),label,wert,einheit});
+  addProjektChronik(pid,"besichtigung","Maß erfasst: "+br.name+" · "+label+" "+wert+" "+einheit);
+  saveState();closeModal();route(location.hash);
 }
 async function addBesichtigungFotos(pid,bid,brid,files){
   const p=S.projekte.find(x=>x.id===pid),b=besichtigungById(p,bid),br=b.bereiche.find(x=>x.id===brid); if(!br||!files)return;
@@ -5864,7 +5885,9 @@ async function addBesichtigungFotos(pid,bid,brid,files){
 }
 function deleteBesichtigungFoto(pid,bid,brid,fid){
   const p=S.projekte.find(x=>x.id===pid),b=besichtigungById(p,bid),br=b.bereiche.find(x=>x.id===brid);
-  br.fotos=br.fotos.filter(x=>x.id!==fid);saveState();route(location.hash);
+  br.fotos=br.fotos.filter(x=>x.id!==fid);
+  addProjektChronik(pid,"besichtigung","Besichtigungsfoto gelöscht: "+br.name);
+  saveState();route(location.hash);
 }
 function renderBesichtigungListCard(title,list,type){
   return `<div class="card"><div class="projectSectionHead"><b>${escHtml(title)}</b><span class="pageSub">${list.length}</span></div><div class="simpleList">${list.map(x=>`<div class="simpleRow"><div class="simpleRowMain"><b>${escHtml(x.text||x.titel||"Eintrag")}</b>${x.notiz?`<div class="pageSub">${escHtml(x.notiz)}</div>`:""}</div>${x.uebernommenId?'<span class="badge green">übernommen</span>':""}</div>`).join("")||'<div class="empty" style="padding:10px;">Keine Einträge.</div>'}</div></div>`;
@@ -5893,6 +5916,7 @@ function openBesichtigungAufgabeForm(pid,bid){
 function saveBesichtigungAufgabe(pid,bid){
   const p=S.projekte.find(x=>x.id===pid),b=besichtigungById(p,bid),titel=document.getElementById("baTitel").value.trim();if(!titel){toast("Aufgabe erforderlich.","warn");return;}
   b.aufgaben.push({id:uid(),titel,verantwortlich:document.getElementById("baVerantw").value.trim(),faellig:document.getElementById("baFaellig").value,notiz:document.getElementById("baNotiz").value.trim(),uebernommenId:""});
+  addProjektChronik(pid,"besichtigung","Aufgabe aus Besichtigung erfasst: "+titel);
   saveState();closeModal();route(location.hash);
 }
 function openBesichtigungMaterialForm(pid,bid){
@@ -6089,6 +6113,8 @@ function saveMangel(pid,id,isEdit){
 function deleteMangel(pid,id){
   const p=S.projekte.find(x=>x.id===pid);
   if(!p) return;
+  const m=p.maengel.find(x=>x.id===id);
+  if(m) addProjektChronik(pid,"mangel","Mangel gelöscht: "+m.titel);
   deleteItemWithUndo(p.maengel,id,"Mangel gelöscht.");
 }
 
@@ -6150,6 +6176,8 @@ function saveProjektKontakt(pid,id,isEdit){
 function deleteProjektKontakt(pid,id){
   const p=S.projekte.find(x=>x.id===pid);
   if(!p) return;
+  const k=p.kontakte.find(x=>x.id===id);
+  if(k) addProjektChronik(pid,"kontakt","Baustellenkontakt gelöscht: "+k.name);
   deleteItemWithUndo(p.kontakte,id,"Kontakt gelöscht.");
 }
 
@@ -6195,7 +6223,10 @@ function saveAbnahmeMeta(pid,field,value){
     p.abnahmeDatum=value;
     if(value) addProjektChronik(pid,"abnahme","Abnahmedatum festgelegt: "+fmtDate(value));
   }
-  if(field==="bemerkung") p.abnahmeBemerkung=value.trim();
+  if(field==="bemerkung"){
+    p.abnahmeBemerkung=value.trim();
+    addProjektChronik(pid,"abnahme","Abnahme-Bemerkung aktualisiert"+(p.abnahmeBemerkung?": "+p.abnahmeBemerkung.slice(0,120):""));
+  }
   saveState();
 }
 function saveChecklisteUnterschrift(pid){
@@ -6395,11 +6426,15 @@ function saveChecklistItem(pid){
 }
 function toggleChecklistItem(pid, i){
   const p = S.projekte.find(x=>x.id===pid);
-  p.checkliste[i].done = !p.checkliste[i].done;
+  const item=p.checkliste[i];
+  item.done = !item.done;
+  addProjektChronik(pid,"abnahme",(item.done?"Prüfpunkt erledigt: ":"Prüfpunkt wieder geöffnet: ")+item.text);
   saveState(); route(location.hash);
 }
 function deleteChecklistItem(pid, i){
   const p = S.projekte.find(x=>x.id===pid);
+  const item=p&&p.checkliste[i];
+  if(item) addProjektChronik(pid,"abnahme","Prüfpunkt gelöscht: "+item.text);
   deleteAtIndexWithUndo(p.checkliste, i, "Checklisten-Punkt gelöscht.");
 }
 
