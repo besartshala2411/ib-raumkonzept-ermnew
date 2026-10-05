@@ -1825,10 +1825,12 @@ async function uploadPflichtDok(type, id, defName, input){
     toast("Dokument hochgeladen.", "success");
   }catch(e){ toast("Datei konnte nicht gelesen werden: "+e.message, "error"); }
 }
-function removePflichtDok(type, id, docId){
-  const entity = pflichtGetEntity(type, id);
-  entity.dokumente = entity.dokumente.filter(d=>d.id!==docId);
-  saveState(); refreshPflichtView(type, id);
+function removePflichtDok(type,id,docId){
+  const entity=pflichtGetEntity(type,id); if(!entity)return;
+  const d=(entity.dokumente||[]).find(x=>x.id===docId);
+  confirmDelete("Dokument „"+(d&&d.name?d.name:"Dokument")+"“ wirklich löschen?",()=>{
+    entity.dokumente=entity.dokumente.filter(x=>x.id!==docId);saveState();refreshPflichtView(type,id);
+  });
 }
 function setPflichtDokGueltigkeit(type, id, docId, val){
   const entity = pflichtGetEntity(type, id);
@@ -1859,7 +1861,54 @@ function savePflichtDefs(type){
 /* =========================================================
    MODULE: DASHBOARD
 ========================================================= */
+function renderMitarbeiterHeute(view,u){
+  const heute=todayISO();
+  const einsaetze=S.planung.filter(x=>x.mitarbeiterId===u.id&&x.datum===heute).sort((a,b)=>(a.slot||"").localeCompare(b.slot||""));
+  const meineAufgaben=S.aufgaben.filter(a=>a.zugeordnet===u.id&&a.status!=="erledigt").sort((a,b)=>(a.faellig||"9999").localeCompare(b.faellig||"9999"));
+  const heuteAufgaben=meineAufgaben.filter(a=>!a.faellig||a.faellig<=heute);
+  const away=ptAbwesenheit(u,heute);
+  const persoTermine=(S.kalenderTermine||[]).filter(t=>t.mitarbeiterId===u.id&&t.datum===heute).sort((a,b)=>(a.uhrzeit||"99:99").localeCompare(b.uhrzeit||"99:99"));
+  const projectIds=[...new Set(einsaetze.map(x=>x.projektId).filter(Boolean))];
+  const chats=projectIds.flatMap(pid=>{
+    const p=S.projekte.find(x=>x.id===pid); if(!p) return [];
+    return currentProjectChatMessages(p).filter(m=>!m.deleted_at&&!m.geloescht).slice(-3).map(m=>({p,m}));
+  }).sort((a,b)=>String(b.m.created_at||b.m.zeit||"").localeCompare(String(a.m.created_at||a.m.zeit||""))).slice(0,5);
+  view.innerHTML=`
+    <div class="pageHead">
+      <div><div class="pageTitle">Heute für mich</div><div class="pageSub">${escHtml(u.name)} · ${new Date().toLocaleDateString("de-DE",{weekday:"long",day:"2-digit",month:"long",year:"numeric"})}</div></div>
+      <button class="btn" onclick="goTo('#kalender')">🗓️ Mein Kalender</button>
+    </div>
+    ${away?`<div class="card" style="margin-bottom:14px;border-color:var(--amber);background:var(--amber-bg);"><b>Heute abwesend: ${escHtml(away)}</b></div>`:""}
+    <div class="grid cols-2">
+      <div class="card">
+        <div class="projectSectionHead"><b>Meine Baustellen heute</b><span class="pageSub">${einsaetze.length}</span></div>
+        <div class="simpleList">
+          ${einsaetze.map(e=>{const p=S.projekte.find(x=>x.id===e.projektId);if(!p)return"";return `<div class="simpleRow" onclick="goTo('#projekte/${escAttr(p.id)}/uebersicht')" style="cursor:pointer;"><div class="simpleRowMain"><b>🏢 ${escHtml(p.name)}</b><div class="pageSub">${escHtml(ptSlotLabel(e.slot))}${p.adresse?" · "+escHtml(p.adresse):""}${e.notiz?" · "+escHtml(e.notiz):""}</div></div><span>Öffnen ›</span></div>`;}).join("")||'<div class="empty" style="padding:18px;">Heute ist kein Baustelleneinsatz eingeplant.</div>'}
+        </div>
+      </div>
+      <div class="card">
+        <div class="projectSectionHead"><b>Meine Aufgaben</b><button class="btn sm" onclick="goTo('#aufgaben')">Alle</button></div>
+        <div class="simpleList">
+          ${heuteAufgaben.slice(0,7).map(a=>`<div class="simpleRow" onclick="${a.projektId?`goTo('#projekte/${escAttr(a.projektId)}/uebersicht')`:`goTo('#aufgaben')`}" style="cursor:pointer;"><div class="simpleRowMain"><b>${escHtml(a.titel)}</b><div class="pageSub">${a.projektId?escHtml(projektName(a.projektId))+" · ":""}${a.faellig?"fällig "+fmtDate(a.faellig):"ohne Fälligkeit"}</div></div>${prioBadge(a.prioritaet)}</div>`).join("")||'<div class="empty" style="padding:18px;">Keine offenen Aufgaben für heute.</div>'}
+        </div>
+      </div>
+    </div>
+    <div class="grid cols-2" style="margin-top:16px;">
+      <div class="card">
+        <div class="projectSectionHead"><b>Meine Termine heute</b><button class="btn sm" onclick="goTo('#kalender')">Kalender</button></div>
+        <div class="simpleList">${persoTermine.map(t=>`<div class="simpleRow"><div class="simpleRowMain"><b>📌 ${escHtml(t.titel)}</b><div class="pageSub">${[t.uhrzeit,t.typ,t.notiz].filter(Boolean).map(escHtml).join(" · ")}</div></div></div>`).join("")||'<div class="empty" style="padding:18px;">Keine eigenen Termine heute.</div>'}</div>
+      </div>
+      <div class="card">
+        <div class="projectSectionHead"><b>Aktuelle Baustellen-Chats</b><span class="pageSub">aus heutigen Einsätzen</span></div>
+        <div class="simpleList">${chats.map(x=>`<div class="simpleRow" onclick="goTo('#projekte/${escAttr(x.p.id)}/chat')" style="cursor:pointer;"><div class="simpleRowMain"><b>💬 ${escHtml(x.p.name)}</b><div class="pageSub">${escHtml((x.m.text||"Anhang").slice(0,110))}</div></div><span>Chat ›</span></div>`).join("")||'<div class="empty" style="padding:18px;">Keine aktuellen Chatnachrichten zu heutigen Einsätzen.</div>'}</div>
+      </div>
+    </div>
+  `;
+}
+
 function renderDashboard(view){
+  const u=currentUser();
+  if(u&&!hasAdminAccess()) return renderMitarbeiterHeute(view,u);
   const heute=todayISO();
   const aktiveProjekte=S.projekte.filter(p=>!p.archiviert&&projektEffectiveStatus(p)!=="Abgeschlossen").sort((a,b)=>(a.deadline||"9999").localeCompare(b.deadline||"9999"));
   const offeneAufgaben=S.aufgaben.filter(a=>a.status!=="erledigt");
@@ -2306,8 +2355,10 @@ function saveMitarbeiterAbwesenheit(mid,id,isEdit){
   const m=S.mitarbeiter.find(x=>x.id===mid),von=document.getElementById("mabVon").value,bis=document.getElementById("mabBis").value;if(von&&bis&&bis<von){toast("Bis darf nicht vor Von liegen.","warn");return;}let a=isEdit?m.abwesenheiten.find(x=>x.id===id):{id,status:"erfasst"};a.typ=document.getElementById("mabTyp").value;a.von=von;a.bis=bis;a.notiz=document.getElementById("mabNotiz").value.trim();if(!isEdit)m.abwesenheiten.push(a);saveState();closeModal();renderPersonalakteTab(mid,"abwesenheiten");toast("Abwesenheit gespeichert.","success");
 }
 function deleteMitarbeiterPersonalItem(mid,field,id){
-  const m=S.mitarbeiter.find(x=>x.id===mid); if(!m||!Array.isArray(m[field])) return;
-  m[field]=m[field].filter(x=>x.id!==id); saveState(); renderPersonalakteTab(mid,window._pkTab||"stammdaten");
+  const m=S.mitarbeiter.find(x=>x.id===mid);if(!m||!Array.isArray(m[field]))return;
+  const item=m[field].find(x=>x.id===id);
+  const label=(item&&(item.bezeichnung||item.thema||item.titel||item.typ))||"Eintrag";
+  confirmDelete("„"+label+"“ wirklich löschen?",()=>{m[field]=m[field].filter(x=>x.id!==id);saveState();renderPersonalakteTab(mid,window._pkTab||"stammdaten");});
 }
 
 function renderMitarbeiterFreieDokumente(m){
@@ -2335,11 +2386,10 @@ async function addMitarbeiterDoc(id, input){
   saveState();
   renderPersonalakteTab(id, "dokumente");
 }
-function removeMitarbeiterDoc(id, docId){
-  const m = S.mitarbeiter.find(x=>x.id===id);
-  m.dokumente = m.dokumente.filter(d=>d.id!==docId);
-  saveState();
-  renderPersonalakteTab(id, "dokumente");
+function removeMitarbeiterDoc(id,docId){
+  const m=S.mitarbeiter.find(x=>x.id===id);if(!m)return;
+  const d=(m.dokumente||[]).find(x=>x.id===docId);
+  confirmDelete("Dokument „"+(d&&d.name?d.name:"Dokument")+"“ wirklich löschen?",()=>{m.dokumente=m.dokumente.filter(x=>x.id!==docId);saveState();renderPersonalakteTab(id,"dokumente");});
 }
 function renderMitarbeiterStundenzettelTab(m){
   const entries = S.zeiterfassung.filter(z=>z.mitarbeiterId===m.id && z.kommen && z.gehen).slice().sort((a,b)=>b.datum.localeCompare(a.datum)).slice(0,20);
@@ -3151,10 +3201,10 @@ async function addKundeDoc(id, input){
   }
   saveState(); route(location.hash);
 }
-function removeKundeDoc(id, docId){
-  const k = S.kunden.find(x=>x.id===id);
-  k.dokumente = k.dokumente.filter(d=>d.id!==docId);
-  saveState(); route(location.hash);
+function removeKundeDoc(id,docId){
+  const k=S.kunden.find(x=>x.id===id);if(!k)return;
+  const d=(k.dokumente||[]).find(x=>x.id===docId);
+  confirmDelete("Dokument „"+(d&&d.name?d.name:"Dokument")+"“ wirklich löschen?",()=>{k.dokumente=k.dokumente.filter(x=>x.id!==docId);saveState();route(location.hash);});
 }
 function renderKundeProjekteTab(k){
   const projekte = S.projekte.filter(p=>p.kundeId===k.id);
@@ -3551,9 +3601,9 @@ async function dropSubDocs(id,event){
   await addSubDocFiles(id,event.dataTransfer&&event.dataTransfer.files);
 }
 function removeSubDoc(id,docId){
-  const s=S.subunternehmer.find(x=>x.id===id);
-  s.dokumente=s.dokumente.filter(d=>d.id!==docId);
-  saveState(); route(location.hash);
+  const s=S.subunternehmer.find(x=>x.id===id);if(!s)return;
+  const d=(s.dokumente||[]).find(x=>x.id===docId);
+  confirmDelete("Dokument „"+(d&&d.name?d.name:"Dokument")+"“ wirklich löschen?",()=>{s.dokumente=s.dokumente.filter(x=>x.id!==docId);saveState();route(location.hash);});
 }
 function renderSubProjekteTab(s){
   const zugeordnet=S.projekte.filter(p=>(p.subunternehmer||[]).includes(s.id));
@@ -3609,12 +3659,9 @@ function addSubToProjekt(subId,projektId){
   if(einsatz.key!=="freigegeben") toast("Subunternehmer zugeordnet – Unterlagen bitte prüfen: "+einsatz.reason,"warn");
 }
 function removeSubFromProjekt(subId,projektId){
-  const p=S.projekte.find(x=>x.id===projektId);
-  if(!p) return;
+  const p=S.projekte.find(x=>x.id===projektId);if(!p)return;
   const s=S.subunternehmer.find(x=>x.id===subId);
-  p.subunternehmer=(p.subunternehmer||[]).filter(x=>x!==subId);
-  addProjektChronik(projektId,"subunternehmer","Subunternehmer entfernt: "+(s?s.firma:""));
-  saveState(); route(location.hash);
+  confirmDelete("Subunternehmer „"+(s?s.firma:"")+"“ aus diesem Projekt entfernen?",()=>{p.subunternehmer=(p.subunternehmer||[]).filter(x=>x!==subId);addProjektChronik(projektId,"subunternehmer","Subunternehmer entfernt: "+(s?s.firma:""));saveState();route(location.hash);});
 }
 
 /* =========================================================
@@ -3863,10 +3910,8 @@ function savePlantafelCell(mid,datum){
   saveState(); closeModal(); route(location.hash);
 }
 function deletePlantafelEntry(id){
-  const entry=S.planung.find(x=>x.id===id);
-  if(entry) addProjektChronik(entry.projektId,"einsatz","Einsatz entfernt: "+(mitarbeiterName(entry.mitarbeiterId)||"Mitarbeiter")+" · "+fmtDate(entry.datum)+" · "+ptSlotLabel(entry.slot));
-  S.planung=S.planung.filter(x=>x.id!==id);
-  saveState(); closeModal(); route(location.hash);
+  const entry=S.planung.find(x=>x.id===id);if(!entry)return;
+  confirmDelete("Einsatz von "+(mitarbeiterName(entry.mitarbeiterId)||"Mitarbeiter")+" am "+fmtDate(entry.datum)+" wirklich löschen?",()=>{addProjektChronik(entry.projektId,"einsatz","Einsatz entfernt: "+(mitarbeiterName(entry.mitarbeiterId)||"Mitarbeiter")+" · "+fmtDate(entry.datum)+" · "+ptSlotLabel(entry.slot));S.planung=S.planung.filter(x=>x.id!==id);saveState();closeModal();route(location.hash);});
 }
 function copyPlantafelWeek(){
   const days=ptDays();
@@ -4204,7 +4249,8 @@ function setProjektArchiviert(id, archiviert){
   toast(archiviert?"Projekt archiviert.":"Projekt wieder aktiviert.","success");
 }
 function deleteProjekt(id){
-  setProjektArchiviert(id,true);
+  const p=S.projekte.find(x=>x.id===id);if(!p)return;
+  confirmDelete("Projekt „"+p.name+"“ wirklich archivieren?",()=>setProjektArchiviert(id,true));
 }
 function requestProjektPermanentDelete(id){
   const p=S.projekte.find(x=>x.id===id);
@@ -4861,6 +4907,7 @@ async function addProjektGrundriss(pid, input){
   saveState(); route(location.hash);
 }
 function deleteProjektGrundriss(pid, gid){
+  confirmDelete("Grundriss wirklich löschen?",()=>{
   const p = S.projekte.find(x=>x.id===pid);
   deleteItemWithUndo(p.grundrisse, gid, "Grundriss gelöscht.");
 }
@@ -4894,6 +4941,8 @@ async function renderProjektDetailKarte(p){
   }else if(statusEl){
     statusEl.textContent = "Adresse konnte nicht gefunden werden.";
   }
+}
+  });
 }
 function updateProjektFortschritt(id, val){
   const p = S.projekte.find(x=>x.id===id); p.fortschritt=Number(val); saveState();
@@ -4979,12 +5028,9 @@ function addTeamMember(pid, mid){
   }
   saveState(); route(location.hash);
 }
-function removeTeamMember(pid, mid){
-  const p = S.projekte.find(x=>x.id===pid);
-  const name=mitarbeiterName(mid)||"Mitarbeiter";
-  p.team = p.team.filter(x=>x!==mid);
-  addProjektChronik(pid,"team","Teammitglied entfernt: "+name);
-  saveState(); route(location.hash);
+function removeTeamMember(pid,mid){
+  const p=S.projekte.find(x=>x.id===pid);if(!p)return;const name=mitarbeiterName(mid)||"Mitarbeiter";
+  confirmDelete("„"+name+"“ wirklich aus dem Projektteam entfernen?",()=>{p.team=p.team.filter(x=>x!==mid);addProjektChronik(pid,"team","Teammitglied entfernt: "+name);saveState();route(location.hash);});
 }
 
 /* =========================================================
@@ -5107,10 +5153,13 @@ function saveBauphase(pid, phaseId, isEdit){
   toast("Phase gespeichert.", "success");
 }
 function deleteBauphase(pid, phaseId){
+  confirmDelete("Bauphase wirklich löschen?",()=>{
   const p = S.projekte.find(x=>x.id===pid);
   const ph=p&&p.bauzeitenplan.find(x=>x.id===phaseId);
   if(ph) addProjektChronik(pid,"bauablauf","Bauphase gelöscht: "+ph.bezeichnung);
   deleteItemWithUndo(p.bauzeitenplan, phaseId, "Phase gelöscht.");
+}
+  });
 }
 function exportBauzeitenplanPDF(pid){
   const p = S.projekte.find(x=>x.id===pid);
@@ -5148,11 +5197,14 @@ async function addProjektFotos(pid, input){
   else toast(ok+" Foto(s) hinzugefügt.", "success");
 }
 function deleteProjektFoto(pid, fid){
+  confirmDelete("Foto wirklich löschen?",()=>{
   const p = S.projekte.find(x=>x.id===pid);
   if(p&&p.fotos.some(x=>x.id===fid)) addProjektChronik(pid,"foto","Foto gelöscht");
   deleteItemWithUndo(p.fotos, fid, "Foto gelöscht.");
 }
 const FOTO_MARK_FARBEN = ["#ef4444","#f59e0b","#22c55e","#3b82f6","#ffffff","#111111"];
+  });
+}
 function openFotoMarkierung(pid, fotoId){
   const p = S.projekte.find(x=>x.id===pid);
   const foto = p.fotos.find(f=>f.id===fotoId);
@@ -5344,6 +5396,7 @@ async function dropProjektDokumente(pid, event){
   await addProjektDokumentFiles(pid, event.dataTransfer && event.dataTransfer.files);
 }
 function deleteProjektDokument(pid, did){
+  confirmDelete("Dokument wirklich löschen?",()=>{
   const p = S.projekte.find(x=>x.id===pid);
   const d=p&&p.dokumente.find(x=>x.id===did);
   if(d) addProjektChronik(pid,"datei","Dokument gelöscht: "+(d.name||"Dokument"));
@@ -5353,6 +5406,8 @@ function deleteProjektDokument(pid, did){
 /* =========================================================
    PROJEKT: BAUSTELLENSTEUERUNG
 ========================================================= */
+  });
+}
 function renderTabProjektSteuerung(body,p){
   const blocker=(p.blocker||[]).filter(x=>x.status!=="erledigt");
   const entscheidungen=(p.entscheidungen||[]).filter(x=>x.status!=="erledigt");
@@ -5564,10 +5619,13 @@ function saveMaterial(pid,id,isEdit){
   saveState();closeModal();route(location.hash);
 }
 function deleteMaterial(pid,mid){
+  confirmDelete("Material-/Lieferungseintrag wirklich löschen?",()=>{
   const p=S.projekte.find(x=>x.id===pid);
   const m=p&&p.material.find(x=>x.id===mid);
   if(m) addProjektChronik(pid,"material","Material/Lieferung gelöscht: "+m.bezeichnung);
   deleteItemWithUndo(p.material,mid,"Material-Eintrag gelöscht.");
+}
+  });
 }
 function buildLvDocPositions(p, positionen, mitPreisen, subtitle){
   const doc = pdfNewDoc();
@@ -5957,10 +6015,12 @@ function beauftragenAusschreibung(pid, entryId){
   };
 }
 function deleteAusschreibungEntry(pid, entryId){
+  confirmDelete("Ausschreibungs-Eintrag wirklich löschen?",()=>{
   const p = S.projekte.find(x=>x.id===pid);
   deleteItemWithUndo(p.ausschreibung, entryId, "Ausschreibungs-Eintrag entfernt.");
 }
-
+  });
+}
 function renderTabBautagebuch(body, p){
   body.innerHTML = `
     <div class="card">
@@ -6005,8 +6065,11 @@ function saveBautagebuch(pid){
   saveState(); closeModal(); route(location.hash);
 }
 function deleteBautagebuch(pid, eid){
+  confirmDelete("Bautagebuch-Eintrag wirklich löschen?",()=>{
   const p = S.projekte.find(x=>x.id===pid);
   deleteItemWithUndo(p.bautagebuch, eid, "Bautagebuch-Eintrag gelöscht.");
+}
+  });
 }
 function buildBautagebuchDoc(p){
   const doc = pdfNewDoc();
@@ -6071,6 +6134,7 @@ function saveZugang(pid){
   saveState(); closeModal(); route(location.hash);
 }
 function deleteZugang(pid, zid){
+  confirmDelete("Zugang wirklich löschen?",()=>{
   const p = S.projekte.find(x=>x.id===pid);
   deleteItemWithUndo(p.zugaenge, zid, "Zugang gelöscht.");
 }
@@ -6078,6 +6142,8 @@ function deleteZugang(pid, zid){
 /* =========================================================
    PROJEKT: BAUSTELLENBESICHTIGUNG / BESTANDSAUFNAHME
 ========================================================= */
+  });
+}
 function besichtigungById(p,id){
   return (p.besichtigungen||[]).find(x=>x.id===id)||null;
 }
@@ -6264,10 +6330,8 @@ async function addBesichtigungFotos(pid,bid,brid,files){
   if(n){addProjektChronik(pid,"besichtigung",n+" Foto(s) bei Besichtigung aufgenommen: "+br.name);saveState();route(location.hash);}
 }
 function deleteBesichtigungFoto(pid,bid,brid,fid){
-  const p=S.projekte.find(x=>x.id===pid),b=besichtigungById(p,bid),br=b.bereiche.find(x=>x.id===brid);
-  br.fotos=br.fotos.filter(x=>x.id!==fid);
-  addProjektChronik(pid,"besichtigung","Besichtigungsfoto gelöscht: "+br.name);
-  saveState();route(location.hash);
+  const p=S.projekte.find(x=>x.id===pid),b=besichtigungById(p,bid),br=b&&b.bereiche.find(x=>x.id===brid);if(!br)return;
+  confirmDelete("Besichtigungsfoto wirklich löschen?",()=>{br.fotos=br.fotos.filter(x=>x.id!==fid);addProjektChronik(pid,"besichtigung","Besichtigungsfoto gelöscht: "+br.name);saveState();route(location.hash);});
 }
 function renderBesichtigungListCard(p,b,title,list,type){
   return `<div class="card"><div class="projectSectionHead"><b>${escHtml(title)}</b><span class="pageSub">${list.length}</span></div><div class="simpleList">${list.map(x=>`<div class="simpleRow"><div class="simpleRowMain"><b>${escHtml(x.text||x.titel||"Eintrag")}</b>${x.notiz?`<div class="pageSub">${escHtml(x.notiz)}</div>`:""}</div><div style="display:flex;gap:6px;align-items:center;">${x.uebernommenId?'<span class="badge green">übernommen</span>':""}<button class="iconBtn" title="Bearbeiten" onclick="editBesichtigungQuickItem('${escAttr(p.id)}','${escAttr(b.id)}','${escAttr(type)}','${escAttr(x.id)}')">✎</button><button class="iconBtn" title="Löschen" onclick="deleteBesichtigungQuickItem('${escAttr(p.id)}','${escAttr(b.id)}','${escAttr(type)}','${escAttr(x.id)}')">×</button></div></div>`).join("")||'<div class="empty" style="padding:10px;">Keine Einträge.</div>'}</div></div>`;
@@ -6561,13 +6625,15 @@ function saveMangel(pid,id,isEdit){
   saveState(); closeModal(); goTo("#projekte/"+pid+"/maengel");
 }
 function deleteMangel(pid,id){
+  confirmDelete("Mangel wirklich löschen?",()=>{
   const p=S.projekte.find(x=>x.id===pid);
   if(!p) return;
   const m=p.maengel.find(x=>x.id===id);
   if(m) addProjektChronik(pid,"mangel","Mangel gelöscht: "+m.titel);
   deleteItemWithUndo(p.maengel,id,"Mangel gelöscht.");
 }
-
+  });
+}
 function renderTabProjektKontakte(body,p){
   const list=p.kontakte||[];
   body.innerHTML=`
@@ -6624,13 +6690,15 @@ function saveProjektKontakt(pid,id,isEdit){
   saveState(); closeModal(); goTo("#projekte/"+pid+"/kontakte");
 }
 function deleteProjektKontakt(pid,id){
+  confirmDelete("Kontakt wirklich löschen?",()=>{
   const p=S.projekte.find(x=>x.id===pid);
   if(!p) return;
   const k=p.kontakte.find(x=>x.id===id);
   if(k) addProjektChronik(pid,"kontakt","Baustellenkontakt gelöscht: "+k.name);
   deleteItemWithUndo(p.kontakte,id,"Kontakt gelöscht.");
 }
-
+  });
+}
 function renderTabChecklist(body, p){
   const status=projektAbnahmeStatus(p);
   body.innerHTML = `
@@ -6882,6 +6950,7 @@ function toggleChecklistItem(pid, i){
   saveState(); route(location.hash);
 }
 function deleteChecklistItem(pid, i){
+  confirmDelete("Prüfpunkt wirklich löschen?",()=>{
   const p = S.projekte.find(x=>x.id===pid);
   const item=p&&p.checkliste[i];
   if(item) addProjektChronik(pid,"abnahme","Prüfpunkt gelöscht: "+item.text);
@@ -6893,7 +6962,8 @@ const PROJECT_CHAT_BUCKET="project-chat";
 let _projectChatChannel=null;
 let _projectChatPid=null;
 const _projectChatCache={};
-
+  });
+}
 function setProjektChatStatus(state,msg){
   const el=document.getElementById("pChatStatus");
   if(!el) return;
@@ -7341,10 +7411,7 @@ function addRaumSegment(){
   window._raumDraft.segmente.push({laenge:1, winkel:90, drehrichtung:"CW"});
   renderRaumSegList(); updateRaumPreview();
 }
-function removeRaumSegment(i){
-  window._raumDraft.segmente.splice(i,1);
-  renderRaumSegList(); updateRaumPreview();
-}
+function removeRaumSegment(i){confirmDelete("Segment wirklich löschen?",()=>{window._raumDraft.segmente.splice(i,1);renderRaumSegList();updateRaumPreview();});}
 function raumSegChange(i, field, val){
   window._raumDraft.segmente[i][field] = field==="drehrichtung" ? val : Number(val);
   updateRaumPreview();
@@ -7497,12 +7564,15 @@ function setAufgabeStatus(id, status){
   saveState(); route(location.hash);
 }
 function deleteAufgabe(id){
+  confirmDelete("Aufgabe wirklich löschen?",()=>{
   deleteItemWithUndo(S.aufgaben, id, "Aufgabe gelöscht.");
 }
 
 /* =========================================================
    MODULE: BAUSTELLEN-CHAT (übergreifend)
 ========================================================= */
+  });
+}
 function renderBaustellenChat(view){
   view.innerHTML = `
     <div class="pageHead"><div><div class="pageTitle">Baustellen-Chat</div><div class="pageSub">Übergreifender Team-Chat</div></div></div>
@@ -7650,12 +7720,15 @@ async function addDokument(input){
   saveState(); route(location.hash);
 }
 function deleteDokument(id){
+  confirmDelete("Dokument wirklich löschen?",()=>{
   deleteItemWithUndo(S.dokumente, id, "Dokument gelöscht.");
 }
 
 /* =========================================================
    MODULE: RECHNUNGEN
 ========================================================= */
+  });
+}
 function rechnungEffectiveStatus(r){
   if(r.status==="bezahlt") return "bezahlt";
   if(r.faellig && r.faellig < todayISO()) return "überfällig";
@@ -7774,8 +7847,7 @@ function removeRechnungPos(i){
     toast("Eine Rechnung benötigt mindestens eine Position.", "warn");
     return;
   }
-  window._rechnungDraft.positionen.splice(i,1);
-  renderRechnungPosList();
+  confirmDelete("Rechnungsposition wirklich löschen?",()=>{window._rechnungDraft.positionen.splice(i,1);renderRechnungPosList();});
 }
 function updateRechnungPositionValidation(){
   const duplicates = duplicatePositionIndexes(window._rechnungDraft.positionen, "beschreibung");
@@ -8047,7 +8119,10 @@ function schluesselRueckgabe(id){
   saveState(); closeModal(); route(location.hash);
 }
 function deleteSchluessel(id){
+  confirmDelete("Schlüssel-Eintrag wirklich löschen?",()=>{
   deleteItemWithUndo(S.schluessel, id, "Schlüssel-Eintrag gelöscht.");
+}
+  });
 }
 function exportSchluesselEinzelPDF(id){
   const s = S.schluessel.find(x=>x.id===id);
@@ -8246,7 +8321,10 @@ function saveVorlageInstanz(){
   toast(v.projektId ? "Vorlage gespeichert und im Projekt hinterlegt." : "Vorlage gespeichert.", "success");
 }
 function deleteVorlageInstanz(id){
+  confirmDelete("Vorlage wirklich löschen?",()=>{
   deleteItemWithUndo(S.vorlagen, id, "Vorlage gelöscht.");
+}
+  });
 }
 function exportVorlagePDF(id){
   const v = S.vorlagen.find(x=>x.id===id);
@@ -8727,7 +8805,7 @@ function updateProjektLvPosition(i,field,value){
   const btn=document.getElementById("projektLvWeiterBtn");
   if(btn) btn.disabled=duplicates.size>0||!d.positionen.length;
 }
-function removeProjektLvPosition(i){ window._projektLvDraft.positionen.splice(i,1); renderProjektLvReview(); }
+function removeProjektLvPosition(i){confirmDelete("LV-Position wirklich löschen?",()=>{window._projektLvDraft.positionen.splice(i,1);renderProjektLvReview();});}
 function confirmProjektLvImport(weitergeben){
   const d=window._projektLvDraft;
   const p=d&&S.projekte.find(x=>x.id===d.pid);
@@ -8850,12 +8928,7 @@ function updateLvPositionValidation(){
   if(confirmBtn) confirmBtn.disabled = duplicates.size>0;
   return duplicates.size===0;
 }
-function removeLvPos(i){
-  const d = window._lvImportDraft;
-  if(!d) return;
-  d.positionen.splice(i,1);
-  renderLvReviewForm();
-}
+function removeLvPos(i){const d=window._lvImportDraft;if(!d)return;confirmDelete("LV-Position wirklich löschen?",()=>{d.positionen.splice(i,1);renderLvReviewForm();});}
 function confirmLvImport(){
   const d = window._lvImportDraft;
   if(!d) return;
