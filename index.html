@@ -6605,6 +6605,37 @@ let _projectChatChannel=null;
 let _projectChatPid=null;
 const _projectChatCache={};
 
+function setProjektChatStatus(state,msg){
+  const el=document.getElementById("pChatStatus");
+  if(!el) return;
+  const map={
+    loading:["amber","Verbindung …"],
+    live:["green","Live"],
+    fallback:["amber","Fallback"],
+    error:["red","Fehler"],
+    offline:["gray","Offline"]
+  };
+  const cfg=map[state]||map.offline;
+  el.className="badge "+cfg[0];
+  el.textContent=cfg[1];
+  el.title=msg||"";
+}
+function projektChatFallbackMessage(pid,text){
+  const p=S.projekte.find(x=>x.id===pid);
+  if(!p||!text) return;
+  if(!p.chat) p.chat=[];
+  p.chat.push({
+    id:uid(),
+    autor:S.currentUserId||null,
+    text,
+    zeit:new Date().toISOString(),
+    anhaenge:[],
+    geloescht:false
+  });
+  addProjektChronik(pid,"chat","Chat-Nachricht im Fallback-Modus gespeichert");
+  saveState();
+  renderProjectChatMessages(pid,{fallback:true});
+}
 function projektChatCanDelete(msg){
   if(!msg) return false;
   return msg.autor_id===S.currentUserId || msg.autor===S.currentUserId || hasAdminAccess();
@@ -6652,10 +6683,14 @@ async function hydrateProjectChatMessage(row){
 async function loadProjectChat(pid,quiet){
   const sb=getSupabaseClient();
   if(!sb){
+    setProjektChatStatus("offline","Supabase SDK nicht verfügbar");
     if(!quiet) renderProjectChatMessages(pid,{offline:true});
     return false;
   }
+  setProjektChatStatus("loading");
   try{
+    const {data:sessionData}=await sb.auth.getSession();
+    if(!sessionData||!sessionData.session) throw new Error("Keine aktive Supabase-Anmeldung");
     const {data,error}=await sb.from("project_chat_messages")
       .select("id,projekt_id,autor_id,autor_name,text,attachment_name,attachment_type,attachment_path,created_at,deleted_at,legacy_id")
       .eq("projekt_id",pid)
@@ -6664,9 +6699,11 @@ async function loadProjectChat(pid,quiet){
       .limit(500);
     if(error) throw error;
     _projectChatCache[pid]=await Promise.all((data||[]).map(hydrateProjectChatMessage));
+    setProjektChatStatus("live");
     renderProjectChatMessages(pid);
     return true;
   }catch(e){
+    setProjektChatStatus("error",String(e.message||e));
     if(!quiet){
       renderProjectChatMessages(pid,{cloudError:String(e.message||e)});
     }
@@ -6702,7 +6739,11 @@ function subscribeProjectChat(pid){
         toast("💬 Neue Nachricht · "+(p?p.name:"Baustelle"),"success");
       }
     })
-    .subscribe();
+    .subscribe(status=>{
+      if(status==="SUBSCRIBED") setProjektChatStatus("live");
+      else if(status==="CHANNEL_ERROR"||status==="TIMED_OUT") setProjektChatStatus("error","Realtime-Verbindung fehlgeschlagen");
+      else if(status==="CLOSED") setProjektChatStatus("offline","Realtime-Verbindung geschlossen");
+    });
 }
 function renderProjektChatAttachment(a){
   const isImg=(a.type||"").startsWith("image/");
@@ -6731,8 +6772,9 @@ function renderProjektChatMessages(pid,state){
   if(!p||!el) return;
   const msgs=currentProjectChatMessages(p);
   el.innerHTML=`
-    ${state&&state.cloudError?`<div class="compactFormNote" style="margin-bottom:10px;"><b>Cloud-Chat noch nicht eingerichtet.</b><br>Lokaler Altbestand bleibt sichtbar. Sobald die Chat-Migration in Supabase ausgeführt ist, erscheinen neue Nachrichten live auf allen Geräten.</div>`:""}
+    ${state&&state.cloudError?`<div class="compactFormNote" style="margin-bottom:10px;border-color:var(--red);"><b>Live-Chat nicht erreichbar.</b><br>${escHtml(state.cloudError)}<br><span class="pageSub">Textnachrichten werden notfalls im Fallback-Modus gespeichert. Für echten Live-Chat muss das Supabase-Chat-Setup ausgeführt sein.</span></div>`:""}
     ${state&&state.offline?`<div class="compactFormNote" style="margin-bottom:10px;">Cloud-Verbindung derzeit nicht verfügbar – vorhandene lokale Nachrichten werden angezeigt.</div>`:""}
+    ${state&&state.fallback?`<div class="compactFormNote" style="margin-bottom:10px;">Fallback-Modus: Nachricht lokal gespeichert und über den normalen Cloud-Sync verteilt. Realtime ist derzeit nicht verfügbar.</div>`:""}
     ${msgs.map(m=>{
       const me=(m.autor_id||m.autor)===S.currentUserId;
       const attachments=m.anhaenge||[];
@@ -6762,7 +6804,7 @@ function renderTabProjektChat(body,p){
           <b>💬 Baustellen-Chat</b>
           <div class="pageSub">${escHtml(p.name)} · <span id="pChatCount">${initialCount} Nachricht${initialCount===1?"":"en"}</span></div>
         </div>
-        <span class="badge green">Live</span>
+        <span class="badge amber" id="pChatStatus">Verbindung …</span>
       </div>
       <div class="chatMsgs" id="pChatMsgs" style="min-height:360px;max-height:60vh;padding:14px;overflow-y:auto;background:var(--bg2);">
         <div class="empty" style="padding:50px 16px;">Chat wird geladen …</div>
@@ -6855,7 +6897,16 @@ async function sendProjektChat(pid){
     if(input) input.value="";
     clearProjektChatAttachment();
   }catch(e){
-    toast("Chat-Nachricht konnte nicht gesendet werden: "+String(e.message||e).slice(0,180),"error");
+    const err=String(e.message||e);
+    if(text&&!attachment){
+      projektChatFallbackMessage(pid,text);
+      if(input) input.value="";
+      setProjektChatStatus("fallback",err);
+      toast("Live-Chat nicht erreichbar – Nachricht wurde im Fallback-Modus gespeichert.","warn");
+    }else{
+      setProjektChatStatus("error",err);
+      toast("Chat-Nachricht konnte nicht gesendet werden: "+err.slice(0,180),"error");
+    }
   }finally{
     if(btn) btn.disabled=false;
     if(input) input.focus();
@@ -8937,6 +8988,67 @@ create policy "project_chat_storage_delete" on storage.objects
 -- drop function if exists erm_check_token(text);
 -- drop table if exists erm_access;
 `;
+const SUPABASE_CHAT_SQL_SETUP = `-- ERM Baustellen-Chat reparieren / einrichten
+create table if not exists public.project_chat_messages (
+  id uuid primary key default gen_random_uuid(),
+  projekt_id text not null,
+  autor_id text,
+  autor_name text not null default 'Benutzer',
+  text text not null default '',
+  attachment_name text,
+  attachment_type text,
+  attachment_path text,
+  legacy_id text,
+  org_id text not null default 'ib_raumkonzept',
+  created_at timestamptz not null default now(),
+  deleted_at timestamptz
+);
+create index if not exists project_chat_messages_project_created_idx
+  on public.project_chat_messages (projekt_id, created_at);
+create unique index if not exists project_chat_messages_legacy_idx
+  on public.project_chat_messages (projekt_id, legacy_id) where legacy_id is not null;
+alter table public.project_chat_messages enable row level security;
+alter table public.project_chat_messages replica identity full;
+drop policy if exists "project_chat_authenticated" on public.project_chat_messages;
+create policy "project_chat_authenticated" on public.project_chat_messages
+  for all to authenticated
+  using ((select auth.role()) = 'authenticated')
+  with check ((select auth.role()) = 'authenticated');
+revoke all on public.project_chat_messages from anon;
+grant select, insert, update, delete on public.project_chat_messages to authenticated;
+do $
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname='supabase_realtime'
+      and schemaname='public'
+      and tablename='project_chat_messages'
+  ) then
+    alter publication supabase_realtime add table public.project_chat_messages;
+  end if;
+end $;
+insert into storage.buckets (id,name,public,file_size_limit,allowed_mime_types)
+values (
+  'project-chat','project-chat',false,15728640,
+  array['image/jpeg','image/png','image/webp','image/heic','image/heif','application/pdf']
+)
+on conflict (id) do update
+set public=excluded.public,
+    file_size_limit=excluded.file_size_limit,
+    allowed_mime_types=excluded.allowed_mime_types;
+drop policy if exists "project_chat_storage_select" on storage.objects;
+create policy "project_chat_storage_select" on storage.objects
+  for select to authenticated using (bucket_id='project-chat');
+drop policy if exists "project_chat_storage_insert" on storage.objects;
+create policy "project_chat_storage_insert" on storage.objects
+  for insert to authenticated with check (bucket_id='project-chat');
+drop policy if exists "project_chat_storage_update" on storage.objects;
+create policy "project_chat_storage_update" on storage.objects
+  for update to authenticated using (bucket_id='project-chat') with check (bucket_id='project-chat');
+drop policy if exists "project_chat_storage_delete" on storage.objects;
+create policy "project_chat_storage_delete" on storage.objects
+  for delete to authenticated using (bucket_id='project-chat');
+`;
 const EINSTELLUNGEN_TABS = [
   {id:"profil", label:"Mein Profil", icon:"👤"},
   {id:"firma", label:"Briefkopf & Firma", icon:"🏢"},
@@ -9194,6 +9306,7 @@ function renderSetCloud(body){
       <div style="display:flex; gap:8px; margin-bottom:20px;">
         <button class="btn primary" onclick="saveCloudSettings()">Speichern</button>
         <button class="btn" onclick="testCloudConnection()">Verbindung testen</button>
+        <button class="btn" onclick="copyChatRepairSQL()">💬 Chat-SQL kopieren</button>
         <button class="btn" onclick="cloudSyncPull(false)">🔄 Jetzt abrufen</button>
       </div>
       <details>
@@ -9217,6 +9330,12 @@ function copySQL(){
   navigator.clipboard?.writeText(SUPABASE_SQL_SETUP).then(
     ()=>toast("SQL-Code kopiert.", "success"),
     ()=>toast("Kopieren nicht möglich – bitte manuell markieren.", "warn")
+  );
+}
+function copyChatRepairSQL(){
+  navigator.clipboard?.writeText(SUPABASE_CHAT_SQL_SETUP).then(
+    ()=>toast("Chat-Reparatur-SQL kopiert. Bitte im Supabase SQL Editor ausführen.", "success"),
+    ()=>toast("Kopieren nicht möglich – bitte SQL-Setup manuell öffnen.", "warn")
   );
 }
 function renderSetKI(body){
