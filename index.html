@@ -1851,6 +1851,16 @@ function renderDashboard(view){
     const last=(p.bautagebuch||[]).slice().sort((a,b)=>(b.datum||"").localeCompare(a.datum||""))[0];
     return !last || last.datum<heute;
   });
+  const aktiveMitarbeiter=S.mitarbeiter.filter(m=>m.status!=="inaktiv");
+  const abwesendHeute=aktiveMitarbeiter.map(m=>({m,grund:ptAbwesenheit(m,heute)})).filter(x=>x.grund);
+  const heutigePlanung=S.planung.filter(x=>x.datum===heute);
+  const besetzungsEngpaesse=aktiveProjekte.map(p=>{
+    const soll=(p.sollBesetzung||[]).reduce((s,x)=>s+(Number(x.anzahl)||0),0);
+    if(!soll) return null;
+    const ist=new Set(heutigePlanung.filter(x=>x.projektId===p.id).map(x=>x.mitarbeiterId)).size;
+    return {projekt:p,soll,ist,fehlt:Math.max(0,soll-ist)};
+  }).filter(Boolean).filter(x=>x.fehlt>0).sort((a,b)=>b.fehlt-a.fehlt);
+  const abschlussbereit=aktiveProjekte.filter(p=>projektAbschlussChecks(p).every(x=>x.ok));
 
   view.innerHTML=`
     <div class="pageHead">
@@ -1862,6 +1872,8 @@ function renderDashboard(view){
       <div class="cockpitMetric"><div class="cockpitMetricLabel">Aufgaben überfällig</div><div class="cockpitMetricValue">${ueberfaelligeAufgaben.length}</div><div class="cockpitMetricHint">${offeneAufgaben.length} Aufgaben offen</div></div>
       <div class="cockpitMetric"><div class="cockpitMetricLabel">Offene Mängel</div><div class="cockpitMetricValue">${offeneMaengel.length}</div><div class="cockpitMetricHint">${ueberfaelligeMaengel.length} davon überfällig</div></div>
       <div class="cockpitMetric"><div class="cockpitMetricLabel">Baustellen-Blocker</div><div class="cockpitMetricValue">${blocker.length}</div><div class="cockpitMetricHint">${entscheidungen.length} Entscheidungen · ${lieferungen.length} Lieferungen prüfen</div></div>
+      <div class="cockpitMetric"><div class="cockpitMetricLabel">Personal heute</div><div class="cockpitMetricValue">${aktiveMitarbeiter.length-abwesendHeute.length} / ${aktiveMitarbeiter.length}</div><div class="cockpitMetricHint">${abwesendHeute.length} abwesend · ${besetzungsEngpaesse.length} Baustelle(n) unterbesetzt</div></div>
+      <div class="cockpitMetric"><div class="cockpitMetricLabel">Abschlussbereit</div><div class="cockpitMetricValue">${abschlussbereit.length}</div><div class="cockpitMetricHint">Alle Abschluss-Prüfpunkte erfüllt</div></div>
     </div>
 
     <div class="grid cols-2">
@@ -1877,6 +1889,24 @@ function renderDashboard(view){
       <div class="card">
         <div class="projectSectionHead"><b>Baustellen ohne heutigen Bericht</b><span class="pageSub">${ohneTagebuch.length}</span></div>
         <div class="simpleList">${ohneTagebuch.slice(0,7).map(p=>`<div class="simpleRow" onclick="openBautagebuchForm('${escAttr(p.id)}')" style="cursor:pointer;"><div class="simpleRowMain"><b>${escHtml(p.name)}</b><div class="pageSub">${escHtml(p.adresse||"Keine Adresse")}</div></div><span>Dokumentieren ›</span></div>`).join("")||`<div class="empty" style="padding:22px;">Alle laufenden Baustellen sind heute dokumentiert.</div>`}</div>
+      </div>
+    </div>
+
+    <div class="grid cols-2" style="margin-top:16px;">
+      <div class="card">
+        <div class="projectSectionHead"><b>Personal heute</b><button class="btn sm" onclick="goTo('#plantafel')">Plantafel</button></div>
+        <div class="simpleList">
+          ${besetzungsEngpaesse.slice(0,6).map(x=>`<div class="simpleRow" onclick="goTo('#projekte/${escAttr(x.projekt.id)}/team')" style="cursor:pointer;"><div class="simpleRowMain"><b>⚠ ${escHtml(x.projekt.name)}</b><div class="pageSub">${x.fehlt} Person(en) fehlen · geplant ${x.ist} / Soll ${x.soll}</div></div><span class="badge amber">unterbesetzt</span></div>`).join("")}
+          ${abwesendHeute.slice(0,6).map(x=>`<div class="simpleRow" onclick="goTo('#mitarbeiter')" style="cursor:pointer;"><div class="simpleRowMain"><b>${escHtml(x.m.name)}</b><div class="pageSub">${escHtml(x.m.abteilung||x.m.position||"Mitarbeiter")}</div></div><span class="badge amber">${escHtml(x.grund)}</span></div>`).join("")}
+          ${!besetzungsEngpaesse.length&&!abwesendHeute.length?'<div class="empty" style="padding:18px;">Keine Personalengpässe oder Abwesenheiten heute.</div>':""}
+        </div>
+      </div>
+      <div class="card">
+        <div class="projectSectionHead"><b>Abschluss & Übergabe</b><span class="pageSub">${abschlussbereit.length} bereit</span></div>
+        <div class="simpleList">
+          ${abschlussbereit.slice(0,6).map(p=>`<div class="simpleRow" onclick="openProjektAbschlussCheck('${escAttr(p.id)}')" style="cursor:pointer;"><div class="simpleRowMain"><b>✓ ${escHtml(p.name)}</b><div class="pageSub">Alle Abschluss-Prüfpunkte erfüllt</div></div><span class="badge green">abschließen</span></div>`).join("")}
+          ${!abschlussbereit.length?'<div class="empty" style="padding:18px;">Aktuell ist noch kein Projekt vollständig abschlussbereit.</div>':""}
+        </div>
       </div>
     </div>
 
