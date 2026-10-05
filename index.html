@@ -8930,7 +8930,7 @@ create policy "project_chat_authenticated" on public.project_chat_messages
 revoke all on public.project_chat_messages from anon;
 grant select, insert, update, delete on public.project_chat_messages to authenticated;
 
-do $
+do $$
 begin
   if not exists (
     select 1 from pg_publication_tables
@@ -8940,7 +8940,7 @@ begin
   ) then
     alter publication supabase_realtime add table public.project_chat_messages;
   end if;
-end $;
+end $$;
 
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values (
@@ -9016,7 +9016,7 @@ create policy "project_chat_authenticated" on public.project_chat_messages
   with check ((select auth.role()) = 'authenticated');
 revoke all on public.project_chat_messages from anon;
 grant select, insert, update, delete on public.project_chat_messages to authenticated;
-do $
+do $$
 begin
   if not exists (
     select 1 from pg_publication_tables
@@ -9026,7 +9026,7 @@ begin
   ) then
     alter publication supabase_realtime add table public.project_chat_messages;
   end if;
-end $;
+end $$;
 insert into storage.buckets (id,name,public,file_size_limit,allowed_mime_types)
 values (
   'project-chat','project-chat',false,15728640,
