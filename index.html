@@ -4408,6 +4408,49 @@ function projektWorkflowCard(p){
     </div>`;
 }
 
+function projektStartAmpel(p){
+  const checks=[];
+  const add=(id,label,ok,detail,route,level)=>checks.push({id,label,ok,detail,route,level:level||"required"});
+  const aktiveBesichtigung=(p.besichtigungen||[]).some(b=>b.status==="abgeschlossen")||(p.besichtigungen||[]).length>0;
+  add("besichtigung","Besichtigung",aktiveBesichtigung,aktiveBesichtigung?"Bestandsaufnahme vorhanden":"Bestandsaufnahme fehlt","besichtigung");
+  add("lv","Leistungsverzeichnis",(p.lvPositionen||[]).length>0,(p.lvPositionen||[]).length?"LV vorhanden":"Noch kein LV hinterlegt","lv");
+  add("zeitraum","Zeitraum",!!p.beginn&&!!p.deadline,p.beginn&&p.deadline?fmtDate(p.beginn)+" – "+fmtDate(p.deadline):"Beginn oder Fertigstellung fehlt","uebersicht");
+  const teamOk=(p.team||[]).length>0||S.planung.some(x=>x.projektId===p.id);
+  add("team","Team & Einsatz",teamOk,teamOk?"Team/Einsatz zugeordnet":"Noch keine Besetzung geplant","team");
+  const zugangOk=(p.zugaenge||[]).length>0||(p.besichtigungen||[]).some(b=>(b.zugaenge||[]).length>0);
+  add("zugang","Zugang / Schlüssel",zugangOk,zugangOk?"Zugang geklärt":"Zugang/Schlüssel noch nicht dokumentiert","zugaenge");
+  const mat=(p.material||[]);
+  const kritMaterial=mat.filter(m=>m.liefertermin&&m.liefertermin<=String(p.beginn||"9999")&&!["geliefert"].includes(m.lieferstatus||"offen"));
+  const materialOk=!mat.length||kritMaterial.length===0;
+  add("material","Material",materialOk,!mat.length?"Kein Materialbedarf hinterlegt":kritMaterial.length?kritMaterial.length+" Position(en) vor Baustart noch nicht geliefert":"Materiallage unkritisch","material","warning");
+  const blocker=(p.blocker||[]).filter(x=>x.status!=="erledigt").length;
+  add("blocker","Blocker",blocker===0,blocker?blocker+" offener Blocker":"Keine offenen Blocker","steuerung");
+  const required=checks.filter(x=>x.level==="required");
+  const missing=required.filter(x=>!x.ok);
+  const warnings=checks.filter(x=>x.level==="warning"&&!x.ok);
+  const status=missing.length?"red":warnings.length?"yellow":"green";
+  return {checks,missing,warnings,status};
+}
+function projektStartAmpelCard(p){
+  const a=projektStartAmpel(p);
+  const cfg={
+    green:{label:"Startklar",icon:"●",border:"var(--green)",bg:"var(--green-bg)",badge:"green",text:"Alle Pflichtpunkte für den Baustellenstart sind erfüllt."},
+    yellow:{label:"Start mit Hinweis",icon:"●",border:"var(--amber)",bg:"var(--amber-bg)",badge:"amber",text:"Pflichtpunkte sind erfüllt, aber es gibt noch einen Hinweis."},
+    red:{label:"Noch nicht startklar",icon:"●",border:"var(--red)",bg:"var(--red-bg)",badge:"red",text:a.missing.length+" Pflichtpunkt"+(a.missing.length===1?" fehlt":"e fehlen")+" vor Baustart."}
+  }[a.status];
+  return `<div class="card" style="margin-bottom:14px;border-color:${cfg.border};background:${cfg.bg};">
+    <div class="projectSectionHead">
+      <div><b>Baustellenstart-Ampel</b><div class="pageSub">${escHtml(cfg.text)}</div></div>
+      <span class="badge ${cfg.badge}">${cfg.icon} ${escHtml(cfg.label)}</span>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px;">
+      ${a.checks.map(x=>`<button type="button" onclick="${x.route==="uebersicht"?`openProjektForm('${escAttr(p.id)}')`:`goTo('#projekte/${escAttr(p.id)}/${escAttr(x.route)}')`}" style="text-align:left;border:1px solid ${x.ok?"var(--border)":x.level==="warning"?"var(--amber)":"var(--red)"};background:${x.ok?"var(--card2)":x.level==="warning"?"var(--amber-bg)":"var(--red-bg)"};border-radius:10px;padding:10px 11px;color:var(--text);cursor:pointer;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;"><b style="font-size:12px;">${escHtml(x.label)}</b><span class="badge ${x.ok?"green":x.level==="warning"?"amber":"red"}">${x.ok?"✓":"!"}</span></div>
+        <div class="pageSub" style="margin-top:5px;font-size:10.5px;">${escHtml(x.detail)}</div>
+      </button>`).join("")}
+    </div>
+  </div>`;
+}
 function renderTabUebersicht(body, p){
   const abnahme=projektAbnahmeStatus(p);
   const offeneAufgaben=S.aufgaben.filter(a=>a.projektId===p.id&&a.status!=="erledigt");
@@ -4483,6 +4526,7 @@ function renderTabUebersicht(body, p){
 
   body.innerHTML=`
     ${projektWorkflowCard(p)}
+    ${projektStartAmpelCard(p)}
     ${effectiveStatus==="In Planung"?`
       <div class="card" style="margin-bottom:12px;border-color:var(--primary);background:var(--primary-bg);">
         <div class="projectSectionHead">
