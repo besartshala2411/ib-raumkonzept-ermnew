@@ -4368,14 +4368,24 @@ function openProjektAufgabe(pid){
 }
 function projektWorkflow(p){
   const hasBesichtigung=(p.besichtigungen||[]).length>0;
-  const hasPlanung=!!p.beginn&&!!p.deadline&&(p.lvPositionen||[]).length>0;
+  const hasBeginn=!!p.beginn;
+  const hasDeadline=!!p.deadline;
+  const hasLv=(p.lvPositionen||[]).length>0;
+  const hasPlanung=hasBeginn&&hasDeadline&&hasLv;
+  const planungMissing=[
+    !hasBeginn?"Baubeginn":"",
+    !hasDeadline?"Fertigstellung":"",
+    !hasLv?"LV":""
+  ].filter(Boolean);
   const hasTeam=(p.team||[]).length>0||S.planung.some(x=>x.projektId===p.id);
   const hasExecution=(p.bautagebuch||[]).length>0||Number(p.fortschritt)>0||p.status==="Aktiv"||p.status==="Abgeschlossen";
   const hasAbnahme=!!p.abnahmeDatum||!!p.checklisteUnterschrift;
   const hasAbschluss=p.status==="Abgeschlossen"||!!p.archiviert;
+  const planungRoute=(!hasBeginn||!hasDeadline)?"projekt-bearbeiten":"lv";
+  const planungAction=planungMissing.length?"Fehlt: "+planungMissing.join(", "):"Planung vollständig";
   const steps=[
     {id:"besichtigung",label:"Besichtigung",short:"Bestand aufnehmen",done:hasBesichtigung,route:"besichtigung",action:"Besichtigung erfassen"},
-    {id:"planung",label:"Planung & LV",short:"Termine und Leistungen",done:hasPlanung,route:"lv",action:"Planung / LV vervollständigen"},
+    {id:"planung",label:"Planung & LV",short:hasPlanung?"Termine und LV vollständig":planungAction,done:hasPlanung,route:planungRoute,action:hasPlanung?"Planung ansehen":"Planung vervollständigen"},
     {id:"team",label:"Team & Einsatz",short:"Besetzung festlegen",done:hasTeam,route:"team",action:"Team oder Einsatz planen"},
     {id:"ausfuehrung",label:"Ausführung",short:"Baustelle dokumentieren",done:hasExecution&&(hasAbnahme||hasAbschluss),active:hasExecution&&!hasAbnahme&&!hasAbschluss,route:"steuerung",action:"Ausführung dokumentieren"},
     {id:"abnahme",label:"Abnahme",short:"Prüfen & unterschreiben",done:hasAbnahme,route:"checkliste",action:"Abnahme vorbereiten"},
@@ -4388,6 +4398,10 @@ function projektWorkflow(p){
   });
   return {steps,current};
 }
+function openProjektWorkflowStep(pid,route){
+  if(route==="projekt-bearbeiten") return openProjektForm(pid);
+  goTo("#projekte/"+pid+"/"+route);
+}
 function projektWorkflowCard(p){
   const wf=projektWorkflow(p);
   const doneCount=wf.steps.filter(s=>s.done).length;
@@ -4395,11 +4409,11 @@ function projektWorkflowCard(p){
     <div class="card" style="margin-bottom:14px;">
       <div class="projectSectionHead">
         <div><b>Projektablauf</b><div class="pageSub">${doneCount} von ${wf.steps.length} Schritten erledigt · Nächster Schritt: <b>${escHtml(wf.current.label)}</b></div></div>
-        <button class="btn sm primary" onclick="goTo('#projekte/${escAttr(p.id)}/${escAttr(wf.current.route)}')">${escHtml(wf.current.action)} →</button>
+        <button class="btn sm primary" onclick="openProjektWorkflowStep('${escAttr(p.id)}','${escAttr(wf.current.route)}')">${escHtml(wf.current.action)} →</button>
       </div>
       <div style="display:grid;grid-template-columns:repeat(6,minmax(120px,1fr));gap:8px;overflow-x:auto;padding-bottom:2px;">
         ${wf.steps.map((s,i)=>`
-          <button type="button" onclick="goTo('#projekte/${escAttr(p.id)}/${escAttr(s.route)}')"
+          <button type="button" onclick="openProjektWorkflowStep('${escAttr(p.id)}','${escAttr(s.route)}')"
             style="text-align:left;min-width:120px;border:1px solid ${s.state==="done"?"var(--green)":s.state==="current"?"var(--primary)":"var(--border)"};background:${s.state==="done"?"var(--green-bg)":s.state==="current"?"var(--primary-bg)":"var(--card2)"};border-radius:10px;padding:10px 11px;color:var(--text);cursor:pointer;">
             <div style="display:flex;align-items:center;gap:7px;margin-bottom:5px;"><span class="badge ${s.state==="done"?"green":s.state==="current"?"blue":"gray"}">${s.state==="done"?"✓":i+1}</span><b style="font-size:12px;">${escHtml(s.label)}</b></div>
             <div class="pageSub" style="font-size:10.5px;">${escHtml(s.short)}</div>
