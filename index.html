@@ -79,6 +79,11 @@ a{color:var(--primary);}
 .tickerBtn{background:none;border:none;font-size:18px;padding:4px 8px;border-radius:8px;color:var(--text-dim);}
 .tickerBtn:hover{background:var(--card2); color:var(--text);}
 .tickerBtn:disabled{opacity:.6; cursor:default;}
+.globalTopSearch{position:relative;display:flex;align-items:center;min-width:260px;max-width:420px;flex:0 1 360px;margin-left:10px;}
+.globalTopSearch::before{content:"⌕";position:absolute;left:11px;color:var(--text-dim);font-size:15px;pointer-events:none;}
+.globalTopSearch input{width:100%;height:34px;padding:6px 34px 6px 32px;border:1px solid var(--border);border-radius:9px;background:var(--card2);color:var(--text);font-size:12.5px;}
+.globalTopSearch input:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 2px var(--primary-bg);}
+.globalTopSearchKbd{position:absolute;right:8px;font-size:10px;color:var(--text-dim2);border:1px solid var(--border);border-radius:5px;padding:1px 5px;background:var(--card);}
 #hamburgerBtn{display:none;}
 #sidebarBackdrop{display:none;}
 .mobilePageTitle{display:none; min-width:0; font-size:14px; font-weight:750; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
@@ -150,6 +155,8 @@ a{color:var(--primary);}
 .grid.cols-6{grid-template-columns:repeat(6,1fr);}
 @media(max-width:1100px){.grid.cols-4{grid-template-columns:repeat(2,1fr);} .grid.cols-6{grid-template-columns:repeat(3,1fr);} .grid.cols-3{grid-template-columns:repeat(2,1fr);}}
 @media(max-width:640px){.grid.cols-2,.grid.cols-3,.grid.cols-4,.grid.cols-6{grid-template-columns:1fr 1fr;}}
+@media(max-width:900px){.globalTopSearch{display:none;}}
+
 
 .card{background:var(--card); border:1px solid var(--border); border-radius:var(--radius); padding:18px; box-shadow:var(--shadow);}
 .card[onclick]{cursor:pointer;}
@@ -1294,6 +1301,11 @@ function renderTicker(activeModule){
     ${admin?`<div class="tickerItem tickerMetric">💶 <b>${fmtCurrency(offen)}</b> offen</div>`:""}
     <div class="tickerItem tickerMetric">⏱️ <b>${gestempelt}</b> heute gestempelt</div>
     <div class="tickerSpacer"></div>
+    <div class="globalTopSearch">
+      <input id="globalTopSearchInput" type="search" placeholder="Projekt, Kunde, Mitarbeiter, Mangel …" autocomplete="off"
+        onclick="openGlobalSearch(this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();openGlobalSearch(this.value)}">
+      <span class="globalTopSearchKbd">⌘K</span>
+    </div>
     <div class="tickerItem tickerUser">${user? "👤 "+escHtml(user.name) : "👤 Gast/Büro"}</div>
     <button class="tickerBtn" id="refreshBtn" title="Daten aktualisieren" onclick="manualRefresh()">🔄</button>
     <button class="tickerBtn" title="Suche (Strg/Cmd+K)" onclick="openGlobalSearch()">🔍</button>
@@ -1372,7 +1384,11 @@ function globalSearchIndex(){
 function globalSearchOpenResult(typ, id){
   closeModal();
   const routes = {
-    mitarbeiter: ()=>{ location.hash="#mitarbeiter"; route("#mitarbeiter"); openPersonalakte(id); },
+    mitarbeiter: ()=>{
+      if(hasAdminAccess()){ location.hash="#mitarbeiter"; route("#mitarbeiter"); openPersonalakte(id); }
+      else if(id===S.currentUserId){ const h="#kalender"; location.hash=h; route(h); }
+      else toast("Mitarbeiterdetails sind nur für Bauleitung/Geschäftsführung sichtbar.","warn");
+    },
     kunde: ()=>{ const h="#kunden/"+id+"/stammdaten"; location.hash=h; route(h); },
     subunternehmer: ()=>{ const h="#subunternehmer/"+id+"/stammdaten"; location.hash=h; route(h); },
     projekt: ()=>{ const h="#projekte/"+id+"/uebersicht"; location.hash=h; route(h); },
@@ -1393,16 +1409,16 @@ function globalSearchOpenResult(typ, id){
   };
   (routes[typ]||(()=>{}))();
 }
-function openGlobalSearch(){
+function openGlobalSearch(prefill){
   openModal(`
     <div class="modalHead"><div class="modalTitle">🔍 Suche</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
-    <input id="gsInput" type="text" placeholder="Projekt, Adresse, Kunde, Subunternehmer, Dokument, Mangel, Kontakt …" autocomplete="off"
+    <input id="gsInput" type="text" value="${escAttr(prefill||"")}" placeholder="Projekt, Adresse, Kunde, Mitarbeiter, Dokument, Mangel, Kontakt …" autocomplete="off"
       style="width:100%; padding:12px 14px; font-size:15px; border-radius:var(--radius-sm); border:1px solid var(--border); background:var(--card2); color:var(--text);"
       oninput="renderGlobalSearchResults(this.value)"
       onkeydown="if(event.key==='Enter'){ const first=document.querySelector('#gsResults .gsResultItem'); if(first) first.click(); }">
     <div id="gsResults" style="margin-top:14px; max-height:50vh; overflow-y:auto; display:flex; flex-direction:column; gap:4px;"></div>
   `);
-  renderGlobalSearchResults("");
+  renderGlobalSearchResults(prefill||"");
   const input = document.getElementById("gsInput");
   if(input) input.focus();
 }
