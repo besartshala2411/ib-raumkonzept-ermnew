@@ -1939,6 +1939,16 @@ const PERSONALAKTE_TABS = [
   {id:"urlaub", label:"Urlaub", icon:"🏖️"},
   {id:"lohn", label:"Lohn", icon:"💶"},
 ];
+function mitarbeiterPersonalWarnungen(m){
+  const heute=todayISO();
+  const in30=new Date(heute+"T12:00:00"); in30.setDate(in30.getDate()+30);
+  const grenze=in30.toISOString().slice(0,10);
+  const expiredQual=(m.qualifikationen||[]).filter(x=>x.gueltigBis&&x.gueltigBis<heute).length;
+  const dueQual=(m.qualifikationen||[]).filter(x=>x.gueltigBis&&x.gueltigBis>=heute&&x.gueltigBis<=grenze).length;
+  const dueUnter=(m.unterweisungen||[]).filter(x=>x.naechsteFaellig&&x.naechsteFaellig<=grenze).length;
+  const dueFristen=(m.fristen||[]).filter(x=>x.faellig&&x.faellig<=grenze).length;
+  return {expiredQual,dueQual,dueUnter,dueFristen,total:expiredQual+dueQual+dueUnter+dueFristen};
+}
 function renderMitarbeiter(view){
   view.innerHTML = `
     <div class="pageHead">
@@ -1947,7 +1957,7 @@ function renderMitarbeiter(view){
     </div>
     <div class="card">
       <div class="tableWrap"><table>
-        <thead><tr><th>Name</th><th>Position</th><th>Telefon</th><th>E-Mail</th><th>Eintritt</th><th>Status</th><th></th></tr></thead>
+        <thead><tr><th>Name</th><th>Position</th><th>Telefon</th><th>E-Mail</th><th>Eintritt</th><th>Personalakte</th><th>Status</th><th></th></tr></thead>
         <tbody>
         ${S.mitarbeiter.map(m=>`
           <tr style="cursor:pointer;" onclick="openMitarbeiterForm('${escAttr(m.id)}')">
@@ -1956,13 +1966,14 @@ function renderMitarbeiter(view){
             <td>${escHtml(m.tel||"–")}</td>
             <td>${escHtml(m.email||"–")}</td>
             <td>${fmtDate(m.eintritt)}</td>
+            <td>${(()=>{const w=mitarbeiterPersonalWarnungen(m);return w.total?\'<span class="badge \'+(w.expiredQual?"red":"amber")+\'">\'+w.total+\' Hinweis\'+(w.total===1?"":"e")+\'</span>\':\'<span class="badge green">OK</span>\';})()}</td>
             <td>${statusBadge(m.status)}</td>
             <td style="text-align:right; white-space:nowrap;" onclick="event.stopPropagation()">
               <button class="iconBtn" onclick="openMitarbeiterForm('${escAttr(m.id)}')" title="Personalakte öffnen">📋</button>
               <button class="iconBtn" onclick="deleteMitarbeiter('${escAttr(m.id)}')" title="Löschen">🗑️</button>
             </td>
           </tr>
-        `).join("") || `<tr><td colspan="7"><div class="empty">Noch keine Mitarbeiter angelegt.</div></td></tr>`}
+        `).join("") || `<tr><td colspan="8"><div class="empty">Noch keine Mitarbeiter angelegt.</div></td></tr>`}
         </tbody>
       </table></div>
     </div>
@@ -3517,6 +3528,8 @@ function ptDays(){
 function ptAbwesenheit(m,datum){
   const urlaub=S.urlaubsantraege.find(u=>u.mitarbeiterId===m.id&&u.status==="genehmigt"&&u.von<=datum&&u.bis>=datum);
   if(urlaub) return "Urlaub";
+  const abw=(m.abwesenheiten||[]).find(a=>a.von&&a.von<=datum&&(a.bis||a.von)>=datum);
+  if(abw) return abw.typ||"Abwesend";
   if(m.status==="krank") return "Krank";
   return "";
 }
