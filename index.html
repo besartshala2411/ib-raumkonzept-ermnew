@@ -3662,7 +3662,7 @@ function addProjektChronik(pid, typ, textValue){
     text:String(textValue||"").trim(),
     autor:S.currentUserId||null
   });
-  if(p.chronik.length>100) p.chronik=p.chronik.slice(0,100);
+  if(p.chronik.length>500) p.chronik=p.chronik.slice(0,500);
 }
 
 function projektMaterialkosten(p){
@@ -3881,6 +3881,12 @@ function saveProjekt(id, isEdit){
   if(!name){ toast("Projektname erforderlich.", "warn"); return; }
   let p = isEdit ? S.projekte.find(x=>x.id===id) : window._newProjektDraft;
   const previousStatus=isEdit?p.status:null;
+  const before=isEdit?{
+    name:p.name||"", kundeId:p.kundeId||"", adresse:p.adresse||"", status:p.status||"",
+    beginn:p.beginn||"", deadline:p.deadline||"", budget:Number(p.budget)||0,
+    personalkosten:Number(p.personalkosten)||0, fremdkosten:Number(p.fremdkosten)||0,
+    fortschritt:Number(p.fortschritt)||0
+  }:null;
   p.name=name; p.kundeId=document.getElementById("pKunde").value;
   p.status=document.getElementById("pStatus").value; p.adresse=document.getElementById("pAdresse").value.trim();
   const beginn=document.getElementById("pBeginn").value;
@@ -3897,8 +3903,24 @@ function saveProjekt(id, isEdit){
     window._newProjektDraft=null;
     addProjektChronik(p.id,"projekt","Projekt angelegt");
   }else{
+    const changes=[];
+    const addChange=(label,oldVal,newVal,format)=>{
+      if(String(oldVal??"")===String(newVal??"")) return;
+      const fmt=format||((v)=>String(v??"")||"–");
+      changes.push(label+": "+fmt(oldVal)+" → "+fmt(newVal));
+    };
+    addChange("Projektname",before.name,p.name);
+    addChange("Kunde",before.kundeId,p.kundeId,(v)=>v?(kundeName(v)||"Kunde"):"–");
+    addChange("Adresse",before.adresse,p.adresse);
+    addChange("Beginn",before.beginn,p.beginn,(v)=>v?fmtDate(v):"–");
+    addChange("Fertigstellung",before.deadline,p.deadline,(v)=>v?fmtDate(v):"–");
+    addChange("Auftragssumme",before.budget,p.budget,(v)=>fmtCurrency(Number(v)||0));
+    addChange("Personalkosten",before.personalkosten,p.personalkosten,(v)=>fmtCurrency(Number(v)||0));
+    addChange("Fremdleistungen",before.fremdkosten,p.fremdkosten,(v)=>fmtCurrency(Number(v)||0));
+    addChange("Fortschritt",before.fortschritt,p.fortschritt,(v)=>(Number(v)||0)+" %");
     if(previousStatus!==p.status) addProjektChronik(p.id,"status","Projektstatus geändert: "+previousStatus+" → "+p.status);
-    else addProjektChronik(p.id,"projekt","Projektdaten aktualisiert");
+    if(changes.length) addProjektChronik(p.id,"projekt","Geändert · "+changes.join(" · "));
+    else if(previousStatus===p.status) addProjektChronik(p.id,"projekt","Projekt geöffnet und ohne Datenänderung gespeichert");
   }
   saveState(); closeModal();
   goTo(p.archiviert?"#projekte":"#projekte/"+p.id);
@@ -4044,6 +4066,7 @@ const PROJEKT_TABS = [
   {id:"dokumente", label:"Dateien & Fotos", icon:"▱"},
   {id:"material", label:"Material & Lieferungen", icon:"▤"},
   {id:"checkliste", label:"Abnahme", icon:"✓"},
+  {id:"chronik", label:"Chronik", icon:"↻"},
 ];
 function renderProjektDetail(view, id, tab){
   const p = S.projekte.find(x=>x.id===id);
@@ -4084,7 +4107,8 @@ function renderProjektDetail(view, id, tab){
     uebersicht: renderTabUebersicht, team: renderTabTeam, bauzeitenplan: renderTabBauzeitenplan, fotos: renderTabFotos, dokumente: renderTabProjektDokumente,
     material: renderTabMaterial, ausschreibung: renderTabAusschreibung, bautagebuch: renderTabBautagebuch, zugaenge: renderTabZugaenge,
     checkliste: renderTabChecklist, aufmass: renderTabAufmass, chat: renderTabProjektChat, lv: renderTabProjektLv, vorlagen: renderTabProjektVorlagen,
-    maengel: renderTabMaengel, kontakte: renderTabProjektKontakte, steuerung: renderTabProjektSteuerung, besichtigung: renderTabBesichtigungen
+    maengel: renderTabMaengel, kontakte: renderTabProjektKontakte, steuerung: renderTabProjektSteuerung, besichtigung: renderTabBesichtigungen,
+    chronik: renderTabProjektChronik
   };
   (renderers[tab]||renderTabUebersicht)(body, p);
 }
@@ -4303,20 +4327,7 @@ function renderTabUebersicht(body, p){
       <div><button class="btn sm" onclick="openProjektAufgabe('${escAttr(p.id)}')">＋ Aufgabe</button></div>
     </div>
 
-    <div class="compactSectionTitle">Bereiche</div>
-    <div class="projectAreas">
-      <button class="projectArea" onclick="goTo('#projekte/${escAttr(p.id)}/lv')"><span><div class="projectAreaTitle">Leistungsverzeichnis</div><div class="projectAreaSub">${(p.lvPositionen||[]).length} Positionen</div></span><span>›</span></button>
-      <button class="projectArea" onclick="goTo('#projekte/${escAttr(p.id)}/bauzeitenplan')"><span><div class="projectAreaTitle">Bauablauf</div><div class="projectAreaSub">${p.bauzeitenplan.length} Phasen</div></span><span>›</span></button>
-      <button class="projectArea" onclick="goTo('#projekte/${escAttr(p.id)}/team')"><span><div class="projectAreaTitle">Team & Einsatz</div><div class="projectAreaSub">${p.team.length} Mitarbeiter · Wochenplanung</div></span><span>›</span></button>
-      <button class="projectArea" onclick="goTo('#projekte/${escAttr(p.id)}/chat')"><span><div class="projectAreaTitle">Baustellen-Chat</div><div class="projectAreaSub">${currentProjectChatMessages(p).length} Nachrichten</div></span><span>›</span></button>
-      <button class="projectArea" onclick="goTo('#projekte/${escAttr(p.id)}/besichtigung')"><span><div class="projectAreaTitle">Baustellenbesichtigung</div><div class="projectAreaSub">${(p.besichtigungen||[]).length} Besichtigung${(p.besichtigungen||[]).length===1?"":"en"}</div></span><span>›</span></button>
-      <button class="projectArea" onclick="goTo('#projekte/${escAttr(p.id)}/steuerung')"><span><div class="projectAreaTitle">Baustellensteuerung</div><div class="projectAreaSub">${offeneBlocker.length} Blocker · ${offeneEntscheidungen.length} Entscheidungen</div></span><span>›</span></button>
-      <button class="projectArea" onclick="goTo('#projekte/${escAttr(p.id)}/dokumente')"><span><div class="projectAreaTitle">Dateien & Fotos</div><div class="projectAreaSub">${p.dokumente.length} Dateien · ${p.fotos.length} Fotos</div></span><span>›</span></button>
-      <button class="projectArea" onclick="goTo('#projekte/${escAttr(p.id)}/maengel')"><span><div class="projectAreaTitle">Mängel</div><div class="projectAreaSub">${offeneMaengel.length} offen</div></span><span>›</span></button>
-      <button class="projectArea" onclick="goTo('#projekte/${escAttr(p.id)}/kontakte')"><span><div class="projectAreaTitle">Baustellenkontakte</div><div class="projectAreaSub">${(p.kontakte||[]).length} Kontakte</div></span><span>›</span></button>
-      <button class="projectArea" onclick="goTo('#projekte/${escAttr(p.id)}/checkliste')"><span><div class="projectAreaTitle">Abnahme</div><div class="projectAreaSub">${escHtml(abnahme.label)}</div></span><span>›</span></button>
-    </div>
-
+    <div class="compactSectionTitle">Dokumentation</div>
     <div class="card projectDiaryCard">
       <div class="projectSectionHead"><b>Bautagebuch</b><button class="btn sm primary" onclick="openBautagebuchForm('${escAttr(p.id)}')">Heute dokumentieren</button></div>
       <div class="projectDiaryLatest">
@@ -4335,13 +4346,56 @@ function renderTabUebersicht(body, p){
       </div>
     </div>
 
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;">
-      <button class="btn sm" onclick="goTo('#projekte/${escAttr(p.id)}/material')">Material</button>
-      <button class="btn sm" onclick="goTo('#projekte/${escAttr(p.id)}/vorlagen')">Vorlagen</button>
+    <div style="display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;margin-top:12px;">
+      <button class="btn sm" onclick="goTo('#projekte/${escAttr(p.id)}/chronik')">Gesamte Chronik öffnen</button>
       <button class="btn sm" onclick="openAuftragsmappeForm('${escAttr(p.id)}')">Projekt-PDF</button>
     </div>
   `;
 }
+function projektChronikIcon(typ){
+  const map={projekt:"✎",status:"↻",archiv:"▣",aufgabe:"✓",lv:"%",material:"▤",blocker:"⛔",entscheidung:"?",nachtrag:"+",datei:"▱",besichtigung:"⌖",info:"•"};
+  return map[typ]||"•";
+}
+function renderTabProjektChronik(body,p){
+  const entries=(p.chronik||[]).slice().sort((a,b)=>String(b.zeit||"").localeCompare(String(a.zeit||"")));
+  body.innerHTML=`
+    <div class="card">
+      <div class="projectSectionHead">
+        <div><b>Projektchronik</b><div class="pageSub">Nachvollziehbarer Verlauf der Änderungen und Einträge im Projekt.</div></div>
+        <button class="btn sm primary" onclick="openProjektChronikNotiz('${escAttr(p.id)}')">＋ Notiz</button>
+      </div>
+      <div class="formRow" style="margin:10px 0 14px;"><input id="projektChronikFilter" type="search" placeholder="Chronik durchsuchen …" oninput="filterProjektChronik()"></div>
+      <div class="projectTimeline" id="projektChronikListe">
+        ${entries.map(e=>`
+          <div class="projectTimelineItem" data-chronik-search="${escAttr(((e.text||"")+" "+(mitarbeiterName(e.autor)||"")+" "+(e.typ||"")).toLowerCase())}">
+            <span class="projectTimelineDot"></span>
+            <div style="min-width:0;">
+              <div class="projectTimelineText"><span style="display:inline-block;min-width:22px;">${projektChronikIcon(e.typ)}</span>${escHtml(e.text||"Änderung")}</div>
+              <div class="projectTimelineMeta">${fmtDateTime(e.zeit)} · ${escHtml(e.autor?(mitarbeiterName(e.autor)||"Benutzer"):"System")}</div>
+            </div>
+          </div>`).join("") || `<div class="empty" style="padding:24px;">Noch keine Änderungen protokolliert.</div>`}
+      </div>
+    </div>`;
+}
+function filterProjektChronik(){
+  const q=(document.getElementById("projektChronikFilter")?.value||"").trim().toLowerCase();
+  document.querySelectorAll("#projektChronikListe [data-chronik-search]").forEach(el=>el.classList.toggle("hidden",!!q&&!el.dataset.chronikSearch.includes(q)));
+}
+function openProjektChronikNotiz(pid){
+  openModal(`
+    <div class="modalHead"><div class="modalTitle">Chronik-Notiz</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
+    <div class="formRow"><label>Notiz / Entscheidung / wichtige Änderung</label><textarea id="projektChronikNotiz" style="min-height:130px;" placeholder="z. B. Kunde hat Farbton RAL 9010 freigegeben."></textarea></div>
+    <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="saveProjektChronikNotiz('${escAttr(pid)}')">Speichern</button></div>
+  `);
+}
+function saveProjektChronikNotiz(pid){
+  const textValue=(document.getElementById("projektChronikNotiz")?.value||"").trim();
+  if(!textValue){toast("Bitte eine Notiz eingeben.","warn");return;}
+  addProjektChronik(pid,"info",textValue);
+  saveState();closeModal();route(location.hash);
+  toast("Chronik-Notiz gespeichert.","success");
+}
+
 function projektLvSumme(p){
   return (p.lvPositionen||[]).reduce((sum,pos)=>sum+(Number(pos.preis)||0),0);
 }
