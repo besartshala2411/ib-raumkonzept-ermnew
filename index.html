@@ -156,6 +156,20 @@ a{color:var(--primary);}
 @media(max-width:1100px){.grid.cols-4{grid-template-columns:repeat(2,1fr);} .grid.cols-6{grid-template-columns:repeat(3,1fr);} .grid.cols-3{grid-template-columns:repeat(2,1fr);}}
 @media(max-width:640px){.grid.cols-2,.grid.cols-3,.grid.cols-4,.grid.cols-6{grid-template-columns:1fr 1fr;}}
 @media(max-width:900px){.globalTopSearch{display:none;}}
+@media(max-width:700px){
+  #view{padding:14px 12px 82px;}
+  .projectCockpitHead{gap:10px;}
+  .projectCockpitTitle{font-size:20px;}
+  .projectHeroActions{width:100%;display:grid;grid-template-columns:1fr 1fr;gap:7px;}
+  .projectHeroActions .btn{justify-content:center;}
+  .projectTabs{display:flex;overflow-x:auto;flex-wrap:nowrap;gap:6px;padding-bottom:5px;scrollbar-width:none;}
+  .projectTabs::-webkit-scrollbar{display:none;}
+  .projectTabs .tabBtn{flex:0 0 auto;min-height:42px;}
+  .simpleRow{align-items:flex-start;}
+  .modal{max-height:92vh;overflow:auto;}
+  .btn,.iconBtn{min-height:42px;}
+}
+
 
 
 .card{background:var(--card); border:1px solid var(--border); border-radius:var(--radius); padding:18px; box-shadow:var(--shadow);}
@@ -729,6 +743,7 @@ function defaultLC(){
   return {
     theme:"dark",
     cloudSyncEnabled:true,
+    pendingSync:false,
     pushEnabled:false, vapidPublicKey:"",
   };
 }
@@ -1120,6 +1135,15 @@ function currentUser(){
 }
 const ADMIN_ROLLEN = ["Bauleiter","Geschäftsführer"];
 const RESTRICTED_MODULES = ["rechnungen","vertraege","passwoerter","berichte","datev","einstellungen"];
+const EMPLOYEE_ALLOWED_MODULES = ["dashboard","projekte","aufgaben","stempeluhr","urlaub","kalender","baustellenchat"];
+function moduleAllowedForCurrentUser(id){
+  return hasAdminAccess() || EMPLOYEE_ALLOWED_MODULES.includes(id);
+}
+function projektAllowedForCurrentUser(p){
+  if(hasAdminAccess()) return true;
+  const u=currentUser(); if(!u||!p) return false;
+  return (p.team||[]).includes(u.id) || S.planung.some(x=>x.projektId===p.id&&x.mitarbeiterId===u.id);
+}
 function hasAdminAccess(){
   const u = currentUser();
   if(!u) return false;
@@ -1192,7 +1216,7 @@ const PRIMARY_NAV_IDS = ["dashboard","projekte","aufgaben","plantafel","kunden",
 function buildSidebar(){
   const groups = [];
   const admin = hasAdminAccess();
-  MODULES.filter(m=>PRIMARY_NAV_IDS.includes(m.id) && (admin || !RESTRICTED_MODULES.includes(m.id))).forEach(m=>{
+  MODULES.filter(m=>PRIMARY_NAV_IDS.includes(m.id) && (admin || moduleAllowedForCurrentUser(m.id))).forEach(m=>{
     const simpleGroup = ["dashboard","projekte","aufgaben"].includes(m.id) ? "" : (["plantafel","kunden","subunternehmer","mitarbeiter","stempeluhr"].includes(m.id) ? "Betrieb" : "Verwaltung");
     let g = groups.find(g=>g.name===simpleGroup);
     if(!g){ g={name:simpleGroup, items:[]}; groups.push(g); }
@@ -1268,8 +1292,8 @@ function route(hash){
   const mobileTitle = document.getElementById("mobilePageTitle");
   if(mobileTitle) mobileTitle.textContent = mod.label;
   const view = document.getElementById("view");
-  if(RESTRICTED_MODULES.includes(mod.id) && !hasAdminAccess()){
-    view.innerHTML = `<div class="empty"><div class="emptyIcon">🔒</div>Dieser Bereich ist nur für Geschäftsführung/Bauleitung sichtbar.</div>`;
+  if(!moduleAllowedForCurrentUser(mod.id)){
+    view.innerHTML = `<div class="empty"><div class="emptyIcon">🔒</div>Dieser Bereich ist für dein Mitarbeiterkonto nicht freigegeben.</div>`;
     renderTicker(mod);
     return;
   }
@@ -1308,6 +1332,8 @@ function renderTicker(activeModule){
     </div>
     <div class="tickerItem tickerUser">${user? "👤 "+escHtml(user.name) : "👤 Gast/Büro"}</div>
     <button class="tickerBtn" id="refreshBtn" title="Daten aktualisieren" onclick="manualRefresh()">🔄</button>
+    <button class="tickerBtn" title="Benachrichtigungen" onclick="openNotificationCenter()">🔔${notificationUnreadCount()?'<span style="font-size:10px;font-weight:800;color:var(--red);vertical-align:top;">'+notificationUnreadCount()+'</span>':""}</button>
+    <span class="badge ${navigator.onLine?"green":"amber"}" title="${navigator.onLine?"Online":"Offline – Änderungen werden lokal gespeichert"}">${navigator.onLine?"Online":"Offline"}</span>
     <button class="tickerBtn" title="Suche (Strg/Cmd+K)" onclick="openGlobalSearch()">🔍</button>
     <button class="tickerBtn" title="Theme wechseln" onclick="toggleTheme()">🌗</button>
     <button class="tickerBtn" title="Abmelden" onclick="logout()">🚪</button>
@@ -1847,6 +1873,43 @@ function savePflichtDefs(type){
   });
   saveState(); closeModal(); route(location.hash);
   toast("Pflichtdokumente-Liste gespeichert.", "success");
+}
+
+function systemBenachrichtigungen(){
+  const heute=todayISO(),u=currentUser(),admin=hasAdminAccess(),out=[];
+  const add=(key,icon,title,detail,route,level)=>out.push({key,icon,title,detail,route,level:level||"info"});
+  S.aufgaben.filter(a=>a.status!=="erledigt"&&a.faellig&&a.faellig<heute&&(admin||a.zugeordnet===u?.id)).forEach(a=>add("task:"+a.id,"📝","Aufgabe überfällig",a.titel+(a.projektId?" · "+projektName(a.projektId):""),"#aufgaben","warn"));
+  S.projekte.filter(p=>!p.archiviert&&projektAllowedForCurrentUser(p)).forEach(p=>{
+    (p.material||[]).filter(m=>m.liefertermin&&m.liefertermin<heute&&m.lieferstatus!=="geliefert").forEach(m=>add("mat:"+m.id,"▤","Material verspätet",m.bezeichnung+" · "+p.name,"#projekte/"+p.id+"/material","warn"));
+    (p.maengel||[]).filter(m=>m.status!=="erledigt"&&m.frist&&m.frist<heute).forEach(m=>add("mangel:"+m.id,"⚠","Mangel überfällig",m.titel+" · "+p.name,"#projekte/"+p.id+"/maengel","danger"));
+    (p.entscheidungen||[]).filter(x=>x.status==="offen").forEach(x=>add("entscheidung:"+x.id,"?","Freigabe offen",x.titel+" · "+p.name,"#projekte/"+p.id+"/steuerung","warn"));
+    if(projektAbschlussChecks(p).every(x=>x.ok)) add("abschluss:"+p.id,"✓","Projekt abschlussbereit",p.name,"#projekte/"+p.id+"/checkliste","success");
+  });
+  if(admin){
+    S.mitarbeiter.filter(m=>m.status!=="inaktiv").forEach(m=>{
+      const w=mitarbeiterPersonalWarnungen(m);
+      if(w.total) add("personal:"+m.id,"⏳","Personalfrist prüfen",m.name+" · "+w.total+" Hinweis"+(w.total===1?"":"e"),"#mitarbeiter","warn");
+    });
+  }
+  return out.slice(0,80);
+}
+function notificationUnreadCount(){
+  return S.benachrichtigungen.filter(x=>!x.gelesen).length+systemBenachrichtigungen().length;
+}
+function openNotificationCenter(){
+  const sys=systemBenachrichtigungen();
+  const saved=S.benachrichtigungen.slice(0,50);
+  openModal(`
+    <div class="modalHead"><div class="modalTitle">🔔 Benachrichtigungen</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
+    <div class="projectSectionHead"><div class="pageSub">${sys.length} aktuelle Hinweise · ${saved.filter(x=>!x.gelesen).length} ungelesene Meldungen</div><button class="btn sm" onclick="markNotificationsRead()">Alle gelesen</button></div>
+    <div class="simpleList" style="max-height:62vh;overflow:auto;">
+      ${sys.map(n=>`<div class="simpleRow" onclick="closeModal();goTo('${escAttr(n.route)}')" style="cursor:pointer;"><div class="simpleRowMain"><b>${n.icon} ${escHtml(n.title)}</b><div class="pageSub">${escHtml(n.detail)}</div></div><span class="badge ${n.level==="danger"?"red":n.level==="warn"?"amber":n.level==="success"?"green":"blue"}">aktuell</span></div>`).join("")}
+      ${saved.map(n=>`<div class="simpleRow"><div class="simpleRowMain"><b>${n.gelesen?"":"● "}${escHtml(n.text)}</b><div class="pageSub">${fmtDateTime(n.zeit)}</div></div></div>`).join("")}
+      ${!sys.length&&!saved.length?'<div class="empty" style="padding:20px;">Keine Benachrichtigungen.</div>':""}
+    </div>`,true);
+}
+function markNotificationsRead(){
+  S.benachrichtigungen.forEach(x=>x.gelesen=true);saveState();closeModal();renderTicker(MODULES.find(m=>m.id===(location.hash||"#dashboard").replace("#","").split("/")[0]));
 }
 
 /* =========================================================
@@ -3917,18 +3980,17 @@ function projektEffectiveStatus(p){
   if(p.archiviert) return "Archiviert";
   return p.status||"In Planung";
 }
-function addProjektChronik(pid, typ, textValue){
-  const p=S.projekte.find(x=>x.id===pid);
-  if(!p) return;
-  if(!p.chronik) p.chronik=[];
-  p.chronik.unshift({
-    id:uid(),
-    zeit:new Date().toISOString(),
-    typ:typ||"info",
-    text:String(textValue||"").trim(),
-    autor:S.currentUserId||null
-  });
-  if(p.chronik.length>500) p.chronik=p.chronik.slice(0,500);
+function addProjektChronik(pid,typ,textValue,meta){
+  const p=S.projekte.find(x=>x.id===pid);if(!p)return;
+  if(!p.chronik)p.chronik=[];
+  const entry={id:uid(),zeit:new Date().toISOString(),typ:typ||"info",text:String(textValue||"").trim(),autor:S.currentUserId||null};
+  if(meta){entry.feld=meta.feld||"";entry.alt=meta.alt==null?"":String(meta.alt);entry.neu=meta.neu==null?"":String(meta.neu);}
+  p.chronik.unshift(entry);
+  if(p.chronik.length>500)p.chronik=p.chronik.slice(0,500);
+}
+function addProjektAudit(pid,typ,feld,alt,neu){
+  if(String(alt??"")===String(neu??""))return;
+  addProjektChronik(pid,typ,feld+" geändert",{feld,alt,neu});
 }
 
 function projektMaterialkosten(p){
@@ -4016,6 +4078,7 @@ function renderProjekte(view, id, tab){
     <div class="projectGrid" id="pjGrid"></div>
   `;
   const list = S.projekte.filter(p=>{
+    if(!projektAllowedForCurrentUser(p)) return false;
     const status=projektEffectiveStatus(p);
     const archiveOk=_projektArchiveFilter==="all" || (_projektArchiveFilter==="archived"?!!p.archiviert:!p.archiviert);
     return archiveOk && (!_projektStatusFilter || status===_projektStatusFilter);
@@ -4181,9 +4244,11 @@ function saveProjekt(id, isEdit){
   }else{
     const changes=[];
     const addChange=(label,oldVal,newVal,format)=>{
-      if(String(oldVal??"")===String(newVal??"")) return;
+      if(String(oldVal??"")===String(newVal??""))return;
       const fmt=format||((v)=>String(v??"")||"–");
-      changes.push(label+": "+fmt(oldVal)+" → "+fmt(newVal));
+      const alt=fmt(oldVal),neu=fmt(newVal);
+      changes.push(label+": "+alt+" → "+neu);
+      addProjektAudit(p.id,"projekt",label,alt,neu);
     };
     addChange("Projektname",before.name,p.name);
     addChange("Kunde",before.kundeId,p.kundeId,(v)=>v?(kundeName(v)||"Kunde"):"–");
@@ -4195,8 +4260,7 @@ function saveProjekt(id, isEdit){
     addChange("Fremdleistungen",before.fremdkosten,p.fremdkosten,(v)=>fmtCurrency(Number(v)||0));
     addChange("Fortschritt",before.fortschritt,p.fortschritt,(v)=>(Number(v)||0)+" %");
     if(previousStatus!==p.status){ addProjektChronik(p.id,"status","Projektstatus geändert: "+previousStatus+" → "+p.status); if(p.status==="Aktiv") addProjektChronik(p.id,"projekt","Projektablauf: Ausführung gestartet"); }
-    if(changes.length) addProjektChronik(p.id,"projekt","Geändert · "+changes.join(" · "));
-    else if(previousStatus===p.status) addProjektChronik(p.id,"projekt","Projekt geöffnet und ohne Datenänderung gespeichert");
+    if(changes.length) addProjektChronik(p.id,"projekt","Projektdaten aktualisiert · "+changes.length+" Änderung"+(changes.length===1?"":"en"));
   }
   saveState(); closeModal();
   goTo(p.archiviert?"#projekte":"#projekte/"+p.id);
@@ -4342,9 +4406,11 @@ const PROJEKT_TABS = [
   {id:"checkliste", label:"Abnahme", icon:"✓"},
   {id:"chronik", label:"Chronik", icon:"↻"},
 ];
-function renderProjektDetail(view, id, tab){
-  const p = S.projekte.find(x=>x.id===id);
+function renderProjektDetail(view,id,tab){
+  const p=S.projekte.find(x=>x.id===id);
+  if(p&&!projektAllowedForCurrentUser(p)){view.innerHTML='<div class="empty"><div class="emptyIcon">🔒</div>Dieses Projekt ist deinem Mitarbeiterkonto nicht zugeordnet.</div>';return;}
   if(!p){ view.innerHTML = `<div class="empty">Projekt nicht gefunden. <button class="btn" onclick="goTo('#projekte')">Zurück</button></div>`; return; }
+  if(!hasAdminAccess() && !["uebersicht","chat","dokumente","material","besichtigung"].includes(tab)) tab="uebersicht";
   const isOverview=tab==="uebersicht";
   const zeitraum=projektBauzeitraum(p);
   const von=zeitraum.beginn?fmtDate(zeitraum.beginn):"";
@@ -4372,7 +4438,7 @@ function renderProjektDetail(view, id, tab){
       </div>
     </div>
     <div class="tabs projectTabs" style="margin-bottom:14px;">
-      ${PROJEKT_TABS.map(t=>`<button class="tabBtn ${tab===t.id?"active":""}" onclick="goTo('#projekte/${escAttr(p.id)}/${escAttr(t.id)}')">${t.icon} ${escHtml(t.label)}</button>`).join("")}
+      ${PROJEKT_TABS.filter(t=>hasAdminAccess()||["uebersicht","chat","dokumente","material","besichtigung"].includes(t.id)).map(t=>`<button class="tabBtn ${tab===t.id?"active":""}" onclick="goTo('#projekte/${escAttr(p.id)}/${escAttr(t.id)}')">${t.icon} ${escHtml(t.label)}</button>`).join("")}
     </div>
     <div id="projektTabBody"></div>
   `;
@@ -4785,6 +4851,7 @@ function renderTabProjektChronik(body,p){
             <span class="projectTimelineDot"></span>
             <div style="min-width:0;">
               <div class="projectTimelineText"><span style="display:inline-block;min-width:22px;">${projektChronikIcon(e.typ)}</span>${escHtml(e.text||"Änderung")}</div>
+              ${e.feld?`<div class="pageSub" style="margin-top:3px;"><b>${escHtml(e.feld)}:</b> ${escHtml(e.alt||"–")} → ${escHtml(e.neu||"–")}</div>`:""}
               <div class="projectTimelineMeta">${fmtDateTime(e.zeit)} · ${escHtml(e.autor?(mitarbeiterName(e.autor)||"Benutzer"):"System")}</div>
             </div>
           </div>`).join("") || `<div class="empty" style="padding:24px;">Noch keine Änderungen protokolliert.</div>`}
@@ -8902,7 +8969,8 @@ function cloudStatusHTML(){
   return `<span class="badge ${cls}">${label}</span>`;
 }
 function cloudSyncPush(){
-  if(!LC.cloudSyncEnabled) return;
+  if(!LC.cloudSyncEnabled)return;
+  if(!navigator.onLine){LC.pendingSync=true;saveLC();setCloudStatus("error","Offline – lokal gespeichert");return;}
   clearTimeout(_cloudPushTimer);
   _cloudPushTimer = setTimeout(async ()=>{
     const sb = getSupabaseClient();
@@ -8911,6 +8979,7 @@ function cloudSyncPush(){
     try{
       const { error } = await sb.from("erm_data").update({ payload: S, updated_at: new Date().toISOString() }).eq("id",1);
       if(error) throw error;
+      LC.pendingSync=false;saveLC();
       setCloudStatus("ok");
     }catch(e){
       setCloudStatus("error", e.message);
@@ -8990,6 +9059,18 @@ async function testCloudConnection(){
     toast("Verbindung fehlgeschlagen: "+e.message, "error");
   }
 }
+
+window.addEventListener("offline",()=>{
+  LC.pendingSync=true;saveLC();setCloudStatus("error","Offline – Änderungen werden lokal gespeichert");
+  renderTicker(MODULES.find(m=>m.id===(location.hash||"#dashboard").replace("#","").split("/")[0]));
+  toast("Offline: Änderungen werden lokal gespeichert und später synchronisiert.","warn");
+});
+window.addEventListener("online",()=>{
+  renderTicker(MODULES.find(m=>m.id===(location.hash||"#dashboard").replace("#","").split("/")[0]));
+  if(LC.pendingSync) cloudSyncPush();
+  else if(LC.cloudSyncEnabled) cloudSyncPull(false);
+  toast("Wieder online – Synchronisation läuft.","success");
+});
 
 /* =========================================================
    WEB PUSH (VAPID) + lokaler Fallback
