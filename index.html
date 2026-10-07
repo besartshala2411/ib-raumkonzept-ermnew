@@ -4453,7 +4453,7 @@ function renderProjektDetail(view,id,tab){
         </div>
       </div>
       <div class="projectHeroActions">
-        ${isOverview?`
+        ${isOverview&&hasAdminAccess()?`
           <button class="btn sm" onclick="duplicateProjekt('${escAttr(p.id)}')">Duplizieren</button>
           <button class="btn sm" onclick="setProjektArchiviert('${escAttr(p.id)}',${p.archiviert?"false":"true"})">${p.archiviert?"Aktivieren":"Archivieren"}</button>
           ${p.archiviert?`<button class="btn sm danger" onclick="requestProjektPermanentDelete('${escAttr(p.id)}')">Endgültig löschen</button>`:""}
@@ -5644,6 +5644,7 @@ function saveMaterial(pid,id,isEdit){
     toast("Diese Materialbezeichnung ist bereits vorhanden.","warn");return;
   }
   let m=isEdit?p.material.find(x=>x.id===id):{id,titel:"",beschreibung:"",datum:todayISO()};
+  const before=isEdit?{bezeichnung:m.bezeichnung||"",menge:m.menge||"",geliefertMenge:Number(m.geliefertMenge)||0,einheit:m.einheit||"",preis:Number(m.preis)||0,lieferant:m.lieferant||"",bestelltAm:m.bestelltAm||"",liefertermin:m.liefertermin||"",lieferstatus:m.lieferstatus||""}:null;
   m.bezeichnung=bezeichnung;
   m.menge=document.getElementById("matMenge").value;
   m.geliefertMenge=Math.max(0,Number(document.getElementById("matGeliefert").value)||0);
@@ -5657,8 +5658,20 @@ function saveMaterial(pid,id,isEdit){
   if(bedarf>0&&m.geliefertMenge>=bedarf)m.lieferstatus="geliefert";
   else if(m.geliefertMenge>0)m.lieferstatus="teilweise geliefert";
   m.lieferschein=window._materialLieferschein||"";
-  if(!isEdit) p.material.push(m);
-  addProjektChronik(pid,"material",(isEdit?"Material/Lieferung aktualisiert: ":"Material/Lieferung erfasst: ")+bezeichnung);
+  if(!isEdit){
+    p.material.push(m);
+    addProjektChronik(pid,"material","Material/Lieferung erfasst: "+bezeichnung);
+  }else{
+    addProjektAudit(pid,"material","Materialbezeichnung",before.bezeichnung,m.bezeichnung);
+    addProjektAudit(pid,"material","Bedarfsmenge",before.menge,m.menge);
+    addProjektAudit(pid,"material","Gelieferte Menge",before.geliefertMenge,m.geliefertMenge);
+    addProjektAudit(pid,"material","Einheit",before.einheit,m.einheit);
+    addProjektAudit(pid,"material","Kosten",fmtCurrency(before.preis),fmtCurrency(m.preis));
+    addProjektAudit(pid,"material","Lieferant",before.lieferant,m.lieferant);
+    addProjektAudit(pid,"material","Bestellt am",before.bestelltAm,m.bestelltAm);
+    addProjektAudit(pid,"material","Liefertermin",before.liefertermin,m.liefertermin);
+    addProjektAudit(pid,"material","Lieferstatus",before.lieferstatus,m.lieferstatus);
+  }
   saveState();closeModal();route(location.hash);
 }
 function deleteMaterial(pid,mid){
@@ -6328,7 +6341,7 @@ function saveBesichtigungBereich(pid,bid,brid){
   const p=S.projekte.find(x=>x.id===pid),b=besichtigungById(p,bid),name=document.getElementById("brName").value.trim();if(!b)return;
   if(!name){toast("Bereich erforderlich.","warn");return;}
   let br=brid?b.bereiche.find(x=>x.id===brid):null;
-  if(br){const alt=br.name;br.name=name;br.ebene=document.getElementById("brEbene").value.trim();br.notiz=document.getElementById("brNotiz").value.trim();addProjektChronik(pid,"besichtigung","Besichtigungsbereich bearbeitet: "+alt+" → "+name);}
+  if(br){const before={name:br.name||"",ebene:br.ebene||"",notiz:br.notiz||""};br.name=name;br.ebene=document.getElementById("brEbene").value.trim();br.notiz=document.getElementById("brNotiz").value.trim();addProjektAudit(pid,"besichtigung","Bereich",before.name,br.name);addProjektAudit(pid,"besichtigung","Ebene / Lage",before.ebene,br.ebene);addProjektAudit(pid,"besichtigung","Bereichsnotiz",before.notiz,br.notiz);}
   else{br={id:uid(),name,ebene:document.getElementById("brEbene").value.trim(),notiz:document.getElementById("brNotiz").value.trim(),fotos:[],masse:[]};b.bereiche.push(br);addProjektChronik(pid,"besichtigung","Besichtigungsbereich angelegt: "+name);}
   saveState();closeModal();route(location.hash);
 }
@@ -6358,7 +6371,7 @@ function saveBesichtigungMass(pid,bid,brid,mid){
   const p=S.projekte.find(x=>x.id===pid),b=besichtigungById(p,bid),br=b&&b.bereiche.find(x=>x.id===brid),label=document.getElementById("bmLabel").value.trim(),wert=document.getElementById("bmWert").value;if(!br)return;
   if(!label||!wert){toast("Bezeichnung und Wert erforderlich.","warn");return;}
   const einheit=document.getElementById("bmEinheit").value;let m=mid?(br.masse||[]).find(x=>x.id===mid):null;
-  if(m){m.label=label;m.wert=wert;m.einheit=einheit;addProjektChronik(pid,"besichtigung","Maß aktualisiert: "+br.name+" · "+label);}
+  if(m){const before={label:m.label||"",wert:m.wert||"",einheit:m.einheit||""};m.label=label;m.wert=wert;m.einheit=einheit;addProjektAudit(pid,"besichtigung","Maß Bezeichnung · "+br.name,before.label,m.label);addProjektAudit(pid,"besichtigung","Maß Wert · "+br.name,before.wert+" "+before.einheit,m.wert+" "+m.einheit);}
   else{br.masse.push({id:uid(),label,wert,einheit});addProjektChronik(pid,"besichtigung","Maß erfasst: "+br.name+" · "+label+" "+wert+" "+einheit);}
   saveState();closeModal();route(location.hash);
 }
@@ -7651,16 +7664,16 @@ function saveAufgabe(){
   saveState(); closeModal(); route(location.hash);
 }
 function setAufgabeStatus(id,status){
-  const a=S.aufgaben.find(x=>x.id===id);if(!a)return;
+  const a=S.aufgaben.find(x=>x.id===id);if(!a)return;const alt=a.status||"offen",altFortschritt=Number(a.fortschritt)||0;
   a.status=status;if(status==="erledigt")a.fortschritt=100;else if(Number(a.fortschritt)>=100)a.fortschritt=90;
-  if(a.projektId)addProjektChronik(a.projektId,"aufgabe",(status==="erledigt"?"Aufgabe erledigt: ":"Aufgabenstatus geändert: ")+a.titel);
+  if(a.projektId){addProjektAudit(a.projektId,"aufgabe","Aufgabenstatus · "+a.titel,alt,a.status);addProjektAudit(a.projektId,"aufgabe","Aufgabenfortschritt · "+a.titel,altFortschritt+"%",a.fortschritt+"%");}
   saveState();route(location.hash);
 }
 function setAufgabeFortschritt(id,value){
-  const a=S.aufgaben.find(x=>x.id===id);if(!a)return;
+  const a=S.aufgaben.find(x=>x.id===id);if(!a)return;const alt=Number(a.fortschritt)||0,altStatus=a.status||"offen";
   a.fortschritt=Math.max(0,Math.min(100,Number(value)||0));
   if(a.fortschritt===100)a.status="erledigt";else if(a.fortschritt>0&&a.status==="offen")a.status="in Arbeit";
-  if(a.projektId)addProjektChronik(a.projektId,"aufgabe","Aufgabenfortschritt: "+a.titel+" → "+a.fortschritt+"%");
+  if(a.projektId){addProjektAudit(a.projektId,"aufgabe","Aufgabenfortschritt · "+a.titel,alt+"%",a.fortschritt+"%");addProjektAudit(a.projektId,"aufgabe","Aufgabenstatus · "+a.titel,altStatus,a.status);}
   saveState();route(location.hash);
 }
 function openAufgabeKommentare(id){
