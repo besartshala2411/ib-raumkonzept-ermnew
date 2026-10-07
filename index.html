@@ -1214,13 +1214,13 @@ function buildManifest(iconURL, name){
 ========================================================= */
 var MODULES = [];
 function reg(id,label,icon,group,render){ MODULES.push({id,label,icon,group,render}); }
-const PRIMARY_NAV_IDS = ["dashboard","projekte","aufgaben","plantafel","kunden","subunternehmer","mitarbeiter","stempeluhr","einstellungen"];
+const PRIMARY_NAV_IDS = ["dashboard","projekte","aufgaben","kalender","urlaub","plantafel","kunden","subunternehmer","mitarbeiter","stempeluhr","einstellungen"];
 
 function buildSidebar(){
   const groups = [];
   const admin = hasAdminAccess();
   MODULES.filter(m=>PRIMARY_NAV_IDS.includes(m.id) && (admin || moduleAllowedForCurrentUser(m.id))).forEach(m=>{
-    const simpleGroup = ["dashboard","projekte","aufgaben"].includes(m.id) ? "" : (["plantafel","kunden","subunternehmer","mitarbeiter","stempeluhr"].includes(m.id) ? "Betrieb" : "Verwaltung");
+    const simpleGroup = ["dashboard","projekte","aufgaben"].includes(m.id) ? "" : (["plantafel","kunden","subunternehmer","mitarbeiter","stempeluhr","kalender","urlaub"].includes(m.id) ? "Betrieb" : "Verwaltung");
     let g = groups.find(g=>g.name===simpleGroup);
     if(!g){ g={name:simpleGroup, items:[]}; groups.push(g); }
     g.items.push(m);
@@ -1374,12 +1374,17 @@ function goTo(hash){
    GLOBALE SUCHE
 ========================================================= */
 function globalSearchIndex(){
-  const items = [];
-  S.mitarbeiter.forEach(m=>items.push({typ:"mitarbeiter", typLabel:"Mitarbeiter", id:m.id, icon:"👷", label:m.name, sub:m.position||"", text:[m.name,m.position,m.email,m.tel].filter(Boolean).join(" ").toLowerCase()}));
-  S.kunden.forEach(k=>items.push({typ:"kunde", typLabel:"Kunde", id:k.id, icon:"🤝", label:k.name, sub:k.ansprechpartner||"", text:[k.name,k.ansprechpartner,k.email,k.tel,k.adresse].filter(Boolean).join(" ").toLowerCase()}));
-  S.subunternehmer.forEach(s=>items.push({typ:"subunternehmer", typLabel:"Subunternehmer", id:s.id, icon:"🏗️", label:s.firma, sub:s.gewerk||"", text:[s.firma,s.ansprechpartner,s.gewerk,s.email].filter(Boolean).join(" ").toLowerCase()}));
-  S.projekte.forEach(p=>items.push({typ:"projekt", typLabel:"Projekt", id:p.id, icon:"🏢", label:p.name, sub:p.adresse||"", text:[p.name,p.adresse,p.status].filter(Boolean).join(" ").toLowerCase()}));
-  S.projekte.forEach(p=>{
+  const items=[],admin=hasAdminAccess(),u=currentUser();
+  if(admin){
+    S.mitarbeiter.forEach(m=>items.push({typ:"mitarbeiter",typLabel:"Mitarbeiter",id:m.id,icon:"👷",label:m.name,sub:m.position||"",text:[m.name,m.position,m.email,m.tel].filter(Boolean).join(" ").toLowerCase()}));
+    S.kunden.forEach(k=>items.push({typ:"kunde",typLabel:"Kunde",id:k.id,icon:"🤝",label:k.name,sub:k.ansprechpartner||"",text:[k.name,k.ansprechpartner,k.email,k.tel,k.adresse].filter(Boolean).join(" ").toLowerCase()}));
+    S.subunternehmer.forEach(s=>items.push({typ:"subunternehmer",typLabel:"Subunternehmer",id:s.id,icon:"🏗️",label:s.firma,sub:s.gewerk||"",text:[s.firma,s.ansprechpartner,s.gewerk,s.email].filter(Boolean).join(" ").toLowerCase()}));
+  }else if(u){
+    items.push({typ:"mitarbeiter",typLabel:"Mein Profil",id:u.id,icon:"👷",label:u.name,sub:u.position||"",text:[u.name,u.position,u.email,u.tel].filter(Boolean).join(" ").toLowerCase()});
+  }
+  const visibleProjects=S.projekte.filter(p=>admin||projektAllowedForCurrentUser(p));
+  visibleProjects.forEach(p=>items.push({typ:"projekt",typLabel:"Projekt",id:p.id,icon:"🏢",label:p.name,sub:p.adresse||"",text:[p.name,p.adresse,p.status].filter(Boolean).join(" ").toLowerCase()}));
+  visibleProjects.forEach(p=>{
     (p.kontakte||[]).forEach(x=>items.push({typ:"projektkontakt",typLabel:"Baustellenkontakt",id:p.id+":"+x.id,icon:"☎",label:x.name||x.firma||"Kontakt",sub:p.name,text:[x.name,x.firma,x.rolle,x.tel,x.email,p.name].filter(Boolean).join(" ").toLowerCase()}));
     (p.maengel||[]).forEach(x=>items.push({typ:"projektmangel",typLabel:"Mangel",id:p.id+":"+x.id,icon:"⚠",label:x.titel,sub:p.name,text:[x.titel,x.bereich,x.beschreibung,p.name].filter(Boolean).join(" ").toLowerCase()}));
     (p.blocker||[]).forEach(x=>items.push({typ:"projektsteuerung",typLabel:"Blocker",id:p.id,icon:"⛔",label:x.titel,sub:p.name,text:[x.titel,x.grund,p.name].filter(Boolean).join(" ").toLowerCase()}));
@@ -1404,10 +1409,12 @@ function globalSearchIndex(){
     S.vertraege.forEach(v=>items.push({typ:"vertrag", typLabel:"Vertrag", id:v.id, icon:"📜", label:v.typ+" – "+mitarbeiterName(v.mitarbeiterId), sub:v.status||"", text:[v.typ,mitarbeiterName(v.mitarbeiterId),v.status].filter(Boolean).join(" ").toLowerCase()}));
     S.passwoerter.forEach(pw=>items.push({typ:"passwort", typLabel:"Passwort", id:pw.id, icon:"🔐", label:pw.bezeichnung, sub:pw.benutzername||"", text:[pw.bezeichnung,pw.benutzername,pw.url].filter(Boolean).join(" ").toLowerCase()}));
   }
-  S.fuhrpark.forEach(f=>items.push({typ:"fahrzeug", typLabel:"Fahrzeug", id:f.id, icon:"🚐", label:f.kennzeichen, sub:f.typ||"", text:[f.kennzeichen,f.typ].filter(Boolean).join(" ").toLowerCase()}));
-  S.dokumente.forEach(d=>items.push({typ:"dokument", typLabel:"Dokument", id:d.id, icon:"📁", label:d.name, sub:"", text:[d.name].filter(Boolean).join(" ").toLowerCase()}));
-  S.aufgaben.forEach(a=>items.push({typ:"aufgabe", typLabel:"Aufgabe", id:a.id, icon:"📝", label:a.titel, sub:a.beschreibung||"", text:[a.titel,a.beschreibung].filter(Boolean).join(" ").toLowerCase()}));
-  S.schluessel.forEach(sk=>items.push({typ:"schluessel", typLabel:"Schlüssel", id:sk.id, icon:"🔑", label:sk.bezeichnung, sub:"", text:[sk.bezeichnung].filter(Boolean).join(" ").toLowerCase()}));
+  if(admin){
+    S.fuhrpark.forEach(f=>items.push({typ:"fahrzeug",typLabel:"Fahrzeug",id:f.id,icon:"🚐",label:f.kennzeichen,sub:f.typ||"",text:[f.kennzeichen,f.typ].filter(Boolean).join(" ").toLowerCase()}));
+    S.dokumente.forEach(d=>items.push({typ:"dokument",typLabel:"Dokument",id:d.id,icon:"📁",label:d.name,sub:"",text:[d.name].filter(Boolean).join(" ").toLowerCase()}));
+    S.schluessel.forEach(sk=>items.push({typ:"schluessel",typLabel:"Schlüssel",id:sk.id,icon:"🔑",label:sk.bezeichnung,sub:"",text:[sk.bezeichnung].filter(Boolean).join(" ").toLowerCase()}));
+  }
+  S.aufgaben.filter(a=>admin||a.zugeordnet===u?.id).forEach(a=>items.push({typ:"aufgabe",typLabel:"Aufgabe",id:a.id,icon:"📝",label:a.titel,sub:a.beschreibung||"",text:[a.titel,a.beschreibung].filter(Boolean).join(" ").toLowerCase()}));
   return items;
 }
 function globalSearchOpenResult(typ, id){
@@ -1885,8 +1892,10 @@ function systemBenachrichtigungen(){
   S.projekte.filter(p=>!p.archiviert&&projektAllowedForCurrentUser(p)).forEach(p=>{
     (p.material||[]).filter(m=>m.liefertermin&&m.liefertermin<heute&&m.lieferstatus!=="geliefert").forEach(m=>add("mat:"+m.id,"▤","Material verspätet",m.bezeichnung+" · "+p.name,"#projekte/"+p.id+"/material","warn"));
     (p.maengel||[]).filter(m=>m.status!=="erledigt"&&m.frist&&m.frist<heute).forEach(m=>add("mangel:"+m.id,"⚠","Mangel überfällig",m.titel+" · "+p.name,"#projekte/"+p.id+"/maengel","danger"));
-    (p.entscheidungen||[]).filter(x=>x.status==="offen").forEach(x=>add("entscheidung:"+x.id,"?","Freigabe offen",x.titel+" · "+p.name,"#projekte/"+p.id+"/steuerung","warn"));
-    if(projektAbschlussChecks(p).every(x=>x.ok)) add("abschluss:"+p.id,"✓","Projekt abschlussbereit",p.name,"#projekte/"+p.id+"/checkliste","success");
+    if(admin){
+      (p.entscheidungen||[]).filter(x=>x.status==="offen").forEach(x=>add("entscheidung:"+x.id,"?","Freigabe offen",x.titel+" · "+p.name,"#projekte/"+p.id+"/steuerung","warn"));
+      if(projektAbschlussChecks(p).every(x=>x.ok))add("abschluss:"+p.id,"✓","Projekt abschlussbereit",p.name,"#projekte/"+p.id+"/checkliste","success");
+    }
   });
   if(admin){
     S.mitarbeiter.filter(m=>m.status!=="inaktiv").forEach(m=>{
@@ -2698,7 +2707,7 @@ function renderUrlaub(view){
     <div class="pageHead">
       <div><div class="pageTitle">Urlaub</div><div class="pageSub">Anträge &amp; Resturlaub ${jahr}</div></div>
       <div style="display:flex; gap:8px;">
-        <button class="btn" onclick="exportUrlaubUebersichtPDF()">📄 Übersicht als PDF</button>
+        <button class="btn" onclick="exportUrlaubUebersichtPDF()">📄 ${admin?"Übersicht":"Meine Übersicht"} als PDF</button>
         <button class="btn primary" onclick="openUrlaubForm()">➕ Antrag stellen</button>
       </div>
     </div>
@@ -2824,16 +2833,12 @@ function exportUrlaubantragPDF(id){
   toast("Urlaubsantrag-PDF erstellt.", "success");
 }
 function exportUrlaubUebersichtPDF(){
-  const jahr = new Date().getFullYear();
-  const doc = pdfNewDoc();
-  let y = pdfHeader(doc, "Urlaubsübersicht "+jahr);
-  const rows = S.urlaubsantraege.slice().sort((a,b)=>b.von.localeCompare(a.von)).map(u=>[
-    mitarbeiterName(u.mitarbeiterId), fmtDate(u.von), fmtDate(u.bis), String(u.tage), u.status
-  ]);
-  y = pdfTable(doc, y, ["Mitarbeiter","Von","Bis","Tage","Status"], rows, null, [15,90,120,150,195]);
-  pdfFooter(doc);
-  saveOrSharePdf(doc, "Urlaubsuebersicht_"+jahr+".pdf");
-  toast("Übersicht-PDF erstellt.", "success");
+  const jahr=new Date().getFullYear(),admin=hasAdminAccess(),u=currentUser();
+  const list=admin?S.urlaubsantraege:S.urlaubsantraege.filter(x=>x.mitarbeiterId===u?.id);
+  const doc=pdfNewDoc();let y=pdfHeader(doc,(admin?"Urlaubsübersicht ":"Meine Urlaubsübersicht ")+jahr);
+  const rows=list.slice().sort((a,b)=>b.von.localeCompare(a.von)).map(x=>[mitarbeiterName(x.mitarbeiterId),fmtDate(x.von),fmtDate(x.bis),String(x.tage),x.status]);
+  y=pdfTable(doc,y,["Mitarbeiter","Von","Bis","Tage","Status"],rows,null,[15,90,120,150,195]);
+  pdfFooter(doc);saveOrSharePdf(doc,(admin?"Urlaubsuebersicht_":"Meine_Urlaubsuebersicht_")+jahr+".pdf");toast("Übersicht-PDF erstellt.","success");
 }
 
 /* =========================================================
@@ -4429,7 +4434,7 @@ function renderProjektDetail(view,id,tab){
   const p=S.projekte.find(x=>x.id===id);
   if(p&&!projektAllowedForCurrentUser(p)){view.innerHTML='<div class="empty"><div class="emptyIcon">🔒</div>Dieses Projekt ist deinem Mitarbeiterkonto nicht zugeordnet.</div>';return;}
   if(!p){ view.innerHTML = `<div class="empty">Projekt nicht gefunden. <button class="btn" onclick="goTo('#projekte')">Zurück</button></div>`; return; }
-  if(!hasAdminAccess() && !["uebersicht","chat","dokumente","material","besichtigung"].includes(tab)) tab="uebersicht";
+  if(!hasAdminAccess() && !["uebersicht","chat","dokumente","material","besichtigung","maengel"].includes(tab)) tab="uebersicht";
   const isOverview=tab==="uebersicht";
   const zeitraum=projektBauzeitraum(p);
   const von=zeitraum.beginn?fmtDate(zeitraum.beginn):"";
@@ -4457,7 +4462,7 @@ function renderProjektDetail(view,id,tab){
       </div>
     </div>
     <div class="tabs projectTabs" style="margin-bottom:14px;">
-      ${PROJEKT_TABS.filter(t=>hasAdminAccess()||["uebersicht","chat","dokumente","material","besichtigung"].includes(t.id)).map(t=>`<button class="tabBtn ${tab===t.id?"active":""}" onclick="goTo('#projekte/${escAttr(p.id)}/${escAttr(t.id)}')">${t.icon} ${escHtml(t.label)}</button>`).join("")}
+      ${PROJEKT_TABS.filter(t=>hasAdminAccess()||["uebersicht","chat","dokumente","material","besichtigung","maengel"].includes(t.id)).map(t=>`<button class="tabBtn ${tab===t.id?"active":""}" onclick="goTo('#projekte/${escAttr(p.id)}/${escAttr(t.id)}')">${t.icon} ${escHtml(t.label)}</button>`).join("")}
     </div>
     <div id="projektTabBody"></div>
   `;
@@ -7624,7 +7629,7 @@ function openAufgabeForm(){
     <div class="grid cols-2">
       <div class="formRow"><label>Fällig am</label><input id="agFaellig" type="date"></div>
       <div class="formRow"><label>Priorität</label><select id="agPrio"><option value="niedrig">Niedrig</option><option value="mittel" selected>Mittel</option><option value="hoch">Hoch</option></select></div>
-      <div class="formRow"><label>Projekt (optional)</label><select id="agProjekt"><option value="">–</option>${S.projekte.map(p=>`<option value="${escAttr(p.id)}">${escHtml(p.name)}</option>`).join("")}</select></div>
+      <div class="formRow"><label>Projekt (optional)</label><select id="agProjekt"><option value="">–</option>${S.projekte.filter(p=>projektAllowedForCurrentUser(p)).map(p=>`<option value="${escAttr(p.id)}">${escHtml(p.name)}</option>`).join("")}</select></div>
       <div class="formRow"><label>Zugeordnet an</label><select id="agZuge" ${hasAdminAccess()?"":"disabled"}><option value="">–</option>${S.mitarbeiter.map(m=>`<option value="${escAttr(m.id)}" ${!hasAdminAccess()&&m.id===S.currentUserId?"selected":""}>${escHtml(m.name)}</option>`).join("")}</select></div>
     </div>
     <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="saveAufgabe()">Speichern</button></div>
