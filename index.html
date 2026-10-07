@@ -782,6 +782,7 @@ function ensureShape(s){
     if(t.uhrzeit==null) t.uhrzeit="";
     if(t.typ==null) t.typ="Termin";
   });
+  s.aufgaben.forEach(a=>{if(!a.kommentare)a.kommentare=[];if(a.zugeordnet===undefined)a.zugeordnet=null;});
   s.mitarbeiter.forEach(m=>{
     if(!m.dokumente) m.dokumente=[];
     if(!m.status) m.status="aktiv";
@@ -859,6 +860,7 @@ function ensureShape(s){
       });
     });
     p.material.forEach(m=>{
+      if(m.geliefertMenge==null) m.geliefertMenge=m.lieferstatus==="geliefert"?(Number(m.menge)||0):0;
       if(m.lieferant==null) m.lieferant="";
       if(m.bestelltAm==null) m.bestelltAm="";
       if(m.liefertermin==null) m.liefertermin="";
@@ -1952,6 +1954,18 @@ function renderMitarbeiterHeute(view,u){
         <div class="projectSectionHead"><b>Aktuelle Baustellen-Chats</b><span class="pageSub">aus heutigen Einsätzen</span></div>
         <div class="simpleList">${chats.map(x=>`<div class="simpleRow" onclick="goTo('#projekte/${escAttr(x.p.id)}/chat')" style="cursor:pointer;"><div class="simpleRowMain"><b>💬 ${escHtml(x.p.name)}</b><div class="pageSub">${escHtml((x.m.text||"Anhang").slice(0,110))}</div></div><span>Chat ›</span></div>`).join("")||'<div class="empty" style="padding:18px;">Keine aktuellen Chatnachrichten zu heutigen Einsätzen.</div>'}</div>
       </div>
+    <div class="grid cols-2" style="margin-top:16px;">
+      <div class="card">
+        <div class="projectSectionHead"><b>Material / Kontakte heute</b><span class="pageSub">aus meinen Baustellen</span></div>
+        <div class="simpleList">${projectIds.flatMap(pid=>{const p=S.projekte.find(x=>x.id===pid);return p?(p.material||[]).filter(m=>m.lieferstatus!=="geliefert").slice(0,3).map(m=>({p,m})):[];}).slice(0,6).map(x=>`<div class="simpleRow"><div class="simpleRowMain"><b>▤ ${escHtml(x.m.bezeichnung)}</b><div class="pageSub">${escHtml(x.p.name)} · Rest ${Math.max(0,(Number(x.m.menge)||0)-(Number(x.m.geliefertMenge)||0))} ${escHtml(x.m.einheit||"")}</div></div></div>`).join("")||'<div class="empty" style="padding:12px;">Kein offenes Material.</div>'}
+        ${projectIds.flatMap(pid=>{const p=S.projekte.find(x=>x.id===pid);return p?(p.kontakte||[]).slice(0,2).map(k=>({p,k})):[];}).slice(0,4).map(x=>`<div class="simpleRow"><div class="simpleRowMain"><b>☎ ${escHtml(x.k.name||x.k.firma||"Kontakt")}</b><div class="pageSub">${escHtml(x.p.name)} · ${escHtml(x.k.tel||x.k.email||"")}</div></div></div>`).join("")}</div>
+      </div>
+      <div class="card">
+        <div class="projectSectionHead"><b>Heute aufpassen</b><span class="pageSub">offene Mängel</span></div>
+        <div class="simpleList">${projectIds.flatMap(pid=>{const p=S.projekte.find(x=>x.id===pid);return p?(p.maengel||[]).filter(m=>m.status!=="erledigt").map(m=>({p,m})):[];}).slice(0,6).map(x=>`<div class="simpleRow"><div class="simpleRowMain"><b>⚠ ${escHtml(x.m.titel)}</b><div class="pageSub">${escHtml(x.p.name)}${x.m.bereich?" · "+escHtml(x.m.bereich):""}</div></div></div>`).join("")||'<div class="empty" style="padding:12px;">Keine offenen Mängel auf heutigen Baustellen.</div>'}</div>
+        <div style="margin-top:12px;">${einsaetze[0]&&S.projekte.find(x=>x.id===einsaetze[0].projektId)?.adresse?mapsLinksHTML(S.projekte.find(x=>x.id===einsaetze[0].projektId).adresse):""}</div>
+      </div>
+    </div>
     </div>`;
 }
 function renderDashboard(view){
@@ -5575,7 +5589,7 @@ function renderTabMaterial(body,p){
         ${list.map(m=>`<div class="simpleRow">
           <div class="simpleRowMain">
             <b>${escHtml(m.bezeichnung)}</b>
-            <div class="pageSub">${[m.menge&&m.menge+" "+(m.einheit||""),m.lieferant,m.bestelltAm?"bestellt "+fmtDate(m.bestelltAm):"",m.liefertermin?"Lieferung "+fmtDate(m.liefertermin):""].filter(Boolean).join(" · ")}</div>
+            <div class="pageSub">${[m.menge&&"Bedarf "+m.menge+" "+(m.einheit||""),"geliefert "+(Number(m.geliefertMenge)||0)+" "+(m.einheit||""),"Rest "+Math.max(0,(Number(m.menge)||0)-(Number(m.geliefertMenge)||0))+" "+(m.einheit||""),m.lieferant,m.bestelltAm?"bestellt "+fmtDate(m.bestelltAm):"",m.liefertermin?"Lieferung "+fmtDate(m.liefertermin):""].filter(Boolean).join(" · ")}</div>
           </div>
           <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;justify-content:flex-end;">
             ${materialLieferBadge(m.lieferstatus)}
@@ -5595,7 +5609,8 @@ function openMaterialForm(pid,mid){
     <div class="modalHead"><div class="modalTitle">${mid?"Material / Lieferung bearbeiten":"Material / Lieferung erfassen"}</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
     <div class="formRow"><label>Material / Bezeichnung</label><input id="matBez" type="text" value="${escAttr(m.bezeichnung||"")}" placeholder="z. B. Gipskartonplatten"></div>
     <div class="grid cols-2">
-      <div class="formRow"><label>Menge</label><input id="matMenge" type="number" step="0.01" value="${escAttr(m.menge||"")}"></div>
+      <div class="formRow"><label>Bedarfsmenge</label><input id="matMenge" type="number" step="0.01" value="${escAttr(m.menge||"")}"></div>
+      <div class="formRow"><label>Bereits geliefert</label><input id="matGeliefert" type="number" min="0" step="0.01" value="${escAttr(m.geliefertMenge||0)}"></div>
       <div class="formRow"><label>Einheit</label><input id="matEinheit" type="text" value="${escAttr(m.einheit||"")}" placeholder="Stk., m², kg"></div>
       <div class="formRow"><label>Lieferant</label><input id="matLieferant" type="text" value="${escAttr(m.lieferant||"")}"></div>
       <div class="formRow"><label>Status</label><select id="matLieferstatus">${["offen","bestellt","teilweise geliefert","geliefert"].map(s=>`<option value="${s}" ${m.lieferstatus===s?"selected":""}>${s}</option>`).join("")}</select></div>
@@ -5621,12 +5636,16 @@ function saveMaterial(pid,id,isEdit){
   let m=isEdit?p.material.find(x=>x.id===id):{id,titel:"",beschreibung:"",datum:todayISO()};
   m.bezeichnung=bezeichnung;
   m.menge=document.getElementById("matMenge").value;
+  m.geliefertMenge=Math.max(0,Number(document.getElementById("matGeliefert").value)||0);
   m.einheit=document.getElementById("matEinheit").value.trim();
   m.preis=Number(document.getElementById("matPreis").value)||0;
   m.lieferant=document.getElementById("matLieferant").value.trim();
   m.bestelltAm=document.getElementById("matBestellt").value;
   m.liefertermin=document.getElementById("matLiefertermin").value;
   m.lieferstatus=document.getElementById("matLieferstatus").value;
+  const bedarf=Number(m.menge)||0;
+  if(bedarf>0&&m.geliefertMenge>=bedarf)m.lieferstatus="geliefert";
+  else if(m.geliefertMenge>0)m.lieferstatus="teilweise geliefert";
   m.lieferschein=window._materialLieferschein||"";
   if(!isEdit) p.material.push(m);
   addProjektChronik(pid,"material",(isEdit?"Material/Lieferung aktualisiert: ":"Material/Lieferung erfasst: ")+bezeichnung);
@@ -6280,24 +6299,32 @@ function renderBesichtigungBereichCard(p,b,br){
       <div style="display:flex;gap:6px;flex-wrap:wrap;">
         <label class="btn sm" style="margin:0;">📷 Foto<input type="file" accept="image/*" capture="environment" multiple style="display:none" onchange="addBesichtigungFotos('${escAttr(p.id)}','${escAttr(b.id)}','${escAttr(br.id)}',this.files)"></label>
         <button class="btn sm" onclick="openBesichtigungMassForm('${escAttr(p.id)}','${escAttr(b.id)}','${escAttr(br.id)}')">↔ Maß</button>
-        <button class="btn sm" onclick="openBesichtigungBereichNotiz('${escAttr(p.id)}','${escAttr(b.id)}','${escAttr(br.id)}')">✎ Notiz</button>
+        <button class="btn sm" onclick="openBesichtigungBereichForm('${escAttr(p.id)}','${escAttr(b.id)}','${escAttr(br.id)}')">✎ Bereich</button>
+        <button class="iconBtn" onclick="deleteBesichtigungBereich('${escAttr(p.id)}','${escAttr(b.id)}','${escAttr(br.id)}')" title="Bereich löschen">×</button>
       </div>
     </div>
-    ${(br.masse||[]).length?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin:8px 0;">${br.masse.map(m=>`<span class="badge gray">${escHtml(m.label)}: ${escHtml(m.wert)} ${escHtml(m.einheit||"")}</span>`).join("")}</div>`:""}
+    ${(br.masse||[]).length?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin:8px 0;">${br.masse.map(m=>`<span class="badge gray" style="display:inline-flex;align-items:center;gap:4px;">${escHtml(m.label)}: ${escHtml(m.wert)} ${escHtml(m.einheit||"")}<button class="iconBtn" style="padding:1px 3px;min-height:auto;" onclick="openBesichtigungMassForm('${escAttr(p.id)}','${escAttr(b.id)}','${escAttr(br.id)}','${escAttr(m.id)}')" title="Maß bearbeiten">✎</button><button class="iconBtn" style="padding:1px 3px;min-height:auto;" onclick="deleteBesichtigungMass('${escAttr(p.id)}','${escAttr(b.id)}','${escAttr(br.id)}','${escAttr(m.id)}')" title="Maß löschen">×</button></span>`).join("")}</div>`:""}
     ${(br.fotos||[]).length?`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:7px;margin-top:8px;">${br.fotos.map(f=>`<div style="position:relative;"><img src="${escAttr(f.dataURL)}" alt="${escAttr(f.name||"Foto")}" style="width:100%;height:90px;object-fit:cover;border-radius:8px;"><button class="iconBtn" onclick="deleteBesichtigungFoto('${escAttr(p.id)}','${escAttr(b.id)}','${escAttr(br.id)}','${escAttr(f.id)}')" style="position:absolute;right:3px;top:3px;background:rgba(0,0,0,.55);">×</button></div>`).join("")}</div>`:""}
   </div>`;
 }
-function openBesichtigungBereichForm(pid,bid){
-  openModal(`<div class="modalHead"><div class="modalTitle">Raum / Bereich hinzufügen</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
-  <div class="grid cols-2"><div class="formRow"><label>Bereich</label><input id="brName" type="text" placeholder="z. B. Wohnzimmer"></div><div class="formRow"><label>Ebene / Lage</label><input id="brEbene" type="text" placeholder="z. B. EG"></div></div>
-  <div class="formRow"><label>Erste Notiz</label><textarea id="brNotiz"></textarea></div>
-  <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="saveBesichtigungBereich('${escAttr(pid)}','${escAttr(bid)}')">Hinzufügen</button></div>`);
+function openBesichtigungBereichForm(pid,bid,brid){
+  const p=S.projekte.find(x=>x.id===pid),b=besichtigungById(p,bid),br=brid&&b?b.bereiche.find(x=>x.id===brid):null;
+  openModal(`<div class="modalHead"><div class="modalTitle">${br?"Raum / Bereich bearbeiten":"Raum / Bereich hinzufügen"}</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
+  <div class="grid cols-2"><div class="formRow"><label>Bereich</label><input id="brName" type="text" value="${escAttr(br?br.name:"")}" placeholder="z. B. Wohnzimmer"></div><div class="formRow"><label>Ebene / Lage</label><input id="brEbene" type="text" value="${escAttr(br?br.ebene:"")}" placeholder="z. B. EG"></div></div>
+  <div class="formRow"><label>Notiz</label><textarea id="brNotiz">${escHtml(br?br.notiz:"")}</textarea></div>
+  <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="saveBesichtigungBereich('${escAttr(pid)}','${escAttr(bid)}','${escAttr(brid||"")}')">Speichern</button></div>`);
 }
-function saveBesichtigungBereich(pid,bid){
-  const p=S.projekte.find(x=>x.id===pid),b=besichtigungById(p,bid),name=document.getElementById("brName").value.trim();
+function saveBesichtigungBereich(pid,bid,brid){
+  const p=S.projekte.find(x=>x.id===pid),b=besichtigungById(p,bid),name=document.getElementById("brName").value.trim();if(!b)return;
   if(!name){toast("Bereich erforderlich.","warn");return;}
-  b.bereiche.push({id:uid(),name,ebene:document.getElementById("brEbene").value.trim(),notiz:document.getElementById("brNotiz").value.trim(),fotos:[],masse:[]});
-  addProjektChronik(pid,"besichtigung","Besichtigungsbereich angelegt: "+name);saveState();closeModal();route(location.hash);
+  let br=brid?b.bereiche.find(x=>x.id===brid):null;
+  if(br){const alt=br.name;br.name=name;br.ebene=document.getElementById("brEbene").value.trim();br.notiz=document.getElementById("brNotiz").value.trim();addProjektChronik(pid,"besichtigung","Besichtigungsbereich bearbeitet: "+alt+" → "+name);}
+  else{br={id:uid(),name,ebene:document.getElementById("brEbene").value.trim(),notiz:document.getElementById("brNotiz").value.trim(),fotos:[],masse:[]};b.bereiche.push(br);addProjektChronik(pid,"besichtigung","Besichtigungsbereich angelegt: "+name);}
+  saveState();closeModal();route(location.hash);
+}
+function deleteBesichtigungBereich(pid,bid,brid){
+  const p=S.projekte.find(x=>x.id===pid),b=besichtigungById(p,bid),br=b&&b.bereiche.find(x=>x.id===brid);if(!br)return;
+  confirmDelete("Bereich „"+br.name+"“ inklusive Maße und Fotos wirklich löschen?",()=>{b.bereiche=b.bereiche.filter(x=>x.id!==brid);addProjektChronik(pid,"besichtigung","Besichtigungsbereich gelöscht: "+br.name);saveState();route(location.hash);});
 }
 function openBesichtigungBereichNotiz(pid,bid,brid){
   const p=S.projekte.find(x=>x.id===pid),b=besichtigungById(p,bid),br=b.bereiche.find(x=>x.id===brid);
@@ -6311,18 +6338,23 @@ function saveBesichtigungBereichNotiz(pid,bid,brid){
   addProjektChronik(pid,"besichtigung","Besichtigungsnotiz aktualisiert: "+br.name);
   saveState();closeModal();route(location.hash);
 }
-function openBesichtigungMassForm(pid,bid,brid){
-  openModal(`<div class="modalHead"><div class="modalTitle">Maß erfassen</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
-  <div class="grid cols-3"><div class="formRow"><label>Bezeichnung</label><input id="bmLabel" type="text" placeholder="z. B. Wand links"></div><div class="formRow"><label>Wert</label><input id="bmWert" type="number" step="0.01"></div><div class="formRow"><label>Einheit</label><select id="bmEinheit"><option>m</option><option>cm</option><option>m²</option><option>Stk.</option></select></div></div>
-  <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="saveBesichtigungMass('${escAttr(pid)}','${escAttr(bid)}','${escAttr(brid)}')">Speichern</button></div>`);
+function openBesichtigungMassForm(pid,bid,brid,mid){
+  const p=S.projekte.find(x=>x.id===pid),b=besichtigungById(p,bid),br=b&&b.bereiche.find(x=>x.id===brid),m=mid&&br?(br.masse||[]).find(x=>x.id===mid):null;if(!br)return;
+  openModal(`<div class="modalHead"><div class="modalTitle">${m?"Maß bearbeiten":"Maß erfassen"}</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
+  <div class="grid cols-3"><div class="formRow"><label>Bezeichnung</label><input id="bmLabel" type="text" value="${escAttr(m?m.label:"")}" placeholder="z. B. Wand links"></div><div class="formRow"><label>Wert</label><input id="bmWert" type="number" step="0.01" value="${escAttr(m?m.wert:"")}"></div><div class="formRow"><label>Einheit</label><select id="bmEinheit">${["m","cm","m²","Stk."].map(x=>`<option ${m&&m.einheit===x?"selected":""}>${x}</option>`).join("")}</select></div></div>
+  <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="saveBesichtigungMass('${escAttr(pid)}','${escAttr(bid)}','${escAttr(brid)}','${escAttr(mid||"")}')">Speichern</button></div>`);
 }
-function saveBesichtigungMass(pid,bid,brid){
-  const p=S.projekte.find(x=>x.id===pid),b=besichtigungById(p,bid),br=b.bereiche.find(x=>x.id===brid),label=document.getElementById("bmLabel").value.trim(),wert=document.getElementById("bmWert").value;
+function saveBesichtigungMass(pid,bid,brid,mid){
+  const p=S.projekte.find(x=>x.id===pid),b=besichtigungById(p,bid),br=b&&b.bereiche.find(x=>x.id===brid),label=document.getElementById("bmLabel").value.trim(),wert=document.getElementById("bmWert").value;if(!br)return;
   if(!label||!wert){toast("Bezeichnung und Wert erforderlich.","warn");return;}
-  const einheit=document.getElementById("bmEinheit").value;
-  br.masse.push({id:uid(),label,wert,einheit});
-  addProjektChronik(pid,"besichtigung","Maß erfasst: "+br.name+" · "+label+" "+wert+" "+einheit);
+  const einheit=document.getElementById("bmEinheit").value;let m=mid?(br.masse||[]).find(x=>x.id===mid):null;
+  if(m){m.label=label;m.wert=wert;m.einheit=einheit;addProjektChronik(pid,"besichtigung","Maß aktualisiert: "+br.name+" · "+label);}
+  else{br.masse.push({id:uid(),label,wert,einheit});addProjektChronik(pid,"besichtigung","Maß erfasst: "+br.name+" · "+label+" "+wert+" "+einheit);}
   saveState();closeModal();route(location.hash);
+}
+function deleteBesichtigungMass(pid,bid,brid,mid){
+  const p=S.projekte.find(x=>x.id===pid),b=besichtigungById(p,bid),br=b&&b.bereiche.find(x=>x.id===brid),m=br&&(br.masse||[]).find(x=>x.id===mid);if(!m)return;
+  confirmDelete("Maß „"+m.label+"“ wirklich löschen?",()=>{br.masse=br.masse.filter(x=>x.id!==mid);addProjektChronik(pid,"besichtigung","Maß gelöscht: "+br.name+" · "+m.label);saveState();route(location.hash);});
 }
 async function addBesichtigungFotos(pid,bid,brid,files){
   const p=S.projekte.find(x=>x.id===pid),b=besichtigungById(p,bid),br=b.bereiche.find(x=>x.id===brid); if(!br||!files)return;
@@ -7488,9 +7520,11 @@ function exportAufmassPDF(pid){
    MODULE: AUFGABEN (allgemein)
 ========================================================= */
 function renderAufgaben(view){
+  const u=currentUser();
+  const sichtbareAufgaben=hasAdminAccess()?S.aufgaben:S.aufgaben.filter(a=>a.zugeordnet===u?.id);
   view.innerHTML = `
     <div class="pageHead">
-      <div><div class="pageTitle">Aufgaben</div><div class="pageSub">${S.aufgaben.filter(a=>a.status!=="erledigt").length} offen</div></div>
+      <div><div class="pageTitle">Aufgaben</div><div class="pageSub">${sichtbareAufgaben.filter(a=>a.status!=="erledigt").length} offen</div></div>
       <button class="btn primary" onclick="openAufgabeForm()">➕ Aufgabe</button>
     </div>
     <div class="grid cols-3">
@@ -7498,7 +7532,7 @@ function renderAufgaben(view){
         <div class="card">
           <b>${st==="offen"?"🔵 Offen":st==="in Arbeit"?"🟡 In Arbeit":"🟢 Erledigt"}</b>
           <div style="margin-top:12px; display:flex; flex-direction:column; gap:8px;">
-            ${S.aufgaben.filter(a=>a.status===st).map(a=>`
+            ${sichtbareAufgaben.filter(a=>a.status===st).map(a=>`
               <div style="background:var(--card2); border-radius:10px; padding:10px 12px;">
                 <div style="display:flex; justify-content:space-between;"><b style="font-size:13px;">${escHtml(a.titel)}</b>${prioBadge(a.prioritaet)}</div>
                 <div class="pageSub" style="margin:4px 0;">${escHtml(a.beschreibung||"")}</div>
@@ -7508,6 +7542,7 @@ function renderAufgaben(view){
                     <select onchange="setAufgabeStatus('${escAttr(a.id)}', this.value)" style="font-size:11px; padding:3px 6px;">
                       ${["offen","in Arbeit","erledigt"].map(s2=>`<option value="${s2}" ${a.status===s2?"selected":""}>${s2}</option>`).join("")}
                     </select>
+                    <button class="iconBtn" onclick="openAufgabeKommentare('${escAttr(a.id)}')" title="Kommentare">💬${(a.kommentare||[]).length?'<small>'+(a.kommentare||[]).length+'</small>':""}</button>
                     <button class="iconBtn" onclick="deleteAufgabe('${escAttr(a.id)}')">🗑️</button>
                   </div>
                 </div>
@@ -7532,7 +7567,7 @@ function openAufgabeForm(){
       <div class="formRow"><label>Fällig am</label><input id="agFaellig" type="date"></div>
       <div class="formRow"><label>Priorität</label><select id="agPrio"><option value="niedrig">Niedrig</option><option value="mittel" selected>Mittel</option><option value="hoch">Hoch</option></select></div>
       <div class="formRow"><label>Projekt (optional)</label><select id="agProjekt"><option value="">–</option>${S.projekte.map(p=>`<option value="${escAttr(p.id)}">${escHtml(p.name)}</option>`).join("")}</select></div>
-      <div class="formRow"><label>Zugeordnet an</label><select id="agZuge"><option value="">–</option>${S.mitarbeiter.map(m=>`<option value="${escAttr(m.id)}">${escHtml(m.name)}</option>`).join("")}</select></div>
+      <div class="formRow"><label>Zugeordnet an</label><select id="agZuge" ${hasAdminAccess()?"":"disabled"}><option value="">–</option>${S.mitarbeiter.map(m=>`<option value="${escAttr(m.id)}" ${!hasAdminAccess()&&m.id===S.currentUserId?"selected":""}>${escHtml(m.name)}</option>`).join("")}</select></div>
     </div>
     <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="saveAufgabe()">Speichern</button></div>
   `);
@@ -7556,6 +7591,23 @@ function setAufgabeStatus(id, status){
   a.status=status;
   if(a.projektId) addProjektChronik(a.projektId,"aufgabe",(status==="erledigt"?"Aufgabe erledigt: ":"Aufgabenstatus geändert: ")+a.titel);
   saveState(); route(location.hash);
+}
+function openAufgabeKommentare(id){
+  const a=S.aufgaben.find(x=>x.id===id);if(!a)return;
+  if(!hasAdminAccess()&&a.zugeordnet!==S.currentUserId){toast("Diese Aufgabe ist dir nicht zugeordnet.","warn");return;}
+  openModal(`
+    <div class="modalHead"><div class="modalTitle">💬 ${escHtml(a.titel)}</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
+    <div class="simpleList" style="max-height:42vh;overflow:auto;">${(a.kommentare||[]).map(k=>`<div class="simpleRow"><div class="simpleRowMain"><div>${escHtml(k.text)}</div><div class="pageSub">${fmtDateTime(k.zeit)} · ${escHtml(mitarbeiterName(k.autor)||"Benutzer")}</div></div></div>`).join("")||'<div class="empty" style="padding:14px;">Noch keine Kommentare.</div>'}</div>
+    <div class="formRow" style="margin-top:12px;"><label>Kommentar</label><textarea id="aufgabeKommentarText" placeholder="Fortschritt, Rückfrage oder Hinweis …"></textarea></div>
+    <div class="modalFoot"><button class="btn" onclick="closeModal()">Schließen</button><button class="btn primary" onclick="saveAufgabeKommentar('${escAttr(id)}')">Kommentar speichern</button></div>`);
+}
+function saveAufgabeKommentar(id){
+  const a=S.aufgaben.find(x=>x.id===id),el=document.getElementById("aufgabeKommentarText");if(!a||!el)return;
+  const text=el.value.trim();if(!text){toast("Kommentar ist leer.","warn");return;}
+  if(!a.kommentare)a.kommentare=[];
+  a.kommentare.push({id:uid(),text,autor:S.currentUserId||null,zeit:new Date().toISOString()});
+  if(a.projektId)addProjektChronik(a.projektId,"aufgabe","Kommentar zu Aufgabe: "+a.titel);
+  saveState();openAufgabeKommentare(id);toast("Kommentar gespeichert.","success");
 }
 function deleteAufgabe(id){
   deleteItemWithUndo(S.aufgaben, id, "Aufgabe gelöscht.");
