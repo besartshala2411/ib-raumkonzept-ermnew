@@ -782,7 +782,7 @@ function ensureShape(s){
     if(t.uhrzeit==null) t.uhrzeit="";
     if(t.typ==null) t.typ="Termin";
   });
-  s.aufgaben.forEach(a=>{if(!a.kommentare)a.kommentare=[];if(a.zugeordnet===undefined)a.zugeordnet=null;});
+  s.aufgaben.forEach(a=>{if(!a.kommentare)a.kommentare=[];if(a.zugeordnet===undefined)a.zugeordnet=null;if(a.fortschritt==null)a.fortschritt=a.status==="erledigt"?100:0;});
   s.mitarbeiter.forEach(m=>{
     if(!m.dokumente) m.dokumente=[];
     if(!m.status) m.status="aktiv";
@@ -7599,6 +7599,8 @@ function renderAufgaben(view){
               <div style="background:var(--card2); border-radius:10px; padding:10px 12px;">
                 <div style="display:flex; justify-content:space-between;"><b style="font-size:13px;">${escHtml(a.titel)}</b>${prioBadge(a.prioritaet)}</div>
                 <div class="pageSub" style="margin:4px 0;">${escHtml(a.beschreibung||"")}</div>
+                <div class="progressBar" style="margin:7px 0 5px;"><div style="width:${Math.max(0,Math.min(100,Number(a.fortschritt)||0))}%"></div></div>
+                <div class="pageSub" style="margin-bottom:5px;">Fortschritt ${Math.round(Number(a.fortschritt)||0)}%</div>
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px;">
                   <span style="font-size:11px; color:var(--text-dim2);">${a.faellig?"Fällig "+fmtDate(a.faellig):""} ${a.projektId?"· "+escHtml(projektName(a.projektId)):""}</span>
                   <div>
@@ -7642,24 +7644,31 @@ function saveAufgabe(){
     id:uid(), titel, beschreibung:document.getElementById("agBeschreibung").value.trim(),
     faellig:document.getElementById("agFaellig").value, prioritaet:document.getElementById("agPrio").value,
     projektId:document.getElementById("agProjekt").value||null, zugeordnet:document.getElementById("agZuge").value||null,
-    status:"offen"
+    status:"offen",fortschritt:0,kommentare:[]
   };
   S.aufgaben.push(neueAufgabe);
   if(neueAufgabe.projektId) addProjektChronik(neueAufgabe.projektId,"aufgabe","Aufgabe angelegt: "+titel);
   saveState(); closeModal(); route(location.hash);
 }
-function setAufgabeStatus(id, status){
-  const a=S.aufgaben.find(x=>x.id===id);
-  if(!a) return;
-  a.status=status;
-  if(a.projektId) addProjektChronik(a.projektId,"aufgabe",(status==="erledigt"?"Aufgabe erledigt: ":"Aufgabenstatus geändert: ")+a.titel);
-  saveState(); route(location.hash);
+function setAufgabeStatus(id,status){
+  const a=S.aufgaben.find(x=>x.id===id);if(!a)return;
+  a.status=status;if(status==="erledigt")a.fortschritt=100;else if(Number(a.fortschritt)>=100)a.fortschritt=90;
+  if(a.projektId)addProjektChronik(a.projektId,"aufgabe",(status==="erledigt"?"Aufgabe erledigt: ":"Aufgabenstatus geändert: ")+a.titel);
+  saveState();route(location.hash);
+}
+function setAufgabeFortschritt(id,value){
+  const a=S.aufgaben.find(x=>x.id===id);if(!a)return;
+  a.fortschritt=Math.max(0,Math.min(100,Number(value)||0));
+  if(a.fortschritt===100)a.status="erledigt";else if(a.fortschritt>0&&a.status==="offen")a.status="in Arbeit";
+  if(a.projektId)addProjektChronik(a.projektId,"aufgabe","Aufgabenfortschritt: "+a.titel+" → "+a.fortschritt+"%");
+  saveState();route(location.hash);
 }
 function openAufgabeKommentare(id){
   const a=S.aufgaben.find(x=>x.id===id);if(!a)return;
   if(!hasAdminAccess()&&a.zugeordnet!==S.currentUserId){toast("Diese Aufgabe ist dir nicht zugeordnet.","warn");return;}
   openModal(`
     <div class="modalHead"><div class="modalTitle">💬 ${escHtml(a.titel)}</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
+    <div class="formRow"><label>Fortschritt: <b>${Math.round(Number(a.fortschritt)||0)}%</b></label><input type="range" min="0" max="100" step="10" value="${Number(a.fortschritt)||0}" onchange="setAufgabeFortschritt('${escAttr(a.id)}',this.value);openAufgabeKommentare('${escAttr(a.id)}')"></div>
     <div class="simpleList" style="max-height:42vh;overflow:auto;">${(a.kommentare||[]).map(k=>`<div class="simpleRow"><div class="simpleRowMain"><div>${escHtml(k.text)}</div><div class="pageSub">${fmtDateTime(k.zeit)} · ${escHtml(mitarbeiterName(k.autor)||"Benutzer")}</div></div></div>`).join("")||'<div class="empty" style="padding:14px;">Noch keine Kommentare.</div>'}</div>
     <div class="formRow" style="margin-top:12px;"><label>Kommentar</label><textarea id="aufgabeKommentarText" placeholder="Fortschritt, Rückfrage oder Hinweis …"></textarea></div>
     <div class="modalFoot"><button class="btn" onclick="closeModal()">Schließen</button><button class="btn primary" onclick="saveAufgabeKommentar('${escAttr(id)}')">Kommentar speichern</button></div>`);
