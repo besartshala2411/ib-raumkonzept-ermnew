@@ -855,6 +855,7 @@ function ensureShape(s){
       if(b.abschlussNotiz==null) b.abschlussNotiz="";
       b.bereiche.forEach(br=>{
         if(!br.fotos) br.fotos=[];
+        br.fotos.forEach(f=>{if(f.notiz==null)f.notiz="";});
         if(!br.masse) br.masse=[];
         if(br.notiz==null) br.notiz="";
       });
@@ -2565,7 +2566,7 @@ function deleteMitarbeiter(id){
 ========================================================= */
 function renderStempeluhr(view){
   const heute = todayISO();
-  const activeM = S.mitarbeiter.filter(m=>m.status!=="inaktiv");
+  const activeM = hasAdminAccess()?S.mitarbeiter.filter(m=>m.status!=="inaktiv"):S.mitarbeiter.filter(m=>m.id===S.currentUserId&&m.status!=="inaktiv");
   view.innerHTML = `
     <div class="pageHead"><div><div class="pageTitle">Stempeluhr</div><div class="pageSub">Live-Anwesenheit – ${fmtDate(heute)}</div></div></div>
     <div class="grid cols-4">
@@ -2690,7 +2691,9 @@ function exportStundenzettelPDF(){
    MODULE: URLAUB
 ========================================================= */
 function renderUrlaub(view){
-  const jahr = new Date().getFullYear();
+  const jahr=new Date().getFullYear(),u=currentUser(),admin=hasAdminAccess();
+  const sichtbareMitarbeiter=admin?S.mitarbeiter.filter(m=>m.status!=="inaktiv"):S.mitarbeiter.filter(m=>m.id===u?.id);
+  const sichtbareAntraege=admin?S.urlaubsantraege:S.urlaubsantraege.filter(x=>x.mitarbeiterId===u?.id);
   view.innerHTML = `
     <div class="pageHead">
       <div><div class="pageTitle">Urlaub</div><div class="pageSub">Anträge &amp; Resturlaub ${jahr}</div></div>
@@ -2700,7 +2703,7 @@ function renderUrlaub(view){
       </div>
     </div>
     <div class="grid cols-4" style="margin-bottom:18px;">
-      ${S.mitarbeiter.filter(m=>m.status!=="inaktiv").map(m=>{
+      ${sichtbareMitarbeiter.map(m=>{
         const genommen = S.urlaubsantraege.filter(u=>u.mitarbeiterId===m.id && u.status==="genehmigt" && u.von && u.von.startsWith(String(jahr))).reduce((s,u)=>s+u.tage,0);
         const rest = (m.urlaubstageJahr||30) - genommen;
         return `<div class="kpi"><div class="kpiIcon">🏖️</div><div class="kpiVal">${rest}</div><div class="kpiLabel">${escHtml(m.name)} – Resturlaub</div></div>`;
@@ -2709,14 +2712,14 @@ function renderUrlaub(view){
     <div class="card"><div class="tableWrap"><table>
       <thead><tr><th>Mitarbeiter</th><th>Von</th><th>Bis</th><th>Tage</th><th>Status</th><th></th></tr></thead>
       <tbody>
-      ${S.urlaubsantraege.slice().sort((a,b)=>b.von.localeCompare(a.von)).map(u=>`
+      ${sichtbareAntraege.slice().sort((a,b)=>b.von.localeCompare(a.von)).map(u=>`
         <tr>
           <td>${escHtml(mitarbeiterName(u.mitarbeiterId))}</td>
           <td>${fmtDate(u.von)}</td><td>${fmtDate(u.bis)}</td><td>${u.tage}</td>
           <td>${statusBadgeUrlaub(u.status)}${u.status==="genehmigt" ? (u.unterschriftArbeitgeber?` <span class="badge green" title="Arbeitgeber hat digital unterschrieben">✍️ signiert</span>`:` <span class="badge amber" title="Arbeitgeber-Unterschrift fehlt noch">✍️ offen</span>`) : ""}</td>
           <td style="text-align:right; white-space:nowrap;">
-            ${u.status==="offen" ? `<button class="btn sm" onclick="openUrlaubGenehmigenForm('${escAttr(u.id)}')">✅</button><button class="btn sm danger" onclick="setUrlaubStatus('${escAttr(u.id)}','abgelehnt')">✖</button>` : ""}
-            ${u.status==="genehmigt" && !u.unterschriftArbeitgeber ? `<button class="iconBtn" onclick="openUrlaubGenehmigenForm('${escAttr(u.id)}')" title="Arbeitgeber-Unterschrift nachtragen">✍️</button>` : ""}
+            ${admin&&u.status==="offen" ? `<button class="btn sm" onclick="openUrlaubGenehmigenForm('${escAttr(u.id)}')">✅</button><button class="btn sm danger" onclick="setUrlaubStatus('${escAttr(u.id)}','abgelehnt')">✖</button>` : ""}
+            ${admin&&u.status==="genehmigt" && !u.unterschriftArbeitgeber ? `<button class="iconBtn" onclick="openUrlaubGenehmigenForm('${escAttr(u.id)}')" title="Arbeitgeber-Unterschrift nachtragen">✍️</button>` : ""}
             <button class="iconBtn" onclick="exportUrlaubantragPDF('${escAttr(u.id)}')" title="PDF">📄</button>
             <button class="iconBtn" onclick="deleteUrlaub('${escAttr(u.id)}')">🗑️</button>
           </td>
@@ -2735,7 +2738,7 @@ function openUrlaubForm(){
   openModal(`
     <div class="modalHead"><div class="modalTitle">Urlaubsantrag</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
     <div class="formRow"><label>Mitarbeiter</label>
-      <select id="uMitarbeiter">${S.mitarbeiter.filter(m=>m.status!=="inaktiv").map(m=>`<option value="${escAttr(m.id)}">${escHtml(m.name)}</option>`).join("")}</select>
+      <select id="uMitarbeiter" ${hasAdminAccess()?"":"disabled"}>${S.mitarbeiter.filter(m=>m.status!=="inaktiv"&&(hasAdminAccess()||m.id===S.currentUserId)).map(m=>`<option value="${escAttr(m.id)}" ${m.id===S.currentUserId?"selected":""}>${escHtml(m.name)}</option>`).join("")}</select>
     </div>
     <div class="grid cols-2">
       <div class="formRow"><label>Von</label><input id="uVon" type="date" value="${todayISO()}"></div>
@@ -2759,14 +2762,16 @@ function saveUrlaub(){
   saveState(); closeModal(); route(location.hash);
   toast("Urlaubsantrag gestellt.", "success");
 }
-function setUrlaubStatus(id, status){
-  const u = S.urlaubsantraege.find(x=>x.id===id);
+function setUrlaubStatus(id,status){
+  if(!hasAdminAccess()){toast("Nur Bauleitung/Geschäftsführung darf Urlaubsanträge genehmigen oder ablehnen.","warn");return;}
+  const u=S.urlaubsantraege.find(x=>x.id===id);
   u.status = status;
   pushNotification(`Urlaubsantrag von ${mitarbeiterName(u.mitarbeiterId)} wurde ${status}.`, status==="genehmigt"?"info":"warn");
   saveState(); route(location.hash);
 }
 function openUrlaubGenehmigenForm(id){
-  const u = S.urlaubsantraege.find(x=>x.id===id);
+  if(!hasAdminAccess()){toast("Keine Berechtigung.","warn");return;}
+  const u=S.urlaubsantraege.find(x=>x.id===id);
   window._urlaubGenehmigenSig = u.unterschriftArbeitgeber || "";
   openModal(`
     <div class="modalHead"><div class="modalTitle">Antrag genehmigen &amp; unterschreiben</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
@@ -6304,7 +6309,7 @@ function renderBesichtigungBereichCard(p,b,br){
       </div>
     </div>
     ${(br.masse||[]).length?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin:8px 0;">${br.masse.map(m=>`<span class="badge gray" style="display:inline-flex;align-items:center;gap:4px;">${escHtml(m.label)}: ${escHtml(m.wert)} ${escHtml(m.einheit||"")}<button class="iconBtn" style="padding:1px 3px;min-height:auto;" onclick="openBesichtigungMassForm('${escAttr(p.id)}','${escAttr(b.id)}','${escAttr(br.id)}','${escAttr(m.id)}')" title="Maß bearbeiten">✎</button><button class="iconBtn" style="padding:1px 3px;min-height:auto;" onclick="deleteBesichtigungMass('${escAttr(p.id)}','${escAttr(b.id)}','${escAttr(br.id)}','${escAttr(m.id)}')" title="Maß löschen">×</button></span>`).join("")}</div>`:""}
-    ${(br.fotos||[]).length?`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:7px;margin-top:8px;">${br.fotos.map(f=>`<div style="position:relative;"><img src="${escAttr(f.dataURL)}" alt="${escAttr(f.name||"Foto")}" style="width:100%;height:90px;object-fit:cover;border-radius:8px;"><button class="iconBtn" onclick="deleteBesichtigungFoto('${escAttr(p.id)}','${escAttr(b.id)}','${escAttr(br.id)}','${escAttr(f.id)}')" style="position:absolute;right:3px;top:3px;background:rgba(0,0,0,.55);">×</button></div>`).join("")}</div>`:""}
+    ${(br.fotos||[]).length?`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:7px;margin-top:8px;">${br.fotos.map(f=>`<div style="position:relative;background:var(--card);padding:5px;border-radius:8px;"><img src="${escAttr(f.dataURL)}" alt="${escAttr(f.name||"Foto")}" style="width:100%;height:90px;object-fit:cover;border-radius:6px;"><button class="iconBtn" onclick="deleteBesichtigungFoto('${escAttr(p.id)}','${escAttr(b.id)}','${escAttr(br.id)}','${escAttr(f.id)}')" style="position:absolute;right:3px;top:3px;background:rgba(0,0,0,.55);">×</button><div class="pageSub" style="margin:4px 2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(f.notiz||"Keine Beschreibung")}</div><div style="display:flex;gap:4px;"><button class="btn sm" style="padding:4px 6px;min-height:auto;" onclick="openBesichtigungFotoMeta('${escAttr(p.id)}','${escAttr(b.id)}','${escAttr(br.id)}','${escAttr(f.id)}')">✎</button><button class="btn sm" style="padding:4px 6px;min-height:auto;" onclick="createMangelFromBesichtigungFoto('${escAttr(p.id)}','${escAttr(b.id)}','${escAttr(br.id)}','${escAttr(f.id)}')">⚠ Mangel</button></div></div>`).join("")}</div>`:""}
   </div>`;
 }
 function openBesichtigungBereichForm(pid,bid,brid){
@@ -6363,6 +6368,25 @@ async function addBesichtigungFotos(pid,bid,brid,files){
     try{br.fotos.push({id:uid(),name:file.name,dataURL:await fileToDataURL(file),datum:new Date().toISOString(),uebernommenId:""});n++;}catch(e){toast("Foto konnte nicht geladen werden: "+e.message,"error");}
   }
   if(n){addProjektChronik(pid,"besichtigung",n+" Foto(s) bei Besichtigung aufgenommen: "+br.name);saveState();route(location.hash);}
+}
+function openBesichtigungFotoMeta(pid,bid,brid,fid){
+  const p=S.projekte.find(x=>x.id===pid),b=besichtigungById(p,bid),br=b&&b.bereiche.find(x=>x.id===brid),f=br&&(br.fotos||[]).find(x=>x.id===fid);if(!f)return;
+  openModal(`<div class="modalHead"><div class="modalTitle">Foto beschreiben</div><button class="iconBtn" onclick="closeModal()">✖</button></div><div class="formRow"><label>Beschreibung / Hinweis</label><textarea id="bfNotiz">${escHtml(f.notiz||"")}</textarea></div><div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="saveBesichtigungFotoMeta('${escAttr(pid)}','${escAttr(bid)}','${escAttr(brid)}','${escAttr(fid)}')">Speichern</button></div>`);
+}
+function saveBesichtigungFotoMeta(pid,bid,brid,fid){
+  const p=S.projekte.find(x=>x.id===pid),b=besichtigungById(p,bid),br=b&&b.bereiche.find(x=>x.id===brid),f=br&&(br.fotos||[]).find(x=>x.id===fid);if(!f)return;
+  f.notiz=document.getElementById("bfNotiz").value.trim();addProjektChronik(pid,"besichtigung","Besichtigungsfoto beschrieben: "+br.name);saveState();closeModal();route(location.hash);
+}
+function createMangelFromBesichtigungFoto(pid,bid,brid,fid){
+  const p=S.projekte.find(x=>x.id===pid),b=besichtigungById(p,bid),br=b&&b.bereiche.find(x=>x.id===brid),f=br&&(br.fotos||[]).find(x=>x.id===fid);if(!f)return;
+  if(!p.maengel)p.maengel=[];
+  const m={id:uid(),titel:f.notiz||"Mangel aus Besichtigung",bereich:[br.name,br.ebene].filter(Boolean).join(" · "),beschreibung:f.notiz||"",verantwortlich:"",frist:"",status:"offen",foto:f.dataURL,erstelltAm:new Date().toISOString(),quelleTyp:"besichtigungFoto",quelleId:fid};
+  p.maengel.push(m);addProjektChronik(pid,"mangel","Mangel aus Besichtigungsfoto erstellt: "+m.titel);saveState();goTo("#projekte/"+pid+"/maengel");toast("Mangel aus Foto angelegt.","success");
+}
+function createAufgabeFromMangel(pid,mid){
+  const p=S.projekte.find(x=>x.id===pid),m=p&&(p.maengel||[]).find(x=>x.id===mid);if(!m)return;
+  const a={id:uid(),titel:"Mangel beheben: "+m.titel,beschreibung:m.beschreibung||"",faellig:m.frist||"",prioritaet:"hoch",projektId:pid,zugeordnet:null,status:"offen",kommentare:[],quelleTyp:"mangel",quelleId:mid};
+  S.aufgaben.push(a);addProjektChronik(pid,"aufgabe","Aufgabe aus Mangel erstellt: "+m.titel);saveState();toast("Aufgabe aus Mangel angelegt.","success");goTo("#aufgaben");
 }
 function deleteBesichtigungFoto(pid,bid,brid,fid){const p=S.projekte.find(x=>x.id===pid),b=besichtigungById(p,bid),br=b&&b.bereiche.find(x=>x.id===brid);if(!br)return;confirmDelete("Besichtigungsfoto wirklich löschen?",()=>{br.fotos=br.fotos.filter(x=>x.id!==fid);addProjektChronik(pid,"besichtigung","Besichtigungsfoto gelöscht: "+br.name);saveState();route(location.hash);});}
 function renderBesichtigungListCard(p,b,title,list,type){
@@ -6607,6 +6631,7 @@ function renderTabMaengel(body,p){
             </div>
             <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end;">
               ${mangelStatusBadge(m.status)}
+              <button class="iconBtn" title="Aufgabe aus Mangel erstellen" onclick="createAufgabeFromMangel('${escAttr(p.id)}','${escAttr(m.id)}')">📝</button>
               <button class="iconBtn" title="Bearbeiten" onclick="openMangelForm('${escAttr(p.id)}','${escAttr(m.id)}')">✎</button>
               <button class="iconBtn" title="Löschen" onclick="deleteMangel('${escAttr(p.id)}','${escAttr(m.id)}')">×</button>
             </div>
@@ -6857,9 +6882,10 @@ function buildAuftragsmappeDeckblatt(p, projektRechnungen){
   return doc;
 }
 function openAuftragsmappeForm(pid){
-  const p = S.projekte.find(x=>x.id===pid);
-  const projektRechnungen = S.rechnungen.filter(r=>r.projektId===p.id);
-  const chk = (id, count, defaultOn)=>`<label style="display:flex; align-items:center; gap:10px; padding:8px 0;"><input type="checkbox" id="${id}" ${count && defaultOn ? "checked":""} ${count?"":"disabled"}> ${id==="amDokumente"?"Dokumente":id==="amRechnungen"?"Rechnungen":id==="amFotos"?"Fotos":id==="amBautagebuch"?"Bautagebuch":"WISO/Checkliste"} (${count})</label>`;
+  const p=S.projekte.find(x=>x.id===pid);
+  const projektRechnungen=S.rechnungen.filter(r=>r.projektId===p.id);
+  const labels={amDokumente:"Dokumente",amRechnungen:"Rechnungen",amFotos:"Projektfotos",amBautagebuch:"Bautagebuch",amCheckliste:"Abnahme / Checkliste",amBesichtigungen:"Besichtigungen",amMaengel:"Mängel",amChronik:"Projektchronik"};
+  const chk=(id,count,defaultOn)=>`<label style="display:flex;align-items:center;gap:10px;padding:8px 0;"><input type="checkbox" id="${id}" ${count&&defaultOn?"checked":""} ${count?"":"disabled"}> ${labels[id]||id} (${count})</label>`;
   openModal(`
     <div class="modalHead"><div class="modalTitle">📁 Auftragsmappe erstellen</div><button class="iconBtn" onclick="closeModal()">✖</button></div>
     <div class="pageSub" style="margin-bottom:8px;">Fasst alle Unterlagen des Projekts zu einem PDF zusammen: Deckblatt mit Projektdaten (inkl. Team, Material/LV-Positionen, Bauzeitenplan) plus die unten ausgewählten Inhalte.</div>
@@ -6868,7 +6894,10 @@ function openAuftragsmappeForm(pid){
       ${chk("amRechnungen", projektRechnungen.length, true)}
       ${chk("amFotos", p.fotos.length, false)}
       ${chk("amBautagebuch", p.bautagebuch.length, false)}
-      ${chk("amCheckliste", p.checkliste.length, false)}
+      ${chk("amCheckliste", p.checkliste.length, true)}
+      ${chk("amBesichtigungen", (p.besichtigungen||[]).length, true)}
+      ${chk("amMaengel", (p.maengel||[]).length, true)}
+      ${chk("amChronik", (p.chronik||[]).length, true)}
     </div>
     <div id="amStatus" style="font-size:13px; color:var(--text-dim); margin-top:12px;"></div>
     <div class="modalFoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn primary" id="amGoBtn" onclick="confirmAuftragsmappe('${escAttr(pid)}')">📁 Erstellen</button></div>
@@ -6881,6 +6910,9 @@ function confirmAuftragsmappe(pid){
     fotos: !!document.getElementById("amFotos").checked,
     bautagebuch: !!document.getElementById("amBautagebuch").checked,
     checkliste: !!document.getElementById("amCheckliste").checked,
+    besichtigungen: !!document.getElementById("amBesichtigungen").checked,
+    maengel: !!document.getElementById("amMaengel").checked,
+    chronik: !!document.getElementById("amChronik").checked,
   };
   generateAuftragsmappe(pid, opts);
 }
@@ -6894,6 +6926,26 @@ function dataUrlToBytesAndMime(dataURL){
   const byteNumbers = new Array(byteChars.length);
   for(let i=0;i<byteChars.length;i++){ byteNumbers[i] = byteChars.charCodeAt(i); }
   return { bytes: new Uint8Array(byteNumbers), mime };
+}
+function buildBesichtigungenSummaryDoc(p){
+  const doc=pdfNewDoc();let y=pdfHeader(doc,"Besichtigungen / Bestandsaufnahme");
+  (p.besichtigungen||[]).forEach(b=>{
+    if(y>260){doc.addPage();y=20;}
+    doc.setFont(undefined,"bold");doc.text((b.titel||b.art||"Besichtigung")+" · "+fmtDate(b.datum||b.erstelltAm),15,y);doc.setFont(undefined,"normal");y+=6;
+    (b.bereiche||[]).forEach(br=>{if(y>270){doc.addPage();y=20;}doc.text("• "+br.name+(br.ebene?" ("+br.ebene+")":""),20,y);y+=5;if(br.notiz){y=pdfWriteWrapped(doc,br.notiz,25,y,165)+3;}(br.masse||[]).forEach(m=>{doc.text("  "+m.label+": "+m.wert+" "+(m.einheit||""),25,y);y+=5;});});
+    y+=5;
+  });
+  pdfFooter(doc);return doc;
+}
+function buildMaengelSummaryDoc(p){
+  const doc=pdfNewDoc();let y=pdfHeader(doc,"Mängelübersicht");
+  (p.maengel||[]).forEach(m=>{if(y>265){doc.addPage();y=20;}doc.setFont(undefined,"bold");doc.text((m.status==="erledigt"?"[OK] ":"[ ] ")+(m.titel||"Mangel"),15,y);doc.setFont(undefined,"normal");y+=5;doc.text([m.bereich,m.verantwortlich,m.frist?"Frist "+fmtDate(m.frist):"",m.status].filter(Boolean).join(" · "),20,y);y+=5;if(m.beschreibung)y=pdfWriteWrapped(doc,m.beschreibung,20,y,170)+4;});
+  pdfFooter(doc);return doc;
+}
+function buildChronikSummaryDoc(p){
+  const doc=pdfNewDoc();let y=pdfHeader(doc,"Projektchronik");
+  (p.chronik||[]).slice().sort((a,b)=>String(a.zeit||"").localeCompare(String(b.zeit||""))).forEach(e=>{if(y>270){doc.addPage();y=20;}doc.setFontSize(8.5);doc.text(fmtDateTime(e.zeit)+" · "+(mitarbeiterName(e.autor)||"System"),15,y);y+=4;doc.setFontSize(10);y=pdfWriteWrapped(doc,e.text+(e.feld?" · "+e.feld+": "+(e.alt||"–")+" → "+(e.neu||"–"):""),20,y,170)+4;});
+  pdfFooter(doc);return doc;
 }
 async function generateAuftragsmappe(pid, opts){
   const p = S.projekte.find(x=>x.id===pid);
@@ -6942,6 +6994,12 @@ async function generateAuftragsmappe(pid, opts){
     if(opts.rechnungen){ for(const r of projektRechnungen){ await mergeJsPdfDoc(buildRechnungDoc(r)); } }
     if(opts.bautagebuch && p.bautagebuch.length){ await mergeJsPdfDoc(buildBautagebuchDoc(p)); }
     if(opts.checkliste && p.checkliste.length){ await mergeJsPdfDoc(buildChecklisteDoc(p)); }
+    if(opts.besichtigungen && (p.besichtigungen||[]).length){
+      await mergeJsPdfDoc(buildBesichtigungenSummaryDoc(p));
+      for(const b of (p.besichtigungen||[])) for(const br of (b.bereiche||[])) for(const f of (br.fotos||[])) await mergeDataUrl(f.dataURL);
+    }
+    if(opts.maengel && (p.maengel||[]).length){ await mergeJsPdfDoc(buildMaengelSummaryDoc(p)); for(const m of (p.maengel||[])){if(m.foto)await mergeDataUrl(m.foto);} }
+    if(opts.chronik && (p.chronik||[]).length){ await mergeJsPdfDoc(buildChronikSummaryDoc(p)); }
     if(opts.fotos){ for(const f of (p.fotos||[])){ await mergeDataUrl(f.dataURL); } }
 
     const bytes = await master.save();
